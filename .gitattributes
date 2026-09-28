@@ -1,0 +1,3 @@
+# The installer script is Inno Setup, the tool that builds the setup .exe;
+# it is not part of the language, so it is left out of the language stats.
+*.iss linguist-vendored
