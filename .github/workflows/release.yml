@@ -40,30 +40,15 @@ jobs:
           Write-Host "version $v, needs a release: $new"
           exit 0
 
-      - uses: actions/checkout@v4
-        if: steps.version.outputs.new == 'true'
-        with:
-          ref: veylgo
-          path: veylgo
-
       - uses: actions/setup-go@v5
         if: steps.version.outputs.new == 'true'
         with:
           go-version: '1.24'
           cache: false
 
-      - name: Build the reference backend
-        if: steps.version.outputs.new == 'true'
-        working-directory: veylgo/src
-        env:
-          GOTOOLCHAIN: auto
-        run: go build -o veyl.exe ./compiler
-
       - name: Test
         if: steps.version.outputs.new == 'true'
         working-directory: veyl/asm-src
-        env:
-          VEYL_REFERENCE: ${{ github.workspace }}\veylgo\src\veyl.exe
         run: |
           go test ../frontend/...
           if ($LASTEXITCODE -ne 0) { exit 1 }

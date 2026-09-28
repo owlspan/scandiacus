@@ -1,0 +1,47 @@
+bytes(68656c6c6f)
+5
+104
+111
+68656c6c6f
+aGVsbG8=
+hello
+[104, 101, 108, 108, 111]
+hello
+hello
+false
+not hexadecimal: zz
+false
+bytes(656c)
+bytes(68656c6c6f)
+bytes()
+bytes(6865)
+bytes(61626364)
+bytes(616263)
+2
+-1
+bytes(6869)
+false
+-1 does not fit in a byte
+bytes(ffffff)
+false
+bytes(0201)
+bytes(0102)
+258
+258
+1000000
+false
+reading 4 bytes at 4 runs past the end of 5 bytes
+false
+true
+false
+ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+900150983cd24fb0d6963f7d28e17f72
+false
+true
+true
+bytes(89504e4700fffe)
+2303741511
+false
+true
+0
+false

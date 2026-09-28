@@ -51,5 +51,5 @@ go test ./...
 
 `lexer_test.go` and `types_test.go` live here, with the code they test.
 The backends test their own halves: the Go backend on `veylgo` runs a
-golden-file suite, and `../asm-src` compares its output against the Go
-backend byte for byte.
+golden-file suite, and so does `../asm-src`, over its `tests/` and
+`examples/`.

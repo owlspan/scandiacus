@@ -2,44 +2,57 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
-// TestGolden runs the programs in ../tests and compares what they print
-// with the .out file beside each one.
+// TestGolden runs the programs in ../tests and the top-level ones in
+// ../examples, and compares what they print with the .out file beside
+// each one. A program that reads standard input gets the .in file beside
+// it when there is one.
 //
-// Everything the Go backend can also run belongs in examples/, where the
-// differential test holds it to that backend's output instead. This is
-// for what it cannot: syntax it never had, like \u{...} escapes, and
-// programs that read standard input, which get the .in file beside them
-// when there is one.
+// The examples used to be compared against the old Go backend on the
+// veylgo branch instead. Their .out files are that backend's output,
+// frozen when it was retired.
 func TestGolden(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		if _, err := exec.LookPath("wine"); err != nil {
 			t.Skip("the programs are Windows executables, and there is no wine to run them")
 		}
 	}
-	programs, err := filepath.Glob(filepath.Join("..", "tests", "*.vl"))
-	if err != nil || len(programs) == 0 {
-		t.Fatalf("no golden programs: %v", err)
+	var programs []string
+	for _, dir := range []string{"tests", "examples"} {
+		found, err := filepath.Glob(filepath.Join("..", dir, "*.vl"))
+		if err != nil || len(found) == 0 {
+			t.Fatalf("no golden programs in %s: %v", dir, err)
+		}
+		programs = append(programs, found...)
 	}
 	veyl := asmBackend(t)
 
 	for _, src := range programs {
 		src := src
-		t.Run(filepath.Base(src), func(t *testing.T) {
+		name := filepath.Base(filepath.Dir(src)) + "/" + filepath.Base(src)
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			base := strings.TrimSuffix(src, ".vl")
 			want, err := os.ReadFile(base + ".out")
 			if err != nil {
 				t.Fatalf("no expected output: %v", err)
 			}
-			cmd := exec.Command(veyl, "run", src)
+			// A miscompiled loop can print nothing and never end, which
+			// would hang the suite instead of failing one program. Two
+			// minutes is generous on purpose: every program here builds
+			// and runs at once, and slow machines exist.
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, veyl, "run", src)
 			if in, err := os.Open(base + ".in"); err == nil {
 				defer in.Close()
 				cmd.Stdin = in
@@ -47,6 +60,10 @@ func TestGolden(t *testing.T) {
 			var out bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &out, &out
 			if err := cmd.Run(); err != nil {
+				if ctx.Err() == context.DeadlineExceeded {
+					t.Fatalf("did not finish within 2 minutes, which usually means "+
+						"a loop was miscompiled into one that never ends\n%s", out.Bytes())
+				}
 				t.Fatalf("%v\n%s", err, out.Bytes())
 			}
 			if !bytes.Equal(out.Bytes(), want) {

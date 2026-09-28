@@ -10,8 +10,8 @@ toolchain inside the installer, and any hope of pointers or manual
 memory.
 
 This is how those got bought back. The old one is on the
-[`veylgo`](../../../tree/veylgo) branch, discontinued, and is the
-reference this compiler is checked against.
+[`veylgo`](../../../tree/veylgo) branch, discontinued. This one is
+Veyl now.
 
 ```
 hello.vl  ->  [veyl]  ->  hello.exe
@@ -24,9 +24,10 @@ installed.
 ## Status
 
 Every one of the 24 programs in the Go backend's own test suite
-compiles here, and every one prints the same bytes. So does every
-program in `examples/`. The Go backend stays the definition of what
-Veyl means; where the two disagree, this one is wrong.
+compiles here, and every one prints the same bytes. So did every
+program in `examples/` when the Go backend was retired; that output is
+now frozen in the `.out` file beside each one. This compiler has since
+gone past the Go backend and no longer has to match it.
 
 Compiled all the way to a running `.exe` with no Go anywhere in the
 pipeline:
@@ -253,8 +254,8 @@ asm-src/
     prelude*.go     library code written in Veyl, compiled with the program
     *.go            one file per built-in library: list, map, os, net,
                     http, json, task, db, win, and the rest
-  examples/         every one is part of the test suite
-  tests/            programs the Go backend cannot run, with their output
+  examples/         top-level ones are tests, with their output beside them
+  tests/            test programs, with their output
   installer/        the Inno Setup script and its build script
   scripts/          make-installer.bat and .sh, saferun.ps1, metrics.ps1
 docs/               SYNTAX.md and TUTORIAL.md
@@ -301,27 +302,19 @@ cd asm-src
 go test ./...
 ```
 
-Every program in `examples/` is run
-through both backends and the output compared byte for byte, with the Go
-backend as the definition of what Veyl means. If they disagree, this one
-is wrong. The Go backend is on the `veylgo` branch; check it out beside
-this one and build it, and the comparison finds it:
+Every program in `tests/` and the top level of `examples/` is run and
+its output compared byte for byte with the `.out` file beside it. On
+Linux the whole suite runs too: `veyl run` starts the executable
+through `wine` when the host is not Windows, and the encoder check uses
+`x86_64-w64-mingw32-as`.
 
-```
-git worktree add ../veylgo veylgo
-cd ../veylgo/src && go build -o veyl.exe ./compiler
-```
-
-Without it that half skips. The few programs in `tests/` that the Go
-backend cannot run are held to the `.out` file beside each instead. On Linux the whole suite runs too:
-`veyl run` starts the executable through `wine` when the host is not
-Windows, and the encoder check uses `x86_64-w64-mingw32-as`.
-
-It earned that on the first program ever compiled. The numbers were
-correct and the line endings were not: the C runtime translates `\n` to
-`\r\n` on stdout and Go does not. In a terminal the two were
-indistinguishable. In bytes they were not. `x64.go` now puts stdout in
-binary mode in the prologue.
+Until the Go backend was retired, the examples were compared against it
+directly, and their `.out` files are its output at that point. That
+comparison earned its place on the first program ever compiled. The
+numbers were correct and the line endings were not: the C runtime
+translates `\n` to `\r\n` on stdout and Go does not. In a terminal the
+two were indistinguishable. In bytes they were not. `x64.go` now puts
+stdout in binary mode in the prologue.
 
 The second test checks that everything outside the subset is a compile
 error rather than wrong output. A backend that quietly mis-compiles what
@@ -332,8 +325,7 @@ it does not understand is worse than one that refuses.
 To build a program: nothing. veyl encodes, links and writes the PE
 itself.
 
-To run the tests: Go, for the differential comparison against the other
-backend, and MinGW's `as` and `gcc` (on Linux, `x86_64-w64-mingw32-as`
+To run the tests: Go, and MinGW's `as` and `gcc` (on Linux, `x86_64-w64-mingw32-as`
 and `wine`). `encode_test.go` checks every byte
 this compiler emits against GNU `as`, and `VEYL_LINK=mingw` takes the
 old route through `gcc` so a program that runs one way and not the

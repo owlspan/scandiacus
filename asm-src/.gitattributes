@@ -20,7 +20,9 @@
 *.tar       binary
 *.exe       binary
 
-# Golden test input and output are compared byte for byte, and input.in
-# ends its first line with \r\n on purpose.
+# Golden test input and output (tests/ and the top-level examples) are
+# compared byte for byte, and input.in ends its first line with \r\n
+# on purpose.
 tests/**/*.in  -text
 tests/**/*.out -text
+examples/*.out -text

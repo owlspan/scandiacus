@@ -1,0 +1,37 @@
+{"name":"ada","age":36,"height":1.7,"active":true,"tags":["maths","computing"],"address":{"city":"London","zip":"NW1"}}
+ada
+London
+["maths", "computing"]
+true
+14
+[1,2,3]
+{"a":1,"b":2}
+[{"city":"Paris","zip":"75"}]
+"quote \" backslash \\ newline \n tag \u003cb\u003e\u0026"
+[4, 5, 6]
+15
+{"x": 1, "y": 2}
+false
+true
+true
+false
+default
+ada
+36
+1.7
+true
+London
+maths
+2
+["active", "address", "age", "height", "name", "tags"]
+{"city":"London","zip":"NW1"}
+true
+0
+true
+false
+founders
+2
+alan
+alan
+true
+{"a": 1, "b": 2}

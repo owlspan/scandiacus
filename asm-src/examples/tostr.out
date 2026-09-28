@@ -1,0 +1,14 @@
+[3, 1, 2]
+["beta", "alpha"]
+[true, false]
+[1.5, 2]
+{"ana": 31, "bo": 24}
+{1: "gold", 2: "silver"}
+Point{x: 7, y: "seven"}
+true
+ages are {"ana": 31, "bo": 24}
+Point{x: 7, y: "seven"} and [3, 1, 2]
+[]
+{}
+<Point{x: 7, y: "seven"}>
+[Point{x: 0, y: "origin"}, Point{x: 1, y: "unit"}]

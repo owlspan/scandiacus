@@ -1,0 +1,20 @@
+a/b/c.txt
+/x/y
+z.txt
+.txt
+
+bare.txt
+.
+
+a+b+c
+ba
+nothing here
+
+true
+true
+true
+false
+fallback
+true
+written the old way
+true

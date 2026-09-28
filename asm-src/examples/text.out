@@ -1,0 +1,44 @@
+6
+5
+["c", "a", "f", "é", "s"]
+é
+fés
+cafés
+true
+3
+3
+3
+2
+6
+007
+    left|
+right   |
+é..|
+3.25 -> true 3.25
+ -1e3  -> true -1000
+1_000.5 -> true 1000.5
+.5 -> true 0.5
+5. -> true 5
+1e -> false -1
+abc -> false -1
+1e400 -> false -1
+inf -> true +Inf
+-Infinity -> true -Inf
+nan -> true NaN
+2.5
+3
+4 3 -3 -3 -1
++Inf -Inf NaN
+false
+true
+false
+true
+true
+[]
+12101010101010
+5125101055
+51012101055
+55512555
+555101255
+510101010125
+5101010101012
