@@ -396,11 +396,12 @@ type `T!`**, which is now done - see below. Every library function in
 Veyl reports failure as `T!` rather than panicking, so without results
 here they could only have been ported in a lying form.
 
-**3. Maps. Done.** Sorted rather than hashed: the Go backend sorts keys
-when it prints or iterates, so keeping the array sorted at all times
-matches its output for free and moves the cost to insertion. O(n) per
-lookup; the six functions in `map.go` are the seam for swapping in a
-hash table later.
+**3. Maps. Done.** Keys and values in two parallel arrays, found
+through an open-addressed hash table, so a lookup and an insert are
+O(1). They started as one sorted array, which printed and iterated in
+key order for free but moved half the map on every insert; the order
+the language promises is now restored by a sort only when something
+walks the map and the entries have fallen out of it. See `maphash.go`.
 
 It did not move parity, which is worth knowing: all seven programs that
 reported a map as their first error had something else behind it.
@@ -525,9 +526,33 @@ peephole and the register allocator from step 10. On top of those:
   `VEYL_NOPOLLS=1`.
 - **Fused branches.** A compare whose only reader is the branch after
   it becomes one `cmp` and one conditional jump.
+- **Instruction selection.** An operation is done in its result's own
+  register, with a constant as an immediate and a memory operand where
+  x86 takes one; `xs[i]` and `p[i]` fold into one `[base+index*scale]`
+  operand, and `x += y` is one instruction on `x`'s home. See
+  `x64sel.go`.
+- **Division by a constant** is a multiply and shifts rather than
+  `idiv`; see `divconst.go`.
+- **Floats in registers.** Float locals live in xmm6-xmm15 and short
+  temporaries in xmm2-xmm5.
+- **No collector where nothing is collected.** A program that never
+  makes an object for the collector does not carry it; hello, world is
+  3.5 KB.
 
-Together they make a nested arithmetic loop about 45% faster than
-0.30.0 did. `VEYL_NOOPT=1` turns all of it off.
+`VEYL_NOOPT=1` turns all of it off. Against `gcc -O2` on the same
+programs, best of three on one machine:
+
+| | Veyl | gcc -O2 |
+| --- | ---: | ---: |
+| fib(32), recursive calls | 122 ms | 99 ms |
+| 200M iterations of `total += (i * i) % 7` | 417 ms | 406 ms |
+| sieve over a 20M-element list | 917 ms | 584 ms |
+| 100M float multiply-adds | 506 ms | 367 ms |
+| summing a `*i32` of 10M elements, ten times | 195 ms | 132 ms |
+| 300k int map inserts and lookups | 249 ms | 133 ms |
+
+The C map is a hand-written open-addressed table. The Veyl list is
+bounds-checked on every access, and the C array is not.
 
 ## What comes next
 
@@ -541,7 +566,5 @@ Together they make a nested arithmetic loop about 45% faster than
   overflow be reported reliably.
 - **A language server**, for completion and go-to-definition in
   editors.
-- **Hash maps.** Lookups are a binary search now, but an insert still
-  moves every later entry to keep the keys sorted.
 - **Closures as callbacks.**
 - **`zip`**, the last library the Go backend has and this one does not.
