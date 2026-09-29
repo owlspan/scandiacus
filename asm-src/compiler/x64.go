@@ -63,7 +63,7 @@ type Emitter struct {
 	consts    map[Reg]int64
 	dropConst map[Reg]bool
 	alias     map[Reg]string // a load read straight from its slot; see aliasLoad
-	fconsts   map[Reg]int64 // float constants, by pool index
+	fconsts   map[Reg]int64  // float constants, by pool index
 	dropFC    map[Reg]bool
 }
 
