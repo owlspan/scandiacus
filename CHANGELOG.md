@@ -3,6 +3,24 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.36.0
+
+**Typed pointers.** `*T` is an address with a known thing at it: a C
+scalar such as `i32` or `f32`, an extern struct, or another pointer.
+`*p` reads and writes at T's width, `p[i]` and `p + n` count in
+elements, `p - q` is how many elements apart two are, and `p.hp`
+reads through a `*Player` the way C's `p->hp` does. `raw as *i32` makes
+one from an address, `nil` is the null pointer, and `&` takes the
+address of memory - a field, `*p` or `p[i]`. Extern struct fields can
+be pointers, including to their own kind, and extern functions and
+callbacks take and return them.
+
+An array field of an extern struct, `name: [16]u8`, now reads as a
+pointer to its first element rather than a bare int, so `p.name[3]`
+is the fourth byte. It still goes anywhere an address did; `p.name + 1`
+now counts in elements, which only differs for elements wider than a
+byte.
+
 ## 0.35.0
 
 **Looping over a channel.** `for v in ch` takes every value a channel
