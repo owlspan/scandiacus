@@ -103,6 +103,10 @@ func (e *Emitter) immB(in Instr) (int64, bool) {
 		if v >= 0 && v < 64 {
 			return v, true
 		}
+	case OpDiv, OpMod:
+		if constDivisor(v) && v <= math.MaxInt32 {
+			return v, true
+		}
 	}
 	return 0, false
 }
@@ -184,6 +188,11 @@ func (e *Emitter) selInstr(in Instr) bool {
 		return true
 
 	case OpDiv, OpMod:
+		if d, ok := e.immB(in); ok {
+			e.selDivConst(in, d)
+			e.put(in.Dst, "rdx")
+			return true
+		}
 		e.line("mov rax, %s", e.loc(in.A))
 		b := e.loc(in.B)
 		if !isRegLoc(b) {
