@@ -31,7 +31,10 @@ package main
 //     and reads it again after some other value has taken the
 //     register. Every wrap re-enters through a label, so a span with
 //     no label inside it cannot be re-entered either, and within one
-//     straight run the linear span is exact.
+//     straight run the linear span is exact. The one label allowed
+//     inside is a join every jump to which starts within the span -
+//     an if or a bounds check - since nothing can arrive there from
+//     outside it; see spanClear.
 //
 // Floats are not pooled, though xmm4 and xmm5 sit idle for the taking.
 // Reading a pooled float sometimes means getting its raw bits into a
@@ -68,6 +71,7 @@ func allocateRegs(f *Func) map[Reg]string {
 	if len(f.RegTypes) < f.NRegs || f.NRegs == 0 {
 		return nil
 	}
+	jumps := jumpsTo(f)
 
 	// First and last mention of every register, and where the barriers
 	// sit. Mentions outside the register range cannot exist, but a
@@ -122,14 +126,7 @@ func allocateRegs(f *Func) map[Reg]string {
 			continue
 		}
 		last := lastOf[r]
-		crossed := false
-		for p := def + 1; p < last; p++ {
-			if barrier[p] || f.Code[p].Op == OpLabel {
-				crossed = true
-				break
-			}
-		}
-		if crossed {
+		if !spanClear(f, def, last, jumps) {
 			continue
 		}
 		cands = append(cands, cand{
@@ -213,6 +210,7 @@ func allocateFloatRegs(f *Func) map[Reg]string {
 	if len(f.RegTypes) < f.NRegs || f.NRegs == 0 {
 		return nil
 	}
+	jumps := jumpsTo(f)
 	defOf := make([]int, f.NRegs)
 	lastOf := make([]int, f.NRegs)
 	usable := make([]bool, f.NRegs)
@@ -258,14 +256,7 @@ func allocateFloatRegs(f *Func) map[Reg]string {
 		if !usable[r] || def < 0 || lastOf[r] <= def {
 			continue
 		}
-		crossed := false
-		for p := def + 1; p < lastOf[r]; p++ {
-			if raBarrier(&f.Code[p]) || f.Code[p].Op == OpLabel {
-				crossed = true
-				break
-			}
-		}
-		if !crossed {
+		if spanClear(f, def, lastOf[r], jumps) {
 			cands = append(cands, cand{Reg(r), def, lastOf[r]})
 		}
 	}
@@ -285,4 +276,49 @@ next:
 		}
 	}
 	return homes
+}
+
+// noReturn reports whether an instruction ends the program. Nothing
+// after it runs on that path, so what it clobbers does not matter.
+func noReturn(in *Instr) bool { return in.Op == OpBoundsFail || in.Op == OpMustFail }
+
+// jumpsTo lists, for each label, where the jumps to it are.
+func jumpsTo(f *Func) map[int64][]int {
+	out := map[int64][]int{}
+	for i, in := range f.Code {
+		switch in.Op {
+		case OpJump, OpJumpIf, OpJumpNot:
+			out[in.Imm] = append(out[in.Imm], i)
+		}
+	}
+	return out
+}
+
+// spanClear reports whether a value defined at def and last read at
+// last can stay in one register the whole way.
+//
+// A call on the way clobbers it, unless the call ends the program. A
+// label on the way is a place control can arrive from elsewhere, with
+// the register holding something else - a loop's back edge is the case
+// that matters. But a label every jump to which comes from inside the
+// span, ahead of the label, is only the join of an if or an else within
+// it: the value was defined before any of those jumps and nothing has
+// touched the register since, so arriving there changes nothing. A
+// bounds check is exactly that shape, and used to push every value
+// alive across one out to memory.
+func spanClear(f *Func, def, last int, jumps map[int64][]int) bool {
+	for p := def + 1; p < last; p++ {
+		in := &f.Code[p]
+		if raBarrier(in) && !noReturn(in) {
+			return false
+		}
+		if in.Op == OpLabel {
+			for _, from := range jumps[in.Imm] {
+				if from <= def || from >= p {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }

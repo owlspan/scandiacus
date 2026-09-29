@@ -490,6 +490,18 @@ func (b *block) encodeArith(rmReg, regRM byte, digit int, ops []operand) error {
 		if dst.kind == opMem && size == 0 {
 			size = 64
 		}
+		if dst.kind == opReg && dst.reg == 0 && (size == 64 || size == 32) &&
+			(src.disp < -128 || src.disp > 127) {
+			// rax and eax have a form of their own with no ModRM byte,
+			// one shorter, which the assembler always picks for an
+			// immediate too big for a byte.
+			if size == 64 {
+				b.put(0x48)
+			}
+			b.put(byte(digit<<3 | 5))
+			b.put32(int32(src.disp))
+			return nil
+		}
 		b.prefix(size, digit, dst)
 		if src.disp >= -128 && src.disp <= 127 {
 			b.put(0x83)

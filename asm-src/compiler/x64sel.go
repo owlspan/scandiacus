@@ -401,3 +401,46 @@ func (e *Emitter) selArith(in Instr) {
 	e.line("%s rax, %s", m, b)
 	e.put(in.Dst, "rax")
 }
+
+// fuseIndex folds an element address into the load or store that is its
+// only reader, so xs[i] is one mov with a [base+index*8] operand rather
+// than an lea into a register and a move through it.
+func (e *Emitter) fuseIndex(ix, next Instr, uses map[Reg]int) bool {
+	if e.consts == nil || ix.Op != OpIndexAddr || uses[ix.Dst] != 1 || next.A != ix.Dst || next.Imm != 0 {
+		return false
+	}
+	if next.Op != OpLoadMem && (next.Op != OpStoreMem || next.B == ix.Dst) {
+		return false
+	}
+	base := e.loc(ix.A)
+	if !isRegLoc(base) {
+		e.line("mov rax, %s", base)
+		base = "rax"
+	}
+	idx := e.loc(ix.B)
+	if !isRegLoc(idx) {
+		e.line("mov rcx, %s", idx)
+		idx = "rcx"
+	}
+	addr := fmt.Sprintf("qword ptr [%s+%s*8]", base, idx)
+	if next.Op == OpLoadMem {
+		if d := e.loc(next.Dst); isRegLoc(d) {
+			e.line("mov %s, %s", d, addr)
+		} else {
+			e.line("mov rax, %s", addr)
+			e.line("mov %s, rax", d)
+		}
+		return true
+	}
+	if v, ok := e.immB(next); ok {
+		e.line("mov %s, %d", addr, v)
+		return true
+	}
+	b := e.loc(next.B)
+	if !isRegLoc(b) {
+		e.line("mov rdx, %s", b)
+		b = "rdx"
+	}
+	e.line("mov %s, %s", addr, b)
+	return true
+}

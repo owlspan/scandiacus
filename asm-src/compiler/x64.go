@@ -508,6 +508,10 @@ func (e *Emitter) function(f *Func) {
 			i++
 			continue
 		}
+		if i+1 < len(f.Code) && e.fuseIndex(in, f.Code[i+1], uses) {
+			i++
+			continue
+		}
 		e.instr(in)
 	}
 

@@ -797,7 +797,7 @@ func dropPolls(fn *Func) {
 		case OpLabel:
 			starts[i] = true
 			labelAt[in.Imm] = i
-		case OpJump, OpJumpIf, OpJumpNot, OpRet:
+		case OpJump, OpJumpIf, OpJumpNot, OpRet, OpBoundsFail, OpMustFail:
 			if i+1 < n {
 				starts[i+1] = true
 			}
@@ -825,7 +825,9 @@ func dropPolls(fn *Func) {
 		last := code[ends[b]-1]
 		fall := b + 1
 		switch last.Op {
-		case OpRet:
+		case OpRet, OpBoundsFail, OpMustFail:
+			// A failed bounds check or must ends the program, so its
+			// call is no way back into the loop it sits in.
 		case OpJump:
 			if at, ok := labelAt[last.Imm]; ok {
 				succ[b] = append(succ[b], blockOf[at])
