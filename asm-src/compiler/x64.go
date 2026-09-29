@@ -62,6 +62,7 @@ type Emitter struct {
 	// immediates; see x64sel.go. Nil with the optimisations off.
 	consts    map[Reg]int64
 	dropConst map[Reg]bool
+	alias     map[Reg]string // a load read straight from its slot; see aliasLoad
 	fconsts   map[Reg]int64 // float constants, by pool index
 	dropFC    map[Reg]bool
 }
@@ -126,6 +127,9 @@ func (e *Emitter) regAddr(r Reg) string {
 // and write of a virtual register goes through here, which is the whole
 // extent of the emitter's awareness that allocation happens.
 func (e *Emitter) loc(r Reg) string {
+	if a, ok := e.alias[r]; ok {
+		return a
+	}
 	if e.homes != nil {
 		if h, ok := e.homes[r]; ok {
 			return h
@@ -502,14 +506,29 @@ func (e *Emitter) function(f *Func) {
 	}
 
 	uses := regUses(f)
+	e.alias = map[Reg]string{}
 	for i := 0; i < len(f.Code); i++ {
 		in := f.Code[i]
-		if i+1 < len(f.Code) && e.fuseBranch(in, f.Code[i+1], uses) {
-			i++
+		// The fusions look at the next instructions that emit anything:
+		// a constant folded into an immediate sits in between otherwise.
+		j := e.nextReal(f, i)
+		k := -1
+		if j >= 0 {
+			k = e.nextReal(f, j)
+		}
+		if j >= 0 && e.fuseBranch(in, f.Code[j], uses) {
+			i = j
 			continue
 		}
-		if i+1 < len(f.Code) && e.fuseIndex(in, f.Code[i+1], uses) {
-			i++
+		if j >= 0 && e.fuseIndex(in, f.Code[j], uses) {
+			i = j
+			continue
+		}
+		if k >= 0 && e.fuseRMW(in, f.Code[j], f.Code[k], uses) {
+			i = k
+			continue
+		}
+		if j >= 0 && e.aliasLoad(in, f.Code[j], uses) {
 			continue
 		}
 		e.instr(in)
@@ -938,7 +957,7 @@ func (e *Emitter) instr(in Instr) {
 		if b := e.loc(in.B); b != "rcx" {
 			e.line("mov rcx, %s", b)
 		}
-		e.line("lea rax, [rax+rcx*8]")
+		e.line("lea rax, [rax+rcx*%d]", indexScale(in))
 		e.put(in.Dst, "rax")
 
 	case OpLoadMem:

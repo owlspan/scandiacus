@@ -63,6 +63,15 @@ func (l *lowerer) retype(v Reg, t vty) Reg {
 
 // ptrElemAddr is p + i*size, the address of p[i].
 func (l *lowerer) ptrElemAddr(p, i Reg, size int64) Reg {
+	switch size {
+	case 1, 2, 4, 8:
+		// A scale x86 addressing has, so the multiply and the add fold
+		// into the load or store that uses the address.
+		d := l.newReg()
+		l.regTy[d] = vInt
+		l.emit(Instr{Op: OpIndexAddr, Dst: d, A: p, B: i, Imm: size})
+		return d
+	}
 	if size != 1 {
 		i = l.arith(OpMul, i, l.constant(size))
 	}

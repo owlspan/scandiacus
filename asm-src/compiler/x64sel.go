@@ -25,6 +25,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"math/bits"
 	"strings"
 )
 
@@ -113,7 +114,7 @@ func (e *Emitter) immB(in Instr) (int64, bool) {
 		return 0, false
 	}
 	switch in.Op {
-	case OpAdd, OpSub, OpBAnd, OpBOr, OpBXor,
+	case OpAdd, OpSub, OpBAnd, OpBOr, OpBXor, OpMul,
 		OpEq, OpNe, OpLt, OpLe, OpGt, OpGe, OpStoreMem:
 		return v, true
 	case OpShl, OpShr:
@@ -193,8 +194,34 @@ func (e *Emitter) selInstr(in Instr) bool {
 		}
 		return false
 
-	case OpAdd, OpSub, OpMul, OpBAnd, OpBOr, OpBXor:
+	case OpMul:
+		if v, ok := e.immB(in); ok {
+			e.selMulConst(in, v)
+			return true
+		}
 		e.selArith(in)
+		return true
+
+	case OpAdd, OpSub, OpBAnd, OpBOr, OpBXor:
+		e.selArith(in)
+		return true
+
+	case OpPeek:
+		base := e.loc(in.A)
+		if !isRegLoc(base) {
+			e.line("mov rax, %s", base)
+			base = "rax"
+		}
+		e.emitPeek(in, "["+base+"]")
+		return true
+
+	case OpPoke:
+		base := e.loc(in.A)
+		if !isRegLoc(base) {
+			e.line("mov rax, %s", base)
+			base = "rax"
+		}
+		e.emitPoke(in, "["+base+"]", "rcx")
 		return true
 
 	case OpFConst:
@@ -404,13 +431,23 @@ func (e *Emitter) selArith(in Instr) {
 
 // fuseIndex folds an element address into the load or store that is its
 // only reader, so xs[i] is one mov with a [base+index*8] operand rather
-// than an lea into a register and a move through it.
+// than an lea into a register and a move through it. A pointer's p[i]
+// is the same with its element's size as the scale.
 func (e *Emitter) fuseIndex(ix, next Instr, uses map[Reg]int) bool {
-	if e.consts == nil || ix.Op != OpIndexAddr || uses[ix.Dst] != 1 || next.A != ix.Dst || next.Imm != 0 {
+	if e.consts == nil || ix.Op != OpIndexAddr || uses[ix.Dst] != 1 || next.A != ix.Dst {
 		return false
 	}
-	if next.Op != OpLoadMem && (next.Op != OpStoreMem || next.B == ix.Dst) {
+	switch next.Op {
+	case OpLoadMem, OpPeek:
+	case OpStoreMem, OpPoke:
+		if next.B == ix.Dst {
+			return false
+		}
+	default:
 		return false
+	}
+	if (next.Op == OpLoadMem || next.Op == OpStoreMem) && next.Imm != 0 {
+		return false // an offset, which indexed addressing here has no room for
 	}
 	base := e.loc(ix.A)
 	if !isRegLoc(base) {
@@ -422,7 +459,15 @@ func (e *Emitter) fuseIndex(ix, next Instr, uses map[Reg]int) bool {
 		e.line("mov rcx, %s", idx)
 		idx = "rcx"
 	}
-	addr := fmt.Sprintf("qword ptr [%s+%s*8]", base, idx)
+	if next.Op == OpPeek {
+		e.emitPeek(next, fmt.Sprintf("[%s+%s*%d]", base, idx, indexScale(ix)))
+		return true
+	}
+	if next.Op == OpPoke {
+		e.emitPoke(next, fmt.Sprintf("[%s+%s*%d]", base, idx, indexScale(ix)), "rdx")
+		return true
+	}
+	addr := fmt.Sprintf("qword ptr [%s+%s*%d]", base, idx, indexScale(ix))
 	if next.Op == OpLoadMem {
 		if d := e.loc(next.Dst); isRegLoc(d) {
 			e.line("mov %s, %s", d, addr)
@@ -442,5 +487,183 @@ func (e *Emitter) fuseIndex(ix, next Instr, uses map[Reg]int) bool {
 		b = "rdx"
 	}
 	e.line("mov %s, %s", addr, b)
+	return true
+}
+
+// indexScale is an element address's scale; see OpIndexAddr.
+func indexScale(in Instr) int64 {
+	if in.Imm == 0 {
+		return 8
+	}
+	return in.Imm
+}
+
+// low32 names the low half of a general register, which a 32-bit write
+// zero-extends into the whole of it.
+func low32(r string) string {
+	switch r {
+	case "rax", "rbx", "rcx", "rdx", "rsi", "rdi":
+		return "e" + r[1:]
+	}
+	return r + "d" // r8 to r15
+}
+
+// emitPeek reads memory at a C width into a Veyl int or float, straight
+// into the result's register when it has one.
+func (e *Emitter) emitPeek(in Instr, addr string) {
+	d := e.loc(in.Dst)
+	switch in.Imm {
+	case memF32, memF64:
+		t := "xmm0"
+		if isXmm(d) {
+			t = d
+		}
+		if in.Imm == memF32 {
+			e.line("cvtss2sd %s, dword ptr %s", t, addr)
+		} else {
+			e.line("movsd %s, qword ptr %s", t, addr)
+		}
+		e.putf(in.Dst, t)
+		return
+	}
+	t := "rax"
+	if isRegLoc(d) && !isXmm(d) {
+		t = d
+	}
+	switch in.Imm {
+	case memU8:
+		e.line("movzx %s, byte ptr %s", low32(t), addr)
+	case memI8:
+		e.line("movsx %s, byte ptr %s", t, addr)
+	case memU16:
+		e.line("movzx %s, word ptr %s", low32(t), addr)
+	case memI16:
+		e.line("movsx %s, word ptr %s", t, addr)
+	case memU32:
+		e.line("mov %s, dword ptr %s", low32(t), addr)
+	case memI32:
+		e.line("movsxd %s, dword ptr %s", t, addr)
+	default:
+		e.line("mov %s, qword ptr %s", t, addr)
+	}
+	e.put(in.Dst, t)
+}
+
+// emitPoke writes a value to memory at a C width. scratch is rcx or
+// rdx, whichever the address does not already use.
+func (e *Emitter) emitPoke(in Instr, addr, scratch string) {
+	b := e.loc(in.B)
+	switch in.Imm {
+	case memF32:
+		e.line("movsd xmm0, %s", b)
+		e.line("cvtsd2ss xmm0, xmm0")
+		e.line("movss dword ptr %s, xmm0", addr)
+		return
+	case memF64:
+		if !isXmm(b) {
+			e.line("movsd xmm0, %s", b)
+			b = "xmm0"
+		}
+		e.line("movsd qword ptr %s, %s", addr, b)
+		return
+	case memI64:
+		if !isRegLoc(b) {
+			e.line("mov %s, %s", scratch, b)
+			b = scratch
+		}
+		e.line("mov qword ptr %s, %s", addr, b)
+		return
+	}
+	if b != scratch {
+		e.line("mov %s, %s", scratch, b)
+	}
+	low := map[string][3]string{"rcx": {"cl", "cx", "ecx"}, "rdx": {"dl", "dx", "edx"}}[scratch]
+	switch in.Imm {
+	case memU8, memI8:
+		e.line("mov byte ptr %s, %s", addr, low[0])
+	case memU16, memI16:
+		e.line("mov word ptr %s, %s", addr, low[1])
+	default:
+		e.line("mov dword ptr %s, %s", addr, low[2])
+	}
+}
+
+// selMulConst multiplies by a constant: a shift for a power of two, the
+// three-operand imul otherwise.
+func (e *Emitter) selMulConst(in Instr, v int64) {
+	d, a := e.loc(in.Dst), e.loc(in.A)
+	t := d
+	if !isRegLoc(d) {
+		t = "rax"
+	}
+	if isPow2(v) {
+		if t != a {
+			e.line("mov %s, %s", t, a)
+		}
+		if k := bits.TrailingZeros64(uint64(v)); k > 0 {
+			e.line("shl %s, %d", t, k)
+		}
+	} else {
+		e.line("imul %s, %s, %d", t, a, v)
+	}
+	if t == "rax" {
+		e.put(in.Dst, "rax")
+	}
+}
+
+// fuseRMW turns `load slot; op; store slot` - what x += y lowers to -
+// into one instruction on the slot's own home when neither value in
+// between is read anywhere else: add rbx, r9 rather than three moves.
+func (e *Emitter) fuseRMW(ld, op, st Instr, uses map[Reg]int) bool {
+	if e.consts == nil || ld.Op != OpLoad || st.Op != OpStore || st.Imm != ld.Imm {
+		return false
+	}
+	m, ok := map[Op]string{OpAdd: "add", OpSub: "sub", OpBAnd: "and", OpBOr: "or", OpBXor: "xor"}[op.Op]
+	if !ok || op.A != ld.Dst || op.B == ld.Dst || st.A != op.Dst ||
+		uses[ld.Dst] != 1 || uses[op.Dst] != 1 {
+		return false
+	}
+	slot := e.slotAddr(ld.Imm)
+	if isXmm(slot) {
+		return false
+	}
+	b := e.srcB(op)
+	if !isRegLoc(slot) && !isRegLoc(b) && !isImm(b) {
+		e.line("mov rax, %s", b)
+		b = "rax"
+	}
+	e.line("%s %s, %s", m, slot, b)
+	return true
+}
+
+// nextReal is the index of the next instruction after i that emits
+// anything, or -1. Constants folded away emit nothing.
+func (e *Emitter) nextReal(f *Func, i int) int {
+	for j := i + 1; j < len(f.Code); j++ {
+		in := f.Code[j]
+		if in.Op == OpConst && e.dropConst[in.Dst] || in.Op == OpFConst && e.dropFC[in.Dst] {
+			continue
+		}
+		return j
+	}
+	return -1
+}
+
+// aliasLoad skips a load whose one reader is the very next instruction,
+// and lets that reader take the value straight from the slot's home:
+// cmp rdi, r15 rather than copying both into scratch registers first.
+// Nothing can write the slot in between, since nothing is in between.
+func (e *Emitter) aliasLoad(ld, next Instr, uses map[Reg]int) bool {
+	if e.consts == nil || ld.Op != OpLoad || uses[ld.Dst] != 1 {
+		return false
+	}
+	reads := next.A == ld.Dst || next.B == ld.Dst
+	for _, a := range next.Args {
+		reads = reads || a == ld.Dst
+	}
+	if !reads || next.Op == OpLabel {
+		return false
+	}
+	e.alias[ld.Dst] = e.slotAddr(ld.Imm)
 	return true
 }

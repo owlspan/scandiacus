@@ -679,6 +679,20 @@ func (b *block) encodeTest(ops []operand) error {
 }
 
 func (b *block) encodeImul(ops []operand) error {
+	if len(ops) == 3 && ops[0].kind == opReg && ops[2].kind == opImm {
+		// imul r, r/m, imm: a multiply by a constant into a register.
+		b.prefix(ops[0].size, ops[0].reg, ops[1])
+		if ops[2].disp >= -128 && ops[2].disp <= 127 {
+			b.put(0x6B)
+			b.modrm(ops[0].reg, ops[1])
+			b.put(byte(ops[2].disp))
+			return nil
+		}
+		b.put(0x69)
+		b.modrm(ops[0].reg, ops[1])
+		b.put32(int32(ops[2].disp))
+		return nil
+	}
 	if len(ops) == 1 {
 		// The one-operand form: rdx:rax = rax * r/m, signed. The high
 		// word is what division by a constant needs; see divconst.go.

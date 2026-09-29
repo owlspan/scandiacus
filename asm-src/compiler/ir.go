@@ -450,7 +450,7 @@ const (
 	// it without a second implementation. They are also the ops that
 	// `unsafe` and manual memory will eventually be written in terms of.
 	OpAlloc     // Dst = allocate A bytes
-	OpIndexAddr // Dst = A + B*8
+	OpIndexAddr // Dst = A + B*Imm, where an Imm of 0 means 8
 	OpLoadMem   // Dst = qword at [A + Imm]
 	OpStoreMem  // qword at [A + Imm] = B
 
