@@ -3,6 +3,29 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.37.0
+
+Smaller and faster executables. Nothing a program means has changed.
+
+**Size.** hello, world is 3.5 KB, down from 11 KB, and a program using
+JSON 87 KB instead of 610 KB. Most of what a program carried was the
+same code written out wherever it was used - the allocator at every
+allocation, a map's search at every read, a JSON parser at every
+`json.get`, a type's printer at every `print` - and each of those is
+now one function called from every site. A program that never makes
+an object for the collector no longer carries the collector.
+
+**Maps are hash tables.** Lookups and inserts are O(1); 300,000 inserts
+took 34 seconds and now take a quarter of one. Printing, iterating,
+`keys` and `values` still go in sorted key order.
+
+**Generated code.** Operations happen in registers with constants as
+immediates instead of going through rax and rcx every time; division
+by a constant is a multiply; floats live in xmm registers; `xs[i]`,
+`p[i]` and `x += y` are single instructions in a loop. Against gcc -O2,
+integer loops and recursion now run within a few percent to 25%, and
+float, list and pointer loops within 1.5x.
+
 ## 0.36.0
 
 **Typed pointers.** `*T` is an address with a known thing at it: a C
