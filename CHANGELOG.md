@@ -24,7 +24,7 @@ immediates instead of going through rax and rcx every time; division
 by a constant is a multiply; floats live in xmm registers; `xs[i]`,
 `p[i]` and `x += y` are single instructions in a loop. Against gcc -O2,
 integer loops and recursion now run within a few percent to 25%, and
-float, list and pointer loops within 1.5x.
+float, list and pointer loops within 1.6x.
 
 ## 0.36.0
 
