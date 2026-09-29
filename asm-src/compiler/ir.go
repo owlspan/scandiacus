@@ -291,6 +291,8 @@ func vtyOf(t *Type) (vty, bool) {
 		return vStructOf(t.Name), true
 	case KEnum:
 		return vEnumOf(t.Name), true
+	case KPtr:
+		return vPtr(t.String()), true
 
 	case KBytes:
 		return vBytes, true
@@ -756,10 +758,12 @@ func (l *lowerer) collectExtern(fd *FnDecl) {
 		l.errorAt(fd, "return type %q cannot come back from native code", fd.Ret)
 		return
 	}
-	switch strings.TrimSpace(fd.Ret) {
-	case "int", "bool":
+	switch r := strings.TrimSpace(fd.Ret); {
+	case strings.HasPrefix(r, "*"):
+		// A pointer comes back whole, like ptr.
+	case r == "int" || r == "bool":
 		es.ret32 = true
-	case "", "float", "str", "ptr":
+	case r == "" || r == "float" || r == "str" || r == "ptr":
 	default:
 		l.errorAt(fd, "return type %q cannot come back from native code", fd.Ret)
 		return
@@ -1591,7 +1595,15 @@ func (l *lowerer) assign(st *AssignStmt) {
 			l.mapSet(coll, key, val, t)
 			return
 		}
+		if isPtr(t) {
+			l.ptrAssign(st, coll, idx.Idx)
+			return
+		}
 		l.errorAt(st, "only a list or a map can be indexed on this backend so far")
+		return
+	}
+	if u, isDeref := st.Target.(*Unary); isDeref && u.Op == STAR {
+		l.ptrAssign(st, l.expr(u.X), nil)
 		return
 	}
 
@@ -1651,6 +1663,9 @@ func (l *lowerer) assign(st *AssignStmt) {
 // miscompile producing no output rather than wrong output, so nothing
 // catches it except a deadline.
 func (l *lowerer) compound(n Node, k Kind, target vty, cur, v Reg) (Reg, bool) {
+	if isPtr(target) {
+		return l.ptrStep(n, k, target, cur, v)
+	}
 	isFloat := target.k == kFloat
 	if isFloat && l.regTy[v].k == kInt {
 		v = l.toFloat(v)
@@ -2599,6 +2614,9 @@ func (l *lowerer) expr(e Expr) Reg {
 			}
 			return l.mapGet(x, coll, key, t)
 		}
+		if isPtr(t) {
+			return l.ptrIndexRead(x, coll)
+		}
 		l.errorAt(x, "only a list or a map can be indexed on this backend so far")
 		return l.junk()
 
@@ -2651,6 +2669,12 @@ func (l *lowerer) expr(e Expr) Reg {
 		return l.call(x)
 
 	case *Unary:
+		switch x.Op {
+		case STAR:
+			return l.derefRead(x)
+		case AMP:
+			return l.addrOf(x)
+		}
 		a := l.expr(x.X)
 		d := l.newReg()
 		switch x.Op {
@@ -2675,6 +2699,14 @@ func (l *lowerer) expr(e Expr) Reg {
 
 	case *Binary:
 		return l.binary(x)
+
+	case *Cast:
+		want, ok := vtyOf(x.T)
+		if !ok {
+			l.errorAt(x, "cannot convert to %s", x.Type)
+			return l.junk()
+		}
+		return l.retype(l.expr(x.X), want)
 
 	case *Try:
 		return l.tryExpr(x)
@@ -2750,6 +2782,12 @@ func (l *lowerer) binary(x *Binary) Reg {
 			return d
 		}
 		return same
+	}
+
+	// Pointer arithmetic counts in elements. Comparisons need nothing
+	// special: a pointer is an int underneath.
+	if (isPtr(at) || isPtr(bt)) && (x.Op == PLUS || x.Op == MINUS) {
+		return l.ptrArith(x, a, b)
 	}
 
 	// A container or a struct compares by contents, which is what == on

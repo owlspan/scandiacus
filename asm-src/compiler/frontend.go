@@ -68,6 +68,7 @@ type (
 	Type         = front.Type
 	TypeKind     = front.TypeKind
 	Unary        = front.Unary
+	Cast         = front.Cast
 	WhileStmt    = front.WhileStmt
 	Widen        = front.Widen
 )
@@ -92,6 +93,7 @@ var (
 	NullableOf   = front.NullableOf
 	OpText       = front.OpText
 	ParseType    = front.ParseType
+	CTypeSize    = front.CTypeSize
 	Qual         = front.Qual
 	ResultOf     = front.ResultOf
 	StructOf     = front.StructOf
@@ -163,6 +165,7 @@ const (
 	KStr      = front.KStr
 	KStruct   = front.KStruct
 	KEnum     = front.KEnum
+	KPtr      = front.KPtr
 	KUnknown  = front.KUnknown
 	KVoid     = front.KVoid
 	LBRACE    = front.LBRACE

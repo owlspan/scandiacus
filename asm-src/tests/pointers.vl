@@ -1,0 +1,110 @@
+// Typed pointers: *T reads and writes at T's width, p[i] and p + n
+// count in elements, p.f reads through a pointer to an extern struct,
+// and &place is the address of memory.
+
+extern struct Vec3 { x: f32, y: f32, z: f32 }
+extern struct Node {
+    value: i32
+    next: *Node
+    name: [8]u8
+}
+
+// A scalar at an address.
+let raw = mem.alloc(64)
+let ip = raw as *i32
+*ip = 7
+ip[1] = -3
+print(*ip)
+print(ip[1])
+print(mem.readI32(raw + 4))
+*ip += 10
+ip[1] -= 1
+print("{*ip} {ip[1]}")
+
+// Arithmetic counts in elements, not bytes.
+let q = ip + 2
+print(q - ip)
+print((q as int) - (ip as int))
+*q = 99
+print(ip[2])
+let w = ip
+w += 1
+print(*w)
+print("{ip < q} {q > w} {ip == w - 1}")
+
+// Widths and signs come from the type.
+let fp = raw as *f32
+fp[4] = 1.5
+print(fp[4])
+let bp = raw as *u8
+bp[40] = 255
+print(bp[40])
+let sp = raw as *i8
+print(sp[40])
+
+// An array of structs, and a pointer to one field.
+let vs = mem.alloc(Vec3.size * 3) as *Vec3
+vs[1].y = 2.5
+vs[2].z = 4.0
+let v = vs[1]
+print("{v.y} {vs[2].z}")
+let second = vs + 1
+print(second.y)
+let pz = &vs[2].z
+*pz = 8.0
+print(vs[2].z)
+print(&vs[2] - vs)
+
+// A structure that points at its own kind.
+let a = mem.alloc(Node.size) as *Node
+let b = mem.alloc(Node.size) as *Node
+a.value = 1
+a.next = b
+b.value = 2
+b.next = nil
+print(a.next.value)
+print("{b.next == nil} {a.next != nil} {a.next == b}")
+let n = a
+let total = 0
+while n != nil {
+    total += n.value
+    n = n.next
+}
+print(total)
+
+// An array field is a pointer to its first element.
+a.name[0] = 104
+a.name[1] = 105
+print(mem.str(a.name))
+print(Node.size)
+
+// A pointer to a pointer.
+let pp = mem.alloc(8) as **i32
+*pp = ip
+print(**pp)
+(*pp)[1] = 42
+print(ip[1])
+
+// Across the native boundary, both ways.
+extern fn memset(dst: *u8, c: int, n: int) -> *u8 from "msvcrt"
+let filled = memset(bp + 48, 7, 4)
+print(filled - bp)
+print("{bp[51]} {bp[52]}")
+
+extern fn qsort(base: *i32, n: int, size: int, cmp: fn(*i32, *i32) -> int) from "msvcrt"
+fn ascending(x: *i32, y: *i32) -> int {
+    return *x - *y
+}
+let nums = mem.alloc(5 * 4) as *i32
+let vals = [30, -1, 12, 0, 5]
+for i in 0..5 {
+    nums[i] = vals[i]
+}
+qsort(nums, 5, 4, ascending)
+let sorted: []int = []
+for i in 0..5 {
+    push(sorted, nums[i])
+}
+print(sorted)
+
+mem.free(raw)

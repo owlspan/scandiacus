@@ -305,6 +305,9 @@ func (l *lowerer) fieldRead(x *Field) Reg {
 	}
 	obj := l.expr(x.X)
 	t := l.regTy[obj]
+	if isPtr(t) {
+		t = pointedStruct(t) // p.hp is p->hp
+	}
 	if t.k != kStruct || t.res {
 		l.errorAt(x, "cannot read field %q of %s", x.Name, t)
 		return l.junk()
@@ -333,6 +336,9 @@ func (l *lowerer) fieldRead(x *Field) Reg {
 func (l *lowerer) fieldAssign(st *AssignStmt, target *Field) {
 	obj := l.expr(target.X)
 	t := l.regTy[obj]
+	if isPtr(t) {
+		t = pointedStruct(t)
+	}
 	if t.k != kStruct || t.res {
 		l.errorAt(st, "cannot assign to field %q of %s", target.Name, t)
 		return

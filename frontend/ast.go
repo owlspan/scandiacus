@@ -165,9 +165,21 @@ type Widen struct {
 
 type Unary struct {
 	Span
-	Op Kind // BANG or MINUS
+	Op Kind // BANG, MINUS, TILDE, STAR (read through a pointer) or AMP (address of)
 	X  Expr
+	T  *Type // AMP only: the pointer type, set by the checker
 }
+
+// Cast is `x as *T`: the same address, seen as another pointer type or
+// back as an int. Type is as written, T resolved by the checker.
+type Cast struct {
+	Span
+	X    Expr
+	Type string
+	T    *Type
+}
+
+func (*Cast) exprNode() {}
 
 type Binary struct {
 	Span

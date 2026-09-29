@@ -332,6 +332,12 @@ func (c *Checker) resolveAnnotation(text string, n Node) *Type {
 		}
 		return Unknown
 	}
+	if t.IsPtr() {
+		if bad := c.ptrTarget(t); bad != "" {
+			c.ErrorAt(n, "%s", bad)
+			return Unknown
+		}
+	}
 	return t
 }
 
@@ -352,6 +358,10 @@ func (c *Checker) undeclaredStruct(t *Type, n Node) string {
 		}
 	case KList:
 		return c.undeclaredStruct(t.Elem, n)
+	case KPtr:
+		if t.Elem != nil {
+			return c.undeclaredStruct(t.Elem, n)
+		}
 	case KMap:
 		if bad := c.undeclaredStruct(t.Key, n); bad != "" {
 			return bad
@@ -586,7 +596,7 @@ func externScalar(t *Type) bool {
 		return true
 	}
 	switch t.Kind {
-	case KInt, KFloat, KStr, KBool:
+	case KInt, KFloat, KStr, KBool, KPtr:
 		return true
 	}
 	return false
@@ -648,8 +658,9 @@ func (c *Checker) stmt(s Stmt) {
 		if _, ok := c.arrayField(st.Target); ok {
 			c.expr(st.Target)
 			c.expr(st.Value)
-			c.ErrorAt(st, "%s is an array, so reading it gives its address and it cannot be "+
-				"assigned - write through the address with mem.write", describeTarget(st.Target))
+			c.ErrorAt(st, "%s is an array, so reading it gives a pointer to its first element and "+
+				"it cannot be assigned - write one element, as in %s[0] = ...",
+				describeTarget(st.Target), exprText(st.Target))
 			return
 		}
 		want := c.expr(st.Target)
@@ -887,6 +898,13 @@ func (c *Checker) checkCompound(st *AssignStmt, want, got *Type) {
 	op := CompoundOp[st.Op]
 	target := describeTarget(st.Target)
 
+	if want.IsPtr() {
+		if (op != PLUS && op != MINUS) || (!got.IsUnknown() && got.Kind != KInt) {
+			c.ErrorAt(st, "a pointer only moves by an int, with += or -=")
+		}
+		return
+	}
+
 	// The bitwise family and %= are int-only, like their binary forms.
 	switch op {
 	case PERCENT, AMP, PIPE, CARET, SHL, SHR:
@@ -1064,6 +1082,13 @@ func (c *Checker) expr(e Expr) *Type {
 		return Unknown // the resolver reported the undefined name
 
 	case *Unary:
+		switch x.Op {
+		case STAR:
+			return c.deref(x)
+		case AMP:
+			x.T = c.addrOf(x)
+			return x.T
+		}
 		t := c.expr(x.X)
 		if t.IsUnknown() {
 			return Unknown
@@ -1092,6 +1117,9 @@ func (c *Checker) expr(e Expr) *Type {
 		t := c.binary(x)
 		x.T = t
 		return t
+
+	case *Cast:
+		return c.cast(x)
 
 	case *Field:
 		return c.field(x)
@@ -1152,6 +1180,11 @@ func (c *Checker) field(x *Field) *Type {
 	recv := c.expr(x.X)
 	if recv.IsUnknown() {
 		return Unknown
+	}
+	// p.hp through a *Player reads the field it points at, which is
+	// what C spells p->hp.
+	if recv.IsPtr() && recv.Elem != nil && recv.Elem.Kind == KStruct {
+		recv = recv.Elem
 	}
 	if recv.Kind != KStruct {
 		c.ErrorAt(x, "%s has no fields, so %q cannot be read from it", recv, x.Name)
@@ -1492,6 +1525,12 @@ func (c *Checker) index(x *Index) *Type {
 		}
 		return collT.Elem
 
+	case collT.IsPtr():
+		if !idxT.IsUnknown() && idxT.Kind != KInt {
+			c.ErrorAt(x.Idx, "a pointer index must be int, got %s", idxT)
+		}
+		return collT.Pointee()
+
 	case collT.Kind == KStr:
 		c.ErrorAt(x, "cannot index a str - use charAt(s, i) or substr(s, a, b)")
 		return Unknown
@@ -1532,6 +1571,8 @@ func exprText(e Expr) string {
 		return t.Name
 	case *Index:
 		return exprText(t.X) + "[...]"
+	case *Field:
+		return exprText(t.X) + "." + t.Name
 	case *Call:
 		return exprText(t.Callee) + "(...)"
 	}
@@ -1585,6 +1626,10 @@ func (c *Checker) binary(x *Binary) *Type {
 		return Unknown
 	}
 
+	if t, handled := c.ptrBinary(x, lt, rt); handled {
+		return t
+	}
+
 	// Untyped integer literals adapt to a float operand, exactly as Go's
 	// untyped constants do. This keeps `radius * 2` working without
 	// opening the door to implicit conversion between two variables.
@@ -1610,7 +1655,7 @@ func (c *Checker) binary(x *Binary) *Type {
 			if lt.Kind == KNilLit {
 				other = rt
 			}
-			if !other.IsNullable() && other.Kind != KNilLit {
+			if !other.IsNullable() && other.Kind != KNilLit && !other.IsPtr() {
 				c.ErrorAt(x, "%s can never be nil, so this comparison is always %t",
 					other, x.Op == NEQ)
 				return Bool
@@ -2120,7 +2165,7 @@ func (c *Checker) layout(d *StructDecl, visiting map[string]bool) {
 		return
 	}
 	if visiting[d.Name] {
-		c.ErrorAt(d, "%s contains itself - use a ptr field for a link to another one", d.Name)
+		c.ErrorAt(d, "%s contains itself - use a pointer field, *%s, for a link to another one", d.Name, d.Name)
 		d.Align = 1
 		return
 	}
@@ -2131,7 +2176,10 @@ func (c *Checker) layout(d *StructDecl, visiting map[string]bool) {
 	for i := range d.Fields {
 		f := &d.Fields[i]
 		size, fAlign := 0, 1
-		if ct, ok := cTypes[f.Type]; ok {
+		if strings.HasPrefix(f.Type, "*") {
+			size, fAlign = 8, 8
+			f.T = c.externFieldType(f)
+		} else if ct, ok := cTypes[f.Type]; ok {
 			size, fAlign = ct.size, ct.size
 			f.T = ct.t
 		} else if inner, ok := c.structs[f.Type]; ok && inner.Extern {
@@ -2152,9 +2200,16 @@ func (c *Checker) layout(d *StructDecl, visiting map[string]bool) {
 			fAlign = 1
 		}
 		if f.Len > 0 {
-			// An array reads as the address of its first element.
+			// An array reads as a pointer to its first element, so
+			// p.name[3] is the fourth one.
 			size *= f.Len
-			f.T = Int
+			switch {
+			case f.T.IsUnknown():
+			case f.T.IsPtr() || f.T.Kind == KStruct:
+				f.T = PtrOf(f.T)
+			default:
+				f.T = PtrToC(f.Type)
+			}
 		}
 		if f.At >= 0 {
 			at = f.At
@@ -2211,6 +2266,9 @@ func (c *Checker) arrayField(e Expr) (*StructField, bool) {
 		return nil, false
 	}
 	t := c.peekType(fld.X)
+	if t.IsPtr() && t.Elem != nil {
+		t = t.Elem
+	}
 	if !c.isExternStruct(t) {
 		return nil, false
 	}
@@ -2227,6 +2285,9 @@ func (c *Checker) peekType(e Expr) *Type {
 		return c.lookup(x.Name)
 	case *Field:
 		t := c.peekType(x.X)
+		if t.IsPtr() && t.Elem != nil {
+			t = t.Elem
+		}
 		if t == nil || t.Kind != KStruct {
 			return nil
 		}

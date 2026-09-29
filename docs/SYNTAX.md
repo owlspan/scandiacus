@@ -2772,7 +2772,8 @@ extern struct Player {
 | `ptr` | `int`, all 64 bits |
 | `bool` | `bool`, one byte, anything but 0 is true |
 | another extern struct | a view of it, inside this one |
-| `[N]T` | `int`: the address of the first element |
+| `*T` | a pointer, all 64 bits - see [Pointers](#pointers) |
+| `[N]T` | `*T`, a pointer to the first element |
 
 Fields go where a C compiler would put them: each at the next multiple
 of its own size, the whole padded to its largest field. `at` pins a
@@ -2786,7 +2787,7 @@ let p = Player(raw)                 // a view at an address
 p.hp = 100
 p.hp -= 25                          // compound assignment works
 p.pos.x = 1.5                       // a nested struct is a view too
-print(mem.str(p.name))              // an array reads as its address
+print(mem.str(p.name))              // an array reads as a pointer to its start
 print(p)                            // Player{hp: 75, alive: false, ...}
 mem.free(raw)
 ```
@@ -2815,6 +2816,98 @@ one that does not stops the program the way it would in C.
 `examples/ffi/memreader.vl` puts this together: it lists running
 programs, finds where one is loaded, and follows a pointer chain
 through its memory.
+
+### Pointers
+
+`*T` is an address with a known thing at it. `T` is a C scalar (`i8`
+to `u64`, `f32`, `f64`, `bool`, `ptr`), an extern struct, or another
+pointer.
+
+```veyl
+let raw = mem.alloc(64)
+let p = raw as *i32           // an address becomes a pointer with `as`
+*p = 7                        // write through it
+p[1] = -3                     // p[i] is the i-th i32 after p
+*p += 10
+print(*p)                     // 17
+print(p[1])                   // -3
+
+let q = p + 2                 // + and - count in elements, like C
+print(q - p)                  // 2
+print((q as int) - (p as int))  // 8 bytes
+```
+
+The width, sign and stride all come from the type: a `*u8` reads one
+byte from 0 to 255, a `*i8` the same byte as -128 to 127, a `*f32` a C
+float. Nothing needs a `mem.readI32` or a `* 4`.
+
+A pointer to an extern struct reads its fields the way C's `->` does,
+and indexes an array of them:
+
+```veyl
+extern struct Vec3 { x: f32, y: f32, z: f32 }
+
+let vs = mem.alloc(Vec3.size * 3) as *Vec3
+vs[1].y = 2.5                 // the second Vec3
+let second = vs + 1
+print(second.y)               // 2.5
+let v = vs[1]                 // a view of it, as before
+```
+
+A field can be a pointer, including to its own kind, so a list in
+memory is written the way it is in C:
+
+```veyl
+extern struct Node {
+    value: i32
+    next: *Node
+}
+
+let n = head
+while n != nil {
+    print(n.value)
+    n = n.next
+}
+```
+
+`nil` is the null pointer: `p == nil`, `p != nil`, `let p: *Node = nil`.
+Pointers of the same type compare with `==`, `<` and the rest.
+
+`&` takes the address of memory - a field of an extern struct, `*p` or
+`p[i]` - and gives back a pointer to it:
+
+```veyl
+let pz = &vs[2].z             // *f32
+*pz = 8.0
+```
+
+It cannot take the address of a Veyl variable. A variable lives in a
+register or a stack slot that the compiler moves around, so it has no
+address that stays true. Put the value in memory from `mem.alloc` or
+an extern struct and point at that.
+
+`as` changes what an address is seen as, never the address: between
+`int`, any pointer type, and an extern struct view. A pointer goes
+anywhere an address as an `int` goes - `mem.*`, an extern's `ptr`, a
+function taking `int` - without `as`, but an `int` never becomes a
+pointer by itself: `let p: *i32 = raw` is an error, `raw as *i32` is
+not.
+
+Across `extern`, a pointer is one 64-bit word both ways, like `ptr`,
+and a callback can take pointers:
+
+```veyl
+extern fn qsort(base: *i32, n: int, size: int, cmp: fn(*i32, *i32) -> int) from "msvcrt"
+
+fn ascending(x: *i32, y: *i32) -> int {
+    return *x - *y
+}
+qsort(nums, 5, 4, ascending)
+```
+
+Nothing checks that a pointer points somewhere valid, the same as C:
+reading through a bad one stops the program. `print(p)` prints the
+address as a number.
 
 ### Callbacks
 
@@ -3237,8 +3330,10 @@ Honest list of what v0.35.0 does not do yet.
   words and takes back `rax`; an `extern fn` is still the way to give
   a native function a checked signature.
 - **No fixed-width number types.** `i32`, `f32` and the rest describe
-  memory, in extern structs and the `mem` functions; a Veyl variable is
-  still an `int` or a `float`.
+  memory, in extern structs, pointers and the `mem` functions; a Veyl
+  variable is still an `int` or a `float`.
+- **`&` works on memory only.** A field of an extern struct, `*p` or
+  `p[i]` has an address; a Veyl variable does not.
 - **A missing map key is silent.** `m["absent"]` returns the zero
   value. `has()` and `find()` distinguish it; the bare index was left
   alone because making every map read return `?V` would mean a nil

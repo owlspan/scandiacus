@@ -39,6 +39,13 @@ const (
 	// way nil fits into any ?T.
 	KErrLit
 
+	// KPtr is a typed pointer, `*T`: an address with a known thing at
+	// it. T is a C scalar (Name holds i32, f32 and so on), an extern
+	// struct, or another pointer (both in Elem). Reading through one
+	// loads at T's width, indexing steps by T's size, and it passes
+	// anywhere an address as an int does.
+	KPtr
+
 	// KNilLit is the type of the bare literal `nil`. It fits into any
 	// nullable type and nothing else, the way an untyped integer literal
 	// fits into a float.
@@ -73,6 +80,27 @@ func FuncOf(params []*Type, ret *Type) *Type {
 }
 
 func (t *Type) IsFunc() bool { return t != nil && t.Kind == KFunc }
+
+// PtrOf is *T for an extern struct or another pointer.
+func PtrOf(elem *Type) *Type { return &Type{Kind: KPtr, Elem: elem} }
+
+// PtrToC is *T for a C scalar such as i32 or f64.
+func PtrToC(name string) *Type { return &Type{Kind: KPtr, Name: name} }
+
+func (t *Type) IsPtr() bool { return t != nil && t.Kind == KPtr }
+
+// Pointee is what reading through a pointer gives: int, float or bool
+// for a C scalar, a view for an extern struct, the inner pointer for a
+// pointer to one.
+func (t *Type) Pointee() *Type {
+	if t.Elem != nil {
+		return t.Elem
+	}
+	if ct, ok := cTypes[t.Name]; ok {
+		return ct.t
+	}
+	return Unknown
+}
 
 // StructOf names a struct type. Two struct types are the same exactly
 // when their names are, so this carries no field list - the declaration
@@ -170,6 +198,11 @@ func (t *Type) String() string {
 		return "{" + t.Key.String() + ": " + t.Elem.String() + "}"
 	case KStruct, KEnum:
 		return t.Name
+	case KPtr:
+		if t.Elem != nil {
+			return "*" + t.Elem.String()
+		}
+		return "*" + t.Name
 	case KFunc:
 		parts := make([]string, len(t.Params))
 		for i, p := range t.Params {
@@ -213,6 +246,14 @@ func (t *Type) Equal(u *Type) bool {
 	case KMap:
 		return t.Key.Equal(u.Key) && t.Elem.Equal(u.Elem)
 	case KStruct, KEnum:
+		return t.Name == u.Name
+	case KPtr:
+		if (t.Elem == nil) != (u.Elem == nil) {
+			return false
+		}
+		if t.Elem != nil {
+			return t.Elem.Equal(u.Elem)
+		}
 		return t.Name == u.Name
 	case KNullable, KResult:
 		return t.Elem.Equal(u.Elem)
@@ -259,6 +300,15 @@ func (t *Type) Accepts(got *Type) bool {
 		// Same shape: a plain T is a successful T!, and a failure fits
 		// any of them.
 		return got.Kind == KErrLit || t.Elem.Accepts(got) || t.Equal(got)
+	case KInt:
+		// A pointer is an address, so it goes anywhere an address as an
+		// int does: mem.*, an extern's ptr, arithmetic of your own. The
+		// other way needs `as`, so an int never turns into a pointer by
+		// accident.
+		return got.Kind == KInt || got.Kind == KPtr
+	case KPtr:
+		// nil is the null pointer.
+		return got.Kind == KNilLit || t.Equal(got)
 	}
 	// A nullable never satisfies a plain type: unwrapping is what the
 	// nil check is for, and doing it implicitly would defeat the point.
@@ -302,6 +352,8 @@ func (t *Type) Go() string {
 		return "map[" + t.Key.Go() + "]" + t.Elem.Go()
 	case KStruct:
 		return t.Name
+	case KPtr:
+		return "uintptr"
 	case KFunc:
 		parts := make([]string, len(t.Params))
 		for i, p := range t.Params {
@@ -368,6 +420,7 @@ func (t *Type) Zero() string {
 // Grammar, such as it is:
 //
 //	type := "int" | "float" | "str" | "bool"
+//	      | "*" ctype | "*" type
 //	      | "[]" type
 //	      | "{" type ":" type "}"
 func ParseType(s string) *Type {
@@ -389,6 +442,20 @@ func ParseType(s string) *Type {
 		// differ solely in how an extern call's return value is widened
 		// (a C int needs sign extension from eax, a pointer does not).
 		return Int
+	}
+
+	// *T. The C scalar names are only types behind a `*`; on their own
+	// they would read as struct names.
+	if strings.HasPrefix(s, "*") {
+		rest := strings.TrimSpace(s[1:])
+		if _, ok := cTypes[rest]; ok {
+			return PtrToC(rest)
+		}
+		inner := ParseType(rest)
+		if inner == nil || (inner.Kind != KStruct && inner.Kind != KPtr) {
+			return nil
+		}
+		return PtrOf(inner)
 	}
 
 	// A function type is recognised before the `!` suffix, because the

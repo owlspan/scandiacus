@@ -1,5 +1,7 @@
 package main
 
+import "strings"
+
 // Extern structs: C layouts laid over memory at an address.
 //
 // A Veyl struct is an object this program owns, copied on assignment.
@@ -28,9 +30,14 @@ func viewLayout(sd *StructDecl) *structLayout {
 	lay := &structLayout{name: sd.Name, view: true, bytes: int64(sd.Size)}
 	for _, f := range sd.Fields {
 		sf := structField{name: f.Name, off: int64(f.Offset), kind: cKinds[f.Type], array: f.Len > 0}
+		if strings.HasPrefix(f.Type, "*") {
+			sf.kind = memI64
+		}
 		switch {
-		case sf.array:
-			sf.t = vInt
+		case sf.array || sf.kind == memI64 && strings.HasPrefix(f.Type, "*"):
+			// An array reads as a pointer to its first element, and a
+			// pointer field as the pointer it holds.
+			sf.t = vPtr(f.T.String())
 		case sf.kind == 0:
 			sf.t = vStructOf(f.Type)
 		case f.Type == "f32" || f.Type == "f64":
@@ -92,6 +99,9 @@ func (l *lowerer) viewRead(base Reg, f structField) Reg {
 	v := l.loadWidth(at, f.kind)
 	if f.t.k == kBool {
 		return l.compare(OpNe, v, l.constant(0))
+	}
+	if isPtr(f.t) {
+		l.regTy[v] = f.t
 	}
 	return v
 }

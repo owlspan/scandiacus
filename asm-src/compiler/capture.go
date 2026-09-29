@@ -166,6 +166,9 @@ func (w *capWalk) expr(e Expr) {
 	case *Unary:
 		w.expr(x.X)
 
+	case *Cast:
+		w.expr(x.X)
+
 	case *Binary:
 		w.expr(x.L)
 		w.expr(x.R)
@@ -297,6 +300,8 @@ func captureExpr(e Expr, out map[string]bool) {
 	case *Widen:
 		captureExpr(x.X, out)
 	case *Unary:
+		captureExpr(x.X, out)
+	case *Cast:
 		captureExpr(x.X, out)
 	case *Binary:
 		captureExpr(x.L, out)

@@ -383,8 +383,12 @@ func (p *Parser) parseExternStruct() *StructDecl {
 				}
 				p.expect(RBRACKET, "']'")
 			}
+			stars := ""
+			for p.match(STAR) {
+				stars += "*"
+			}
 			t := p.expect(IDENT, "a C type such as i32, f32 or ptr")
-			f.Type = t.Lex
+			f.Type = stars + t.Lex
 		} else {
 			p.errorAt(fn, "field %q needs a type, like %s: i32", fn.Lex, fn.Lex)
 		}
@@ -786,6 +790,10 @@ func (p *Parser) parseTypeRef() string {
 	case p.match(QUESTION):
 		base = "?" + p.parseTypeRef()
 
+	case p.match(STAR):
+		// *i32, *Player, **u8: a typed pointer.
+		base = "*" + p.parseTypeRef()
+
 	case p.match(LBRACKET):
 		p.expect(RBRACKET, "']' - a list type is written []int")
 		base = "[]" + p.parseTypeRef()
@@ -1062,8 +1070,14 @@ func (p *Parser) parseSimpleStmt() Stmt {
 	case ASSIGN, PLUSEQ, MINUSEQ, STAREQ, SLASHEQ,
 		PERCENTEQ, AMPEQ, PIPEEQ, CARETEQ, SHLEQ, SHREQ:
 		op := p.advance()
-		switch x.(type) {
+		switch t := x.(type) {
 		case *Ident, *Index, *Field:
+		case *Unary:
+			if t.Op != STAR {
+				p.errorAt(start, "left side of assignment must be a variable, a field, or an index like xs[0]")
+				p.synchronize()
+				return nil
+			}
 		default:
 			p.errorAt(start, "left side of assignment must be a variable, a field, or an index like xs[0]")
 			p.synchronize()
@@ -1138,6 +1152,13 @@ func (p *Parser) parseExpr(minPrec int) Expr {
 	left := p.parseUnary()
 
 	for {
+		// `x as *T` binds tighter than any binary operator, as in Rust:
+		// a + b as *u8 is a + (b as *u8).
+		if p.check(IDENT) && p.cur().Lex == "as" {
+			kw := p.advance()
+			left = &Cast{Span: at(kw), X: left, Type: p.parseTypeRef()}
+			continue
+		}
 		prec := precOf(p.cur().Kind)
 		if prec == 0 || prec < minPrec {
 			break
@@ -1151,7 +1172,7 @@ func (p *Parser) parseExpr(minPrec int) Expr {
 }
 
 func (p *Parser) parseUnary() Expr {
-	if p.check(BANG) || p.check(MINUS) || p.check(TILDE) {
+	if p.check(BANG) || p.check(MINUS) || p.check(TILDE) || p.check(STAR) || p.check(AMP) {
 		op := p.advance()
 		return &Unary{Span: at(op), Op: op.Kind, X: p.parseUnary()}
 	}
@@ -1523,6 +1544,8 @@ func reanchor(e Expr, at Span) {
 	}
 	switch x := e.(type) {
 	case *Unary:
+		reanchor(x.X, at)
+	case *Cast:
 		reanchor(x.X, at)
 	case *Binary:
 		reanchor(x.L, at)
