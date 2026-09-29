@@ -151,11 +151,7 @@ func (e *Emitter) fuseBranch(cmp, br Instr, uses map[Reg]int) bool {
 	if br.Op == OpJumpNot {
 		cc = map[string]string{"e": "ne", "ne": "e", "l": "ge", "ge": "l", "le": "g", "g": "le"}[cc]
 	}
-	e.line("mov rax, %s", e.loc(cmp.A))
-	if b := e.loc(cmp.B); b != "rcx" {
-		e.line("mov rcx, %s", b)
-	}
-	e.line("cmp rax, rcx")
+	e.cmp(cmp)
 	e.line("j%s .L%s_%d", cc, e.labelBase(), br.Imm)
 	return true
 }

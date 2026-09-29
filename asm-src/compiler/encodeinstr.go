@@ -698,6 +698,13 @@ func (b *block) encodeShift(m string, ops []operand) error {
 		b.modrm(digit, dst)
 		return nil
 	}
+	if amount.disp == 1 {
+		// A shift by one has its own opcode with no immediate byte, and
+		// the assembler always picks it.
+		b.put(0xD1)
+		b.modrm(digit, dst)
+		return nil
+	}
 	b.put(0xC1)
 	b.modrm(digit, dst)
 	b.put(byte(amount.disp))

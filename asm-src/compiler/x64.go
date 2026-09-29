@@ -57,6 +57,11 @@ type Emitter struct {
 	saved    []string
 
 	polls int // numbers each OpGCPoll's local label
+
+	// consts and dropConst are the constants the selector folds into
+	// immediates; see x64sel.go. Nil with the optimisations off.
+	consts    map[Reg]int64
+	dropConst map[Reg]bool
 }
 
 // Windows x64 calling convention.
@@ -433,6 +438,10 @@ func (e *Emitter) function(f *Func) {
 			e.promoted = promoteSlots(f)
 		}
 	}
+	e.consts, e.dropConst = nil, nil
+	if e.homes != nil {
+		e.planConsts(f)
+	}
 	e.saved = e.savedRegs()
 	name := f.Name
 	if name != "main" {
@@ -500,6 +509,9 @@ func (e *Emitter) function(f *Func) {
 func (e *Emitter) instr(in Instr) {
 	if in.Comment != "" {
 		e.comment(in.Comment)
+	}
+	if e.selInstr(in) {
+		return
 	}
 
 	switch in.Op {
