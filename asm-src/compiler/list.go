@@ -110,13 +110,21 @@ func (l *lowerer) allocObj(bytes Reg, tag int64) Reg {
 // Every allocation goes through here, and every one is threaded onto the
 // object list before it is handed back. Missing that is not a leak, it
 // is a live object the collector cannot see.
+//
+// It is one function called from every site rather than written out at
+// each: the malloc, the header, the list link, the counters and the
+// thread check come to about fifty instructions, and a program that
+// allocates in eight hundred places was carrying eight hundred copies.
+// The call costs nothing next to malloc itself.
 func (l *lowerer) allocTagged(bytes, header Reg) Reg {
-	raw := l.allocRaw(l.arith(OpAdd, bytes, l.constant(objHeader)))
-	l.emit(Instr{Op: OpStoreMem, A: raw, B: header, Imm: objTagOff})
-
-	obj := l.arith(OpAdd, raw, l.constant(objHeader))
-	l.trackObject(raw, obj, bytes)
-	return obj
+	sym := l.helperFunc("__alloc", []vty{vInt, vInt}, vInt, func(a []Reg) {
+		raw := l.allocRaw(l.arith(OpAdd, a[0], l.constant(objHeader)))
+		l.emit(Instr{Op: OpStoreMem, A: raw, B: a[1], Imm: objTagOff})
+		obj := l.arith(OpAdd, raw, l.constant(objHeader))
+		l.trackObject(raw, obj, a[0])
+		l.emit(Instr{Op: OpRet, A: obj, Dst: NoReg})
+	})
+	return l.callHelper(sym, []Reg{bytes, header}, []vty{vInt, vInt}, vInt)
 }
 
 // initialCap is what an empty list grows to on its first push. Four is
@@ -349,7 +357,7 @@ func (l *lowerer) writeList(n Node, list Reg, t vty) {
 // separate because a list nested inside a printed struct must not
 // end the line.
 func (l *lowerer) printList(n Node, v Reg, t vty) {
-	l.writeList(n, v, t)
+	l.writeValue(n, v, t)
 	l.writeLit("\n")
 }
 
@@ -363,6 +371,9 @@ func (l *lowerer) printList(n Node, v Reg, t vty) {
 func (l *lowerer) writeValue(n Node, v Reg, t vty) {
 	if t.null {
 		l.writeNull(n, v, t)
+		return
+	}
+	if l.renderOutlined(n, v, t) {
 		return
 	}
 	switch t.k {
@@ -394,6 +405,57 @@ func (l *lowerer) writeValue(n Node, v Reg, t vty) {
 		}
 		l.emitInt(v)
 	}
+}
+
+// renderOutlined writes a list, map or struct by calling the function
+// that renders its type, made the first time one is needed. Written out
+// in place, printing a {str: []int} is a pair of nested loops, and a
+// program printing forty of them carried forty copies. It also covers a
+// type that holds itself - a tree - which inlined would never end.
+//
+// There are two per type. __print writes straight to stdout, as the
+// inline code did, so printing a long list stays linear. __show builds
+// a string, for str() and for a value inside something being built.
+func (l *lowerer) renderOutlined(n Node, v Reg, t vty) bool {
+	switch t.k {
+	case kList, kMap, kStruct:
+	default:
+		return false
+	}
+	if t.res || l.isView(t) {
+		return false
+	}
+	key := "__show " + t.String()
+	if l.buf < 0 {
+		key = "__print " + t.String()
+	}
+	if l.inlineOnce == key {
+		l.inlineOnce = "" // this is the function's own body
+		return false
+	}
+	toStdout := l.buf < 0
+	ret := vStr
+	if toStdout {
+		ret = vVoid
+	}
+	sym := l.helperFunc(key, []vty{t}, ret, func(a []Reg) {
+		l.inlineOnce = key
+		if toStdout {
+			l.writeValue(n, a[0], t)
+			l.emit(Instr{Op: OpRet, A: NoReg, Dst: NoReg})
+			return
+		}
+		slot := l.temp(vStr)
+		l.emit(Instr{Op: OpStore, A: l.emptyStr(), Dst: NoReg, Imm: slot})
+		l.buf = slot
+		l.writeValue(n, a[0], t)
+		l.emit(Instr{Op: OpRet, A: l.load(slot, vStr), Dst: NoReg})
+	})
+	out := l.callHelper(sym, []Reg{v}, []vty{t}, ret)
+	if !toStdout {
+		l.emitStr(out)
+	}
+	return true
 }
 
 // quoteEscape builds the body of a Go strconv.Quote, without the quotes.

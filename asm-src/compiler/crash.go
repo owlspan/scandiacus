@@ -50,7 +50,10 @@ func (l *lowerer) installCrashHandler() {
 	// A stack overflow runs the handler on what is left of the stack
 	// that overflowed, which is almost nothing; this keeps 64 KB back
 	// for it on the main thread.
-	guarantee := l.ptrSlot()
+	// The word it takes lives in the runtime's own block rather than on
+	// the heap: an allocation here would pull the collector into every
+	// program, including the ones that never allocate anything else.
+	guarantee := l.rtSlot(gcStackSlot)
 	l.emit(Instr{Op: OpStoreMem, A: guarantee, B: l.constant(64 << 10), Imm: 0})
 	l.ccall("SetThreadStackGuarantee", []Reg{guarantee}, []vty{vInt}, vInt, true, false)
 }

@@ -121,7 +121,25 @@ func (l *lowerer) keyAt(keys, i Reg, t vty) Reg {
 // One search answers both questions a map ever asks: where a key is,
 // and where it would go. mapGet needs the first, mapSet needs both, and
 // doing it once means the sorted order is maintained in one place.
+//
+// The search is one function per key kind, called from every get, set
+// and remove. It answers both halves in one word, the index shifted up
+// one and the hit in bit 0, so the call needs no second result.
 func (l *lowerer) mapScan(m, key Reg, t vty, idxSlot, hitSlot int64) {
+	kt := vty{k: t.key}
+	sym := l.helperFunc("__map_scan "+kt.String(), []vty{vInt, kt}, vInt, func(a []Reg) {
+		idx := l.temp(vInt)
+		hit := l.temp(vInt)
+		l.mapScanBody(a[0], a[1], t, idx, hit)
+		packed := l.arith(OpBOr, l.arith(OpShl, l.load(idx, vInt), l.constant(1)), l.load(hit, vInt))
+		l.emit(Instr{Op: OpRet, A: packed, Dst: NoReg})
+	})
+	packed := l.callHelper(sym, []Reg{m, key}, []vty{vInt, kt}, vInt)
+	l.emit(Instr{Op: OpStore, A: l.arith(OpShr, packed, l.constant(1)), Dst: NoReg, Imm: idxSlot})
+	l.emit(Instr{Op: OpStore, A: l.arith(OpBAnd, packed, l.constant(1)), Dst: NoReg, Imm: hitSlot})
+}
+
+func (l *lowerer) mapScanBody(m, key Reg, t vty, idxSlot, hitSlot int64) {
 	length := l.field(m, mapLenOff, vInt)
 	keys := l.field(m, mapKeysOff, vInt)
 
@@ -173,7 +191,17 @@ func (l *lowerer) mapKeyReg(t vty) vty { return vty{k: t.key} }
 // mapGet returns the value for a key, or the zero value when the key is
 // absent. That is the Go backend's behaviour and so it is the
 // definition: a missing int key reads 0, a missing str key reads "".
+//
+// One function per map type, called from every read.
 func (l *lowerer) mapGet(n Node, m, key Reg, t vty) Reg {
+	kt := vty{k: t.key}
+	sym := l.helperFunc("__map_get "+t.String(), []vty{t, kt}, t.elemType(), func(a []Reg) {
+		l.emit(Instr{Op: OpRet, A: l.mapGetBody(n, a[0], a[1], t), Dst: NoReg})
+	})
+	return l.callHelper(sym, []Reg{m, key}, []vty{t, kt}, t.elemType())
+}
+
+func (l *lowerer) mapGetBody(n Node, m, key Reg, t vty) Reg {
 	idxSlot := l.temp(vInt)
 	hitSlot := l.temp(vInt)
 	l.mapScan(m, key, t, idxSlot, hitSlot)
@@ -213,7 +241,19 @@ func (l *lowerer) mapGet(n Node, m, key Reg, t vty) Reg {
 }
 
 // mapSet inserts or overwrites, keeping the entries sorted by key.
+//
+// One function per map type, called from every write.
 func (l *lowerer) mapSet(m, key, val Reg, t vty) {
+	kt := vty{k: t.key}
+	ps := []vty{t, kt, t.elemType()}
+	sym := l.helperFunc("__map_set "+t.String(), ps, vVoid, func(a []Reg) {
+		l.mapSetBody(a[0], a[1], a[2], t)
+		l.emit(Instr{Op: OpRet, A: NoReg, Dst: NoReg})
+	})
+	l.callHelper(sym, []Reg{m, key, val}, ps, vVoid)
+}
+
+func (l *lowerer) mapSetBody(m, key, val Reg, t vty) {
 	idxSlot := l.temp(vInt)
 	hitSlot := l.temp(vInt)
 	l.mapScan(m, key, t, idxSlot, hitSlot)
@@ -393,7 +433,7 @@ func (l *lowerer) writeMap(n Node, m Reg, t vty) {
 // printMap is the same map on a line of its own, separate from
 // writeMap for the same reason printList is.
 func (l *lowerer) printMap(n Node, v Reg, t vty) {
-	l.writeMap(n, v, t)
+	l.writeValue(n, v, t)
 	l.writeLit("\n")
 }
 

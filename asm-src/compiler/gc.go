@@ -39,17 +39,18 @@ import "os"
 const (
 	// Words of static storage the runtime keeps for itself, ahead of the
 	// program's own globals.
-	gcHeadSlot   = 0 // the object list
-	gcLiveSlot   = 1 // objects allocated and not yet freed
-	gcBytesSlot  = 2 // bytes in those objects, payload only
-	gcTotalSlot  = 3 // bytes ever allocated
-	gcCyclesSlot = 4 // how many times collect has run
-	gcNGlobSlot  = 5 // how many words the globals block has, for the scan
-	gcTasksSlot  = 6 // threads running besides main, during which nothing collects
-	gcNextSlot   = 7 // live bytes at which the next automatic collection runs
-	gcLockSlot   = 8 // the allocation lock, taken while other threads run
-	gcWhereSlot  = 9 // where a runtime error happened, as a string; see where.go
-	gcReserved   = 10
+	gcHeadSlot   = 0  // the object list
+	gcLiveSlot   = 1  // objects allocated and not yet freed
+	gcBytesSlot  = 2  // bytes in those objects, payload only
+	gcTotalSlot  = 3  // bytes ever allocated
+	gcCyclesSlot = 4  // how many times collect has run
+	gcNGlobSlot  = 5  // how many words the globals block has, for the scan
+	gcTasksSlot  = 6  // threads running besides main, during which nothing collects
+	gcNextSlot   = 7  // live bytes at which the next automatic collection runs
+	gcLockSlot   = 8  // the allocation lock, taken while other threads run
+	gcWhereSlot  = 9  // where a runtime error happened, as a string; see where.go
+	gcStackSlot  = 10 // the in/out word SetThreadStackGuarantee takes; see crash.go
+	gcReserved   = 11
 )
 
 // rtSlot is the address of one of the runtime's own global words.
@@ -176,4 +177,54 @@ func (l *lowerer) memBuiltin(c *Call, name string) (Reg, bool) {
 		return l.void(), true
 	}
 	return NoReg, false
+}
+
+// stripCollector removes the collector from a program that can never
+// need it. Every statement starts with a poll, and the poll pulls in
+// gcmaybe, the collector and the marker - a few kilobytes that a
+// program which never allocates carries for nothing, and hello, world
+// was mostly that.
+//
+// A program needs collecting when something outside the crash handler
+// makes an object the collector owns: __alloc, or one of the string
+// helpers that allocate through __vy_talloc. The crash handler builds
+// its message with concat too, but only as the program ends, when
+// there is nothing left worth collecting. mem.collect, and stress mode,
+// call the collector directly and keep it.
+func (l *lowerer) stripCollector() {
+	skip := map[string]bool{crashSym: true, "gcmaybe": true, collectSym: true, "__gc_try": true}
+	for _, f := range l.mod.Funcs {
+		if f.Name == "__alloc" {
+			return
+		}
+		if skip[f.Name] {
+			continue
+		}
+		for _, in := range f.Code {
+			switch in.Op {
+			case OpConcat, OpIntToStr, OpFloatToStr:
+				return
+			case OpCall:
+				if in.Sym == collectSym {
+					return
+				}
+			}
+		}
+	}
+	gone := map[string]bool{"gcmaybe": true, collectSym: true, "__gc_try": true}
+	kept := l.mod.Funcs[:0]
+	for _, f := range l.mod.Funcs {
+		if gone[f.Name] {
+			continue
+		}
+		code := f.Code[:0]
+		for _, in := range f.Code {
+			if in.Op != OpGCPoll {
+				code = append(code, in)
+			}
+		}
+		f.Code = code
+		kept = append(kept, f)
+	}
+	l.mod.Funcs = kept
 }

@@ -848,8 +848,9 @@ type lowerer struct {
 	gcStress bool
 	inHelper bool
 
-	// inlineOnce is a recursive struct whose rendering function is being
-	// built, so the next writeStruct of it is that function's own body.
+	// inlineOnce names the rendering function being built, so the next
+	// writeValue of its type is that function's own body rather than a
+	// call to it; see renderOutlined.
 	inlineOnce string
 
 	// Where the code being lowered came from, for runtime errors to say;
@@ -1043,6 +1044,8 @@ func Lower(p *Program, file string) (*Module, []string) {
 	l.popScope()
 	l.seal()
 
+	// Before the crash handler, which lists every function by name.
+	l.stripCollector()
 	l.buildCrashHandler()
 	l.checkLabels()
 	return l.mod, l.errs
@@ -2075,7 +2078,7 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 		switch l.regTy[a].k {
 		case kStruct:
 			l.mod.needs("write")
-			l.writeStruct(c, a, l.regTy[a])
+			l.writeValue(c, a, l.regTy[a])
 			l.writeLit("\n")
 		case kList:
 			l.printList(c, a, l.regTy[a])

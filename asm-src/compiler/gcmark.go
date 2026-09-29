@@ -262,7 +262,20 @@ func (l *lowerer) tableHas(table, mask, addr Reg) Reg {
 
 // tryMark marks a candidate if it is an object that is not marked yet,
 // and puts it on the worklist when it does.
+//
+// It is offered a word from a dozen places - every root range and every
+// kind of child - so it is one function they all call rather than a
+// hash probe written out at each.
 func (l *lowerer) tryMark(candidate, table, mask, work, workLen Reg) {
+	ts := []vty{vInt, vInt, vInt, vInt, vInt}
+	sym := l.helperFunc("__gc_try", ts, vVoid, func(a []Reg) {
+		l.tryMarkBody(a[0], a[1], a[2], a[3], a[4])
+		l.emit(Instr{Op: OpRet, A: NoReg, Dst: NoReg})
+	})
+	l.callHelper(sym, []Reg{candidate, table, mask, work, workLen}, ts, vVoid)
+}
+
+func (l *lowerer) tryMarkBody(candidate, table, mask, work, workLen Reg) {
 	done := l.newLabel()
 	l.emit(Instr{Op: OpJumpNot, A: l.tableHas(table, mask, candidate),
 		Dst: NoReg, Imm: done})
@@ -305,7 +318,9 @@ func (l *lowerer) scanRange(from, to, table, mask, work, workLen Reg) {
 	cur := l.load(at, vInt)
 	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpLt, cur, l.load(toSlot, vInt)),
 		Dst: NoReg, Imm: done})
-	l.tryMark(l.peekWord(cur, 0), table, mask, work, workLen)
+	// Inline in the two loops that offer every word - here and the
+	// fields of an object - since that is where marking spends its time.
+	l.tryMarkBody(l.peekWord(cur, 0), table, mask, work, workLen)
 	l.emit(Instr{Op: OpStore,
 		A:   l.arith(OpAdd, l.load(at, vInt), l.constant(wordSize)),
 		Dst: NoReg, Imm: at})
@@ -385,7 +400,7 @@ func (l *lowerer) traceOne(obj, table, mask, work, workLen Reg) {
 		Dst: NoReg, Imm: walked})
 	child := l.peekWord(
 		l.arith(OpAdd, obj, l.arith(OpMul, l.load(i, vInt), l.constant(wordSize))), 0)
-	l.tryMark(child, table, mask, work, workLen)
+	l.tryMarkBody(child, table, mask, work, workLen)
 	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, l.load(i, vInt), l.constant(1)),
 		Dst: NoReg, Imm: i})
 	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})

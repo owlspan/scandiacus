@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 // JSON encoding.
 //
 // The same shape as `str()` of a container: one renderer, generated from
@@ -22,7 +24,17 @@ func (l *lowerer) jsonBuiltin(c *Call, name string) (Reg, bool) {
 			return l.junk(), true
 		}
 		v := l.expr(c.Args[0])
-		return l.jsonOf(c, v, l.regTy[v], name == "json.pretty"), true
+		t := l.regTy[v]
+		pretty := name == "json.pretty"
+		// One encoder per type, however many places encode one.
+		fn := "__json_enc " + t.String()
+		if pretty {
+			fn = "__json_pretty " + t.String()
+		}
+		sym := l.helperFunc(fn, []vty{t}, vStr, func(a []Reg) {
+			l.emit(Instr{Op: OpRet, A: l.jsonOf(c, a[0], t, pretty), Dst: NoReg})
+		})
+		return l.callHelper(sym, []Reg{v}, []vty{t}, vStr), true
 	}
 	return NoReg, false
 }
@@ -86,15 +98,43 @@ func (l *lowerer) jsonWrite(n Node, v Reg, t vty, indent bool, depth int) {
 		l.emitFloat(v)
 	case kInt:
 		l.emitInt(v)
-	case kList:
-		l.jsonList(n, v, t, indent, depth)
-	case kMap:
-		l.jsonMap(n, v, t, indent, depth)
-	case kStruct:
-		l.jsonStruct(n, v, t, indent, depth)
+	case kList, kMap, kStruct:
+		l.jsonComposite(n, v, t, indent, depth)
 	default:
 		l.errorAt(n, "%s cannot be encoded as JSON on the assembly backend yet", t)
 	}
+}
+
+// jsonComposite writes a list, map or struct through the function that
+// encodes its type, so a Team holding Persons calls the Person encoder
+// rather than carrying a copy of it. The indented form depends on how
+// deep the value sits, so that one is a function per type and depth.
+func (l *lowerer) jsonComposite(n Node, v Reg, t vty, indent bool, depth int) {
+	key := "__json_w " + t.String()
+	if indent {
+		key = fmt.Sprintf("__json_w%d %s", depth, t.String())
+	}
+	if l.inlineOnce == key {
+		l.inlineOnce = ""
+		switch t.k {
+		case kList:
+			l.jsonList(n, v, t, indent, depth)
+		case kMap:
+			l.jsonMap(n, v, t, indent, depth)
+		default:
+			l.jsonStruct(n, v, t, indent, depth)
+		}
+		return
+	}
+	sym := l.helperFunc(key, []vty{t}, vStr, func(a []Reg) {
+		slot := l.temp(vStr)
+		l.emit(Instr{Op: OpStore, A: l.emptyStr(), Dst: NoReg, Imm: slot})
+		l.buf = slot
+		l.inlineOnce = key
+		l.jsonComposite(n, a[0], t, indent, depth)
+		l.emit(Instr{Op: OpRet, A: l.load(slot, vStr), Dst: NoReg})
+	})
+	l.emitStr(l.callHelper(sym, []Reg{v}, []vty{t}, vStr))
 }
 
 // jsonString writes a quoted, escaped string.
@@ -105,7 +145,10 @@ func (l *lowerer) jsonWrite(n Node, v Reg, t vty, indent bool, depth int) {
 // JSON that the two backends spell differently.
 func (l *lowerer) jsonString(s Reg) {
 	l.writeLit("\"")
-	l.emitStr(l.jsonEscape(s))
+	sym := l.helperFunc("__json_escape", []vty{vStr}, vStr, func(a []Reg) {
+		l.emit(Instr{Op: OpRet, A: l.jsonEscape(a[0]), Dst: NoReg})
+	})
+	l.emitStr(l.callHelper(sym, []Reg{s}, []vty{vStr}, vStr))
 	l.writeLit("\"")
 }
 

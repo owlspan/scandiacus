@@ -39,7 +39,16 @@ func (l *lowerer) decodeBuiltin(c *Call, name string) (Reg, bool) {
 }
 
 // jsonDecode parses the text and converts the tree, or explains why not.
+// The conversion is one function per type, however many places decode
+// one.
 func (l *lowerer) jsonDecode(n Node, text Reg, want vty) Reg {
+	sym := l.helperFunc("__json_dec "+want.String(), []vty{vStr}, want, func(a []Reg) {
+		l.emit(Instr{Op: OpRet, A: l.jsonDecodeBody(n, a[0], want), Dst: NoReg})
+	})
+	return l.callHelper(sym, []Reg{text}, []vty{vStr}, want)
+}
+
+func (l *lowerer) jsonDecodeBody(n Node, text Reg, want vty) Reg {
 	inner := want.inner()
 	out := l.temp(want)
 

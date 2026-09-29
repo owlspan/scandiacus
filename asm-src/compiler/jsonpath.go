@@ -1,5 +1,7 @@
 package main
 
+import "strings"
+
 // json.get and its family: reading one value out of a document by path,
 // with no type declared at the far end.
 //
@@ -30,40 +32,70 @@ func (l *lowerer) jsonPathBuiltin(c *Call, name string) (Reg, bool) {
 		return NoReg, false
 	}
 
-	text := l.expr(c.Args[0])
-	root, ok := l.parseDocument(text)
-
-	if name == "json.valid" {
-		return ok, true
+	// The work is one helper per function, called with the arguments:
+	// a parse and a walk come to a couple of thousand instructions, and
+	// writing them out at every call made a program that asks a document
+	// for fifteen values carry fifteen parsers.
+	params := []vty{vStr}
+	args := []Reg{l.expr(c.Args[0])}
+	if len(c.Args) == 2 {
+		params = append(params, vStr)
+		args = append(args, l.expr(c.Args[1]))
 	}
-	if name == "json.keys" {
-		return l.jsonKeys(root, ok), true
+	ret := jsonPathRet[name]
+	sym := l.helperFunc("__"+strings.ReplaceAll(name, ".", "_"), params, ret, func(a []Reg) {
+		l.emit(Instr{Op: OpRet, A: l.jsonPathBody(name, a), Dst: NoReg})
+	})
+	return l.callHelper(sym, args, params, ret), true
+}
+
+// jsonPathRet is what each of the family gives back.
+var jsonPathRet = map[string]vty{
+	"json.get": vStr, "json.has": vBool, "json.int": vInt, "json.num": vFloat,
+	"json.bool": vBool, "json.count": vInt, "json.keys": vListOf(vStr), "json.valid": vBool,
+}
+
+// jsonPathBody is one of the family, given its arguments.
+func (l *lowerer) jsonPathBody(name string, a []Reg) Reg {
+	switch name {
+	case "json.valid":
+		_, ok := l.parseDocument(a[0])
+		return ok
+	case "json.keys":
+		root, ok := l.parseDocument(a[0])
+		return l.jsonKeys(root, ok)
 	}
 
-	// A document that did not parse behaves like one where the path is
-	// not there, so every caller below sees the same empty answer.
-	node := l.pick(ok, l.walkPath(root, l.expr(c.Args[1])),
-		l.newJSONNode(jsonNull), vStr)
+	// The parse and the walk are shared by the whole family: one
+	// function from text and path to the node found. A document that did
+	// not parse behaves like one where the path is not there, so every
+	// caller below sees the same empty answer.
+	nodeSym := l.helperFunc("__json_node", []vty{vStr, vStr}, vStr, func(b []Reg) {
+		root, ok := l.parseDocument(b[0])
+		l.emit(Instr{Op: OpRet, A: l.pick(ok, l.walkPath(root, b[1]),
+			l.newJSONNode(jsonNull), vStr), Dst: NoReg})
+	})
+	node := l.callHelper(nodeSym, []Reg{a[0], a[1]}, []vty{vStr, vStr}, vStr)
 
 	switch name {
 	case "json.get":
-		return l.jsonScalarText(node), true
+		return l.jsonScalarText(node)
 	case "json.has":
-		return l.compare(OpNe, l.nodeKind(node), l.constant(jsonNull)), true
+		return l.compare(OpNe, l.nodeKind(node), l.constant(jsonNull))
 	case "json.int":
 		return l.jsonWhenKind(node, jsonNumber, l.jsonNumberAsInt(node),
-			l.constant(0), vInt), true
+			l.constant(0), vInt)
 	case "json.num":
 		return l.jsonWhenKind(node, jsonNumber, l.nodeField(node, jnNumber, vFloat),
-			l.floatConst(0), vFloat), true
+			l.floatConst(0), vFloat)
 	case "json.bool":
 		return l.jsonWhenKind(node, jsonBool,
 			l.compare(OpNe, l.jsonNumberAsInt(node), l.constant(0)),
-			l.boolConst(false), vBool), true
+			l.boolConst(false), vBool)
 	case "json.count":
-		return l.jsonCount(node), true
+		return l.jsonCount(node)
 	}
-	return NoReg, false
+	return l.junk()
 }
 
 // jsonCount is how many elements an array has, or how many members an

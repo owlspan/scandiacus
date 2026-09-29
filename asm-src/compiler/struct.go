@@ -447,25 +447,9 @@ func (l *lowerer) writeStruct(n Node, v Reg, t vty) {
 		l.writeView(n, v, lay)
 		return
 	}
-	// Rendering is inlined, which is fine for a type of fixed depth and
-	// never ends for one that holds itself - a tree, a data enum with a
-	// list of itself. That kind is rendered by a function of its own,
-	// once, which calls itself for each value inside.
-	if l.inlineOnce == lay.name {
-		l.inlineOnce = ""
-	} else if l.recursiveStruct(lay.name) {
-		plain := vStructOf(lay.name)
-		sym := l.helperFunc("__show_"+lay.name, []vty{plain}, vStr, func(a []Reg) {
-			slot := l.temp(vStr)
-			l.emit(Instr{Op: OpStore, A: l.emptyStr(), Dst: NoReg, Imm: slot})
-			l.buf = slot
-			l.inlineOnce = lay.name
-			l.writeStruct(n, a[0], plain)
-			l.emit(Instr{Op: OpRet, A: l.load(slot, vStr), Dst: NoReg})
-		})
-		l.emitStr(l.callHelper(sym, []Reg{v}, []vty{plain}, vStr))
-		return
-	}
+	// A type that holds itself - a tree, a data enum with a list of
+	// itself - is rendered by a function that calls itself for each value
+	// inside; see renderOutlined, which every struct goes through.
 	if e := dataEnums[lay.name]; e != nil {
 		l.writeVariant(n, v, lay, e)
 		return
