@@ -174,6 +174,9 @@ func (l *lowerer) mapEqual(n Node, a, b Reg, t vty) (Reg, bool) {
 	out := l.temp(vBool)
 	l.emit(Instr{Op: OpStore, A: l.boolConst(false), Dst: NoReg, Imm: out})
 
+	// Entry by entry, so both have to be in key order first.
+	l.mapSort(a, t)
+	l.mapSort(b, t)
 	done := l.newLabel()
 	lenA := l.field(a, mapLenOff, vInt)
 	lenB := l.field(b, mapLenOff, vInt)

@@ -423,6 +423,7 @@ func (l *lowerer) traceOne(obj, table, mask, work, workLen Reg) {
 		Dst: NoReg, Imm: notMap})
 	l.tryMark(l.peekWord(obj, mapKeysOff), table, mask, work, workLen)
 	l.tryMark(l.peekWord(obj, mapValsOff), table, mask, work, workLen)
+	l.tryMark(l.peekWord(obj, mapIdxOff), table, mask, work, workLen)
 	l.mark(notMap)
 
 	// A result box always traces its first word, the error string. Its

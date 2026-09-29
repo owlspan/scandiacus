@@ -63,6 +63,7 @@ func (l *lowerer) urlBuild(c *Call) Reg {
 	out := l.temp(vStr)
 	l.emit(Instr{Op: OpStore, A: base, Dst: NoReg, Imm: out})
 
+	l.mapSort(params, t)
 	done := l.newLabel()
 	n := l.field(params, mapLenOff, vInt)
 	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpGt, n, l.constant(0)),

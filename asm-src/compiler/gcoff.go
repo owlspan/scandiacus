@@ -48,6 +48,7 @@ func (l *lowerer) deleteValue(c *Call) Reg {
 	case t.k == kMap:
 		l.freeObject(l.field(v, mapKeysOff, vInt))
 		l.freeObject(l.field(v, mapValsOff, vInt))
+		l.freeObject(l.field(v, mapIdxOff, vInt))
 		l.freeObject(v)
 	case t.k == kStruct, t.k == kBytes:
 		l.freeObject(v)

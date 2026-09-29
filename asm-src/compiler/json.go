@@ -267,6 +267,7 @@ func (l *lowerer) jsonMap(n Node, v Reg, t vty, indent bool, depth int) {
 		return
 	}
 
+	l.mapSort(v, t)
 	empty := l.newLabel()
 	done := l.newLabel()
 	length := l.field(v, mapLenOff, vInt)
