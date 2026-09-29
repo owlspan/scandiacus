@@ -30,6 +30,7 @@ package main
 import (
 	"sort"
 	"strconv"
+	"strings"
 )
 
 var calleeSaved = []string{"rbx", "rsi", "rdi", "r12", "r13", "r14", "r15"}
@@ -92,14 +93,77 @@ func promoteSlots(f *Func) map[int64]string {
 	return out
 }
 
+// calleeSavedXmm are the float registers a callee must preserve on
+// Windows x64. All 128 bits of each, which is why they are saved with
+// movups rather than movsd.
+var calleeSavedXmm = []string{"xmm6", "xmm7", "xmm8", "xmm9", "xmm10",
+	"xmm11", "xmm12", "xmm13", "xmm14", "xmm15"}
+
+// promoteFloatSlots does for float locals what promoteSlots does for
+// ints, into xmm6-xmm15: `x = x * 0.5 + y` in a loop then reads and
+// writes registers rather than the frame. A slot qualifies when every
+// load and store of it moves a float and nothing takes its address.
+func promoteFloatSlots(f *Func) map[int64]string {
+	uses := map[int64]int{}
+	bad := map[int64]bool{}
+	isFloat := func(r Reg) bool {
+		if r < 0 || int(r) >= len(f.RegTypes) {
+			return false
+		}
+		t := f.RegTypes[r]
+		return t.k == kFloat && !t.null && !t.res
+	}
+	for _, in := range f.Code {
+		switch in.Op {
+		case OpLoad:
+			uses[in.Imm]++
+			if !isFloat(in.Dst) {
+				bad[in.Imm] = true
+			}
+		case OpStore:
+			uses[in.Imm]++
+			if !isFloat(in.A) {
+				bad[in.Imm] = true
+			}
+		case OpSlotAddr, OpStoreByte:
+			bad[in.Imm] = true
+		}
+	}
+	if f.Env {
+		bad[0] = true
+	}
+	var picks []int64
+	for s, n := range uses {
+		if !bad[s] && n >= 2 {
+			picks = append(picks, s)
+		}
+	}
+	sort.Slice(picks, func(i, j int) bool {
+		if uses[picks[i]] != uses[picks[j]] {
+			return uses[picks[i]] > uses[picks[j]]
+		}
+		return picks[i] < picks[j]
+	})
+	out := map[int64]string{}
+	for i, s := range picks {
+		if i >= len(calleeSavedXmm) {
+			break
+		}
+		out[s] = calleeSavedXmm[i]
+	}
+	return out
+}
+
+func isXmm(s string) bool { return strings.HasPrefix(s, "xmm") }
+
 // savedRegs is which callee-saved registers this function must save:
-// the ones it promotes into, or all of them for the collector.
+// the ones it promotes into, or all the general ones for the collector.
 func (e *Emitter) savedRegs() []string {
 	if e.f.Name == collectSym {
 		return calleeSaved
 	}
 	var used []string
-	for _, r := range calleeSaved {
+	for _, r := range append(append([]string{}, calleeSaved...), calleeSavedXmm...) {
 		for _, p := range e.promoted {
 			if p == r {
 				used = append(used, r)
@@ -110,10 +174,27 @@ func (e *Emitter) savedRegs() []string {
 	return used
 }
 
-// saveAt is where callee-saved register i is kept in the frame.
+// saveAt is where callee-saved register i is kept in the frame: two
+// words each, room for the whole of an xmm register.
 func (e *Emitter) saveAt(i int) string {
-	off := (int64(e.f.NSlots) + int64(e.f.NRegs) + int64(i) + 1) * 8
-	return "qword ptr [rbp-" + strconv.FormatInt(off, 10) + "]"
+	off := (int64(e.f.NSlots) + int64(e.f.NRegs) + 2*int64(i) + 2) * 8
+	return "[rbp-" + strconv.FormatInt(off, 10) + "]"
+}
+
+func (e *Emitter) saveReg(i int, r string) {
+	if isXmm(r) {
+		e.line("movups %s, %s", e.saveAt(i), r)
+		return
+	}
+	e.line("mov qword ptr %s, %s", e.saveAt(i), r)
+}
+
+func (e *Emitter) restoreReg(i int, r string) {
+	if isXmm(r) {
+		e.line("movups %s, %s", r, e.saveAt(i))
+		return
+	}
+	e.line("mov %s, qword ptr %s", r, e.saveAt(i))
 }
 
 // regUses counts how many instructions read each virtual register.

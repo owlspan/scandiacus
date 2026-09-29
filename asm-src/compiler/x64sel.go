@@ -41,13 +41,23 @@ func fits32(v int64) bool { return v >= math.MinInt32 && v <= math.MaxInt32 }
 func (e *Emitter) planConsts(f *Func) {
 	e.consts = map[Reg]int64{}
 	e.dropConst = map[Reg]bool{}
+	e.fconsts = map[Reg]int64{}
+	e.dropFC = map[Reg]bool{}
 	for _, in := range f.Code {
 		if in.Op == OpConst && in.Dst != NoReg {
 			e.consts[in.Dst] = in.Imm
 		}
+		if in.Op == OpFConst && in.Dst != NoReg {
+			e.fconsts[in.Dst] = in.Imm
+		}
 	}
 	needed := map[Reg]bool{}
 	for _, in := range f.Code {
+		for _, r := range []Reg{in.A, in.B} {
+			if _, ok := e.fconsts[r]; ok && r != NoReg && !(r == in.B && isFArith(in.Op)) {
+				needed[r] = true
+			}
+		}
 		if _, ok := e.consts[in.A]; ok && in.A != NoReg {
 			if _, imm := e.immA(in); !imm {
 				needed[in.A] = true
@@ -67,7 +77,14 @@ func (e *Emitter) planConsts(f *Func) {
 			e.dropConst[r] = true
 		}
 	}
+	for r := range e.fconsts {
+		if !needed[r] {
+			e.dropFC[r] = true
+		}
+	}
 }
+
+func isFArith(op Op) bool { return op == OpFAdd || op == OpFSub || op == OpFMul || op == OpFDiv }
 
 // immA is the constant an instruction's A operand can be written as, if
 // the instruction takes one there.
@@ -140,6 +157,13 @@ func (e *Emitter) selInstr(in Instr) bool {
 
 	case OpStore:
 		dst := e.slotAddr(in.Imm)
+		if a := e.loc(in.A); isXmm(dst) || isXmm(a) {
+			// A float slot promoted into an xmm register.
+			if a != dst {
+				e.line("movsd %s, %s", dst, a)
+			}
+			return true
+		}
 		if v, ok := e.immA(in); ok {
 			e.line("mov %s, %d", dst, v)
 			return true
@@ -155,6 +179,12 @@ func (e *Emitter) selInstr(in Instr) bool {
 
 	case OpLoad:
 		d, src := e.loc(in.Dst), e.slotAddr(in.Imm)
+		if isXmm(d) || isXmm(src) {
+			if d != src {
+				e.line("movsd %s, %s", d, src)
+			}
+			return true
+		}
 		if isRegLoc(d) || isRegLoc(src) {
 			if d != src {
 				e.line("mov %s, %s", d, src)
@@ -165,6 +195,20 @@ func (e *Emitter) selInstr(in Instr) bool {
 
 	case OpAdd, OpSub, OpMul, OpBAnd, OpBOr, OpBXor:
 		e.selArith(in)
+		return true
+
+	case OpFConst:
+		if e.dropFC[in.Dst] {
+			return true
+		}
+		if d := e.loc(in.Dst); isXmm(d) {
+			e.line("movsd %s, __flt%d[rip]", d, in.Imm)
+			return true
+		}
+		return false
+
+	case OpFAdd, OpFSub, OpFMul, OpFDiv:
+		e.selFArith(in)
 		return true
 
 	case OpShl, OpShr:
@@ -300,6 +344,28 @@ func (e *Emitter) inPlace(in Instr, op func(r string)) {
 	e.line("mov rax, %s", a)
 	op("rax")
 	e.put(in.Dst, "rax")
+}
+
+// selFArith is the scalar double arithmetic. The second operand can be
+// memory or a pooled register, and a constant is read straight out of
+// the pool, so none of the three needs loading into xmm1 first.
+func (e *Emitter) selFArith(in Instr) {
+	m := map[Op]string{OpFAdd: "addsd", OpFSub: "subsd", OpFMul: "mulsd", OpFDiv: "divsd"}[in.Op]
+	d, a := e.loc(in.Dst), e.loc(in.A)
+	b := e.loc(in.B)
+	if idx, ok := e.fconsts[in.B]; ok {
+		b = fmt.Sprintf("__flt%d[rip]", idx)
+	}
+	if isXmm(d) && (d != b || d == a) {
+		if d != a {
+			e.line("movsd %s, %s", d, a)
+		}
+		e.line("%s %s, %s", m, d, b)
+		return
+	}
+	e.line("movsd xmm0, %s", a)
+	e.line("%s xmm0, %s", m, b)
+	e.putf(in.Dst, "xmm0")
 }
 
 // selArith is add, sub, imul, and, or and xor in two-operand form. The

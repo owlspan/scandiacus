@@ -62,6 +62,8 @@ type Emitter struct {
 	// immediates; see x64sel.go. Nil with the optimisations off.
 	consts    map[Reg]int64
 	dropConst map[Reg]bool
+	fconsts   map[Reg]int64 // float constants, by pool index
+	dropFC    map[Reg]bool
 }
 
 // Windows x64 calling convention.
@@ -159,7 +161,7 @@ func (e *Emitter) outgoing() int {
 }
 
 func (e *Emitter) frameSize() int {
-	n := (e.f.NSlots + e.f.NRegs + len(e.saved)) * 8
+	n := (e.f.NSlots + e.f.NRegs + 2*len(e.saved)) * 8
 	n += e.outgoing()
 	if n%16 != 0 {
 		n += 16 - n%16
@@ -434,8 +436,19 @@ func (e *Emitter) function(f *Func) {
 		e.homes = nil
 	} else {
 		e.homes = allocateRegs(f)
+		if fh := allocateFloatRegs(f); len(fh) > 0 {
+			if e.homes == nil {
+				e.homes = map[Reg]string{}
+			}
+			for r, h := range fh {
+				e.homes[r] = h
+			}
+		}
 		if !envOff("VEYL_NOPROMOTE") {
 			e.promoted = promoteSlots(f)
+			for s, r := range promoteFloatSlots(f) {
+				e.promoted[s] = r
+			}
 		}
 	}
 	e.consts, e.dropConst = nil, nil
@@ -456,7 +469,7 @@ func (e *Emitter) function(f *Func) {
 	e.line("mov rbp, rsp")
 	e.reserve(e.frameSize())
 	for i, r := range e.saved {
-		e.line("mov %s, %s", e.saveAt(i), r)
+		e.saveReg(i, r)
 	}
 
 	if f.Env {
@@ -831,7 +844,7 @@ func (e *Emitter) instr(in Instr) {
 			e.line("xor eax, eax")
 		}
 		for i, r := range e.saved {
-			e.line("mov %s, %s", r, e.saveAt(i))
+			e.restoreReg(i, r)
 		}
 		e.line("mov rsp, rbp")
 		e.line("pop rbp")

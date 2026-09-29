@@ -449,6 +449,8 @@ func (b *block) encode(m string, ops []operand) error {
 		return b.encodeCmov(0x45, ops)
 	case "movsd":
 		return b.encodeMovsd(ops)
+	case "movups":
+		return b.encodeMovups(ops)
 	case "comisd", "ucomisd":
 		return b.encodeComisd(m, ops)
 	case "cvtsi2sd":
@@ -822,6 +824,29 @@ func (b *block) encodeMovsd(ops []operand) error {
 		return fmt.Errorf("movsd needs an xmm register")
 	}
 	b.prefix(32, src.reg, dst, 0xF2)
+	b.put(0x0F, 0x11)
+	b.modrm(src.reg, dst)
+	return nil
+}
+
+// encodeMovups moves all 128 bits of an xmm register to or from memory,
+// which saving a callee-saved one needs; movsd would move only the low
+// half and zero the rest on the way back.
+func (b *block) encodeMovups(ops []operand) error {
+	if len(ops) != 2 {
+		return fmt.Errorf("movups wants two operands")
+	}
+	dst, src := ops[0], ops[1]
+	if dst.kind == opXmm {
+		b.prefix(32, dst.reg, src)
+		b.put(0x0F, 0x10)
+		b.modrm(dst.reg, src)
+		return nil
+	}
+	if src.kind != opXmm {
+		return fmt.Errorf("movups needs an xmm register")
+	}
+	b.prefix(32, src.reg, dst)
 	b.put(0x0F, 0x11)
 	b.modrm(src.reg, dst)
 	return nil

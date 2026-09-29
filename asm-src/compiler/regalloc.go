@@ -181,3 +181,108 @@ next:
 	}
 	return homes
 }
+
+// raFloatRegs are the xmm registers float temporaries are pooled into.
+// xmm0 and xmm1 are the emitter's scratch pair; xmm2 and xmm3 also carry
+// call arguments, but a call is a barrier and no pooled value lives
+// across one.
+var raFloatRegs = [4]string{"xmm2", "xmm3", "xmm4", "xmm5"}
+
+// floatPoolable reports whether an instruction may define (def) or read
+// a float value that lives in an xmm register. Only the ones the
+// selector emits with movsd and the SSE arithmetic are allowed: every
+// other op moves its operands through general registers, and a float
+// cannot reach one of those without movq.
+func floatPoolable(op Op, def bool) bool {
+	switch op {
+	case OpFAdd, OpFSub, OpFMul, OpFDiv, OpFNeg:
+		return true
+	case OpFEq, OpFNe, OpFLt, OpFLe, OpFGt, OpFGe:
+		return !def
+	case OpFConst, OpLoad:
+		return def
+	case OpStore, OpRet:
+		return !def
+	}
+	return false
+}
+
+// allocateFloatRegs is allocateRegs for float temporaries: same spans,
+// same barrier and label rules, into xmm2-xmm5.
+func allocateFloatRegs(f *Func) map[Reg]string {
+	if len(f.RegTypes) < f.NRegs || f.NRegs == 0 {
+		return nil
+	}
+	defOf := make([]int, f.NRegs)
+	lastOf := make([]int, f.NRegs)
+	usable := make([]bool, f.NRegs)
+	for i := range defOf {
+		defOf[i] = -1
+	}
+	for r := 0; r < f.NRegs; r++ {
+		t := f.RegTypes[r]
+		usable[r] = t.k == kFloat && !t.null && !t.res
+	}
+	use := func(r Reg, pos int, op Op) {
+		if r < 0 || int(r) >= f.NRegs {
+			return
+		}
+		lastOf[r] = pos
+		if !floatPoolable(op, false) {
+			usable[r] = false
+		}
+	}
+	for i := range f.Code {
+		in := &f.Code[i]
+		use(in.A, i, in.Op)
+		use(in.B, i, in.Op)
+		for _, a := range in.Args {
+			use(a, i, OpCall) // never poolable
+		}
+		if d := in.Dst; d >= 0 && int(d) < f.NRegs && usable[d] && defOf[d] < 0 &&
+			floatPoolable(in.Op, true) && in.Op != OpRet && in.Op != OpStore {
+			defOf[d] = i
+			if lastOf[d] < i {
+				lastOf[d] = i
+			}
+		}
+	}
+
+	type cand struct {
+		r         Reg
+		def, last int
+	}
+	var cands []cand
+	for r := 0; r < f.NRegs; r++ {
+		def := defOf[r]
+		if !usable[r] || def < 0 || lastOf[r] <= def {
+			continue
+		}
+		crossed := false
+		for p := def + 1; p < lastOf[r]; p++ {
+			if raBarrier(&f.Code[p]) || f.Code[p].Op == OpLabel {
+				crossed = true
+				break
+			}
+		}
+		if !crossed {
+			cands = append(cands, cand{Reg(r), def, lastOf[r]})
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool { return cands[i].def < cands[j].def })
+
+	homes := map[Reg]string{}
+	until := map[string]int{}
+next:
+	for _, c := range cands {
+		for _, name := range raFloatRegs {
+			if u, busy := until[name]; busy && u >= c.def {
+				continue
+			}
+			homes[c.r] = name
+			until[name] = c.last
+			continue next
+		}
+	}
+	return homes
+}
