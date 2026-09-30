@@ -3,6 +3,32 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.41.0
+
+**proc: listing.** The other half of the `proc` library - finding
+things, where 0.40.0 was reading and writing them.
+
+- `proc.pids()`, `proc.name(pid)`, `proc.parent(pid)` and
+  `proc.find(name)` for the running processes.
+- `proc.modules(pid)` lists the executable and DLLs loaded in a
+  process as `ProcModule` structs (`name`, `path`, `base`, `size`), and
+  `proc.base(pid, name)` gives where one is loaded.
+- `proc.threads(pid)` lists a process's thread ids.
+- `proc.regions(h)` lists the committed regions of an address space as
+  `ProcRegion` structs with `base`, `size`, `protect`, `kind` and
+  `readable` / `writable` / `executable`.
+- `proc.scanAll(h, pattern)` returns every match of a byte pattern in
+  the readable memory of a process. It walks the regions itself, so it
+  needs no start or size, and reads a megabyte at a time.
+
+All of it is still Veyl over `mem.symbol` and `mem.call`; nothing needs
+`extern`. A process that cannot be looked into gives an empty list or
+`0`.
+
+**Fixed:** a program that declared its own struct called `Request` or
+`Response` silently got the `http` library's fields instead of its own.
+A struct the program declares is now the program's.
+
 ## 0.40.0
 
 **proc: process memory.** A library over the standard Windows debugging
