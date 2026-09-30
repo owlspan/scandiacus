@@ -406,6 +406,21 @@ var sigs = map[string]front.Signature{
 	"mem.callF":    {Params: []*Type{Int}, Rest: Any, Ret: Float},
 	"mem.symbol":   {Params: []*Type{Str, Str}, Ret: Int},
 
+	// proc: another process's memory, the standard Windows debug
+	// surface. See prelude_proc.go.
+	"proc.current":  {Ret: Int},
+	"proc.pid":      {Ret: Int},
+	"proc.open":     {Params: []*Type{Int}, Ret: Int},
+	"proc.close":    {Params: []*Type{Int}, Ret: Bool},
+	"proc.read":     {Params: []*Type{Int, Int, Int}, Ret: Bytes},
+	"proc.write":    {Params: []*Type{Int, Int, Bytes}, Ret: Int},
+	"proc.readU8":   {Params: []*Type{Int, Int}, Ret: Int},
+	"proc.readI32":  {Params: []*Type{Int, Int}, Ret: Int},
+	"proc.readI64":  {Params: []*Type{Int, Int}, Ret: Int},
+	"proc.writeI32": {Params: []*Type{Int, Int, Int}, Ret: Bool},
+	"proc.writeI64": {Params: []*Type{Int, Int, Int}, Ret: Bool},
+	"proc.scan":     {Params: []*Type{Int, Int, Int, Str}, Ret: Int},
+
 	"mem.used":        {Ret: Int},
 	"mem.total":       {Ret: Int},
 	"mem.system":      {Ret: Int},
