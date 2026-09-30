@@ -1,10 +1,10 @@
 // A software 3D renderer.
 //
 // Meshes are built from maths, turned, projected onto the screen and
-// filled one horizontal line at a time with flat shading. Faces are
-// sorted back to front and drawn in that order - the painter's
-// algorithm - so the near ones cover the far ones without a depth
-// buffer. No GPU and no library: every pixel is decided here.
+// filled pixel by pixel with flat shading, straight into the window's
+// back buffer through a pointer, with a depth buffer deciding which
+// face is in front at each pixel. No GPU and no library: every pixel is
+// decided here.
 //
 // Arrow keys turn it, W and S move closer and further, 1 2 3 4 pick
 // the shape, F shows the wireframe, space stops the spin. Escape quits.
@@ -181,45 +181,67 @@ fn build(which: int) -> Mesh {
 
 // ---- drawing ----
 
-// fillTri fills a triangle given in screen coordinates. The corners are
-// sorted top to bottom; each row then runs from the long edge, top to
-// bottom corner, to whichever short edge that row crosses.
-fn fillTri(w: int, ax: float, ay: float, bx: float, by: float, cx: float, cy: float, colour: int) {
+// Pixels go straight into the window's back buffer, one u32 each, and
+// a depth buffer beside it holds 1/z of whatever was drawn at each
+// pixel. 1/z rather than z because it is what varies linearly across
+// the screen, so it can be stepped along a row with one add, and
+// because a larger value is nearer, so a cleared buffer of zeros is
+// "nothing drawn yet".
+
+// fillTri fills one triangle given its screen corners and their 1/z.
+// The corners are sorted top to bottom; each row runs between the long
+// edge, top corner to bottom corner, and whichever short edge that row
+// crosses, and a pixel is written only where it is nearer than what is
+// there.
+fn fillTri(px: *u32, zb: *f64, ax: float, ay: float, az: float, bx: float, by: float, bz: float,
+    cx: float, cy: float, cz: float, colour: int) {
     let x0 = ax
     let y0 = ay
+    let z0 = az
     let x1 = bx
     let y1 = by
+    let z1 = bz
     let x2 = cx
     let y2 = cy
+    let z2 = cz
     if y1 < y0 {
         let t = x0
         x0 = x1
         x1 = t
-        let u = y0
+        t = y0
         y0 = y1
-        y1 = u
+        y1 = t
+        t = z0
+        z0 = z1
+        z1 = t
     }
     if y2 < y0 {
         let t = x0
         x0 = x2
         x2 = t
-        let u = y0
+        t = y0
         y0 = y2
-        y2 = u
+        y2 = t
+        t = z0
+        z0 = z2
+        z2 = t
     }
     if y2 < y1 {
         let t = x1
         x1 = x2
         x2 = t
-        let u = y1
+        t = y1
         y1 = y2
-        y2 = u
+        y2 = t
+        t = z1
+        z1 = z2
+        z2 = t
     }
     if y2 - y0 < 0.001 {
         return
     }
     let top = ceil(y0)
-    let bottom = floor(y2)
+    let bottom = ceil(y2) - 1
     if top < 0 {
         top = 0
     }
@@ -228,20 +250,60 @@ fn fillTri(w: int, ax: float, ay: float, bx: float, by: float, cx: float, cy: fl
     }
     for row in top..=bottom {
         let fy = float(row)
-        let xl = x0 + (x2 - x0) * (fy - y0) / (y2 - y0)
-        let xr = x1
+        let t = (fy - y0) / (y2 - y0)
+        let xa = x0 + (x2 - x0) * t
+        let za = z0 + (z2 - z0) * t
+        let xb = x1
+        let zb1 = z1
         if fy < y1 {
-            xr = x0 + (x1 - x0) * (fy - y0) / (y1 - y0)
+            let u = (fy - y0) / (y1 - y0)
+            xb = x0 + (x1 - x0) * u
+            zb1 = z0 + (z1 - z0) * u
         } else if y2 - y1 > 0.001 {
-            xr = x1 + (x2 - x1) * (fy - y1) / (y2 - y1)
+            let u = (fy - y1) / (y2 - y1)
+            xb = x1 + (x2 - x1) * u
+            zb1 = z1 + (z2 - z1) * u
         }
-        win.line(w, round(xl), row, round(xr), row, colour)
+        if xb < xa {
+            let s = xa
+            xa = xb
+            xb = s
+            s = za
+            za = zb1
+            zb1 = s
+        }
+        let left = ceil(xa)
+        let right = ceil(xb) - 1
+        if left < 0 {
+            left = 0
+        }
+        if right > W - 1 {
+            right = W - 1
+        }
+        if right >= left {
+            let dz = 0.0
+            if xb - xa > 0.001 {
+                dz = (zb1 - za) / (xb - xa)
+            }
+            let z = za + (float(left) - xa) * dz
+            let at = row * W + left
+            let last = row * W + right
+            while at <= last {
+                if z > zb[at] {
+                    zb[at] = z
+                    px[at] = colour
+                }
+                z = z + dz
+                at += 1
+            }
+        }
     }
 }
 
-// shade scales a palette colour by how much light a face gets.
+// shade scales a palette colour by how much light a face gets, as a
+// pixel: 0x00RRGGBB.
 fn shade(r: int, g: int, b: int, k: float) -> int {
-    return win.rgb(round(float(r) * k), round(float(g) * k), round(float(b) * k))
+    return (round(float(r) * k) << 16) | (round(float(g) * k) << 8) | round(float(b) * k)
 }
 
 // ---- the program ----
@@ -275,22 +337,36 @@ let wire = false
 let prevF = false
 let prevSpace = false
 
-// Room for the turned and projected corners, reused every frame.
+// Room for the turned and projected corners, reused every frame, and
+// the depth buffer, which lives outside the collector.
 let tx: []float = []
 let ty: []float = []
 let tz: []float = []
 let sx: []float = []
 let sy: []float = []
-let depth: []float = []
+let iz: []float = []
+let zb = mem.alloc(W * H * 8) as *f64
 
 let frames = 0
 let fps = 0
 let mark = time.millis()
 let drawMs = 0
+let last = time.nanos()
 
 while win.poll(w) {
     if win.pressed(w, "esc") {
         break
+    }
+
+    // Delta time: how long the last frame took, in seconds. Everything
+    // below moves by a rate times this, so the speed on screen is the
+    // same at 60 frames a second or 600. Capped, so a pause - dragging
+    // the window - does not make everything jump.
+    let now = time.nanos()
+    let dt = float(now - last) / 1000000000.0
+    last = now
+    if dt > 0.1 {
+        dt = 0.1
     }
 
     // ---- input ----
@@ -300,23 +376,24 @@ while win.poll(w) {
             m = build(shape)
         }
     }
+    let turn = 2.2 * dt
     if win.pressed(w, "left") {
-        yaw = yaw - 0.04
+        yaw = yaw - turn
     }
     if win.pressed(w, "right") {
-        yaw = yaw + 0.04
+        yaw = yaw + turn
     }
     if win.pressed(w, "up") {
-        pitch = pitch - 0.04
+        pitch = pitch - turn
     }
     if win.pressed(w, "down") {
-        pitch = pitch + 0.04
+        pitch = pitch + turn
     }
     if win.pressed(w, "w") && dist > 2.5 {
-        dist = dist - 0.08
+        dist = dist - 4.0 * dt
     }
     if win.pressed(w, "s") && dist < 14.0 {
-        dist = dist + 0.08
+        dist = dist + 4.0 * dt
     }
     let f = win.pressed(w, "f")
     if f && !prevF {
@@ -329,8 +406,8 @@ while win.poll(w) {
     }
     prevSpace = space
     if spin {
-        yaw = yaw + 0.012
-        pitch = pitch + 0.005
+        yaw = yaw + 0.7 * dt
+        pitch = pitch + 0.3 * dt
     }
 
     let started = time.millis()
@@ -347,6 +424,7 @@ while win.poll(w) {
     clear(tz)
     clear(sx)
     clear(sy)
+    clear(iz)
     for i in 0..n {
         let x = m.xs[i]
         let y = m.ys[i]
@@ -362,14 +440,20 @@ while win.poll(w) {
         push(tz, z2)
         push(sx, float(W / 2) + x1 * focal / z2)
         push(sy, float(H / 2) - y2 * focal / z2)
+        push(iz, 1.0 / z2)
     }
 
-    // ---- keep the faces that face us, far ones first ----
+    // ---- clear, then draw every face that faces us ----
+    win.clear(w, bg)
+    let px = win.pixels(w)
+    mem.fill(zb as int, 0, W * H * 8)
+    let base = (shape - 1) * 2
     let faces = len(m.a)
-    clear(depth)
-    let order: []int = []
+    let drawn = 0
     for t in 0..faces {
         let i = m.a[t]
+        let j = m.b[t]
+        let k = m.c[t]
         // The normal turned the same way as the corners.
         let nx = m.nx[t]
         let ny = m.ny[t]
@@ -380,36 +464,22 @@ while win.poll(w) {
         let nz2 = ny * sp + nz1 * cp
         // Facing us when it points back along the line from the camera
         // to the face.
-        let facing = nx1 * tx[i] + ny2 * ty[i] + nz2 * tz[i]
-        push(depth, tz[i] + tz[m.b[t]] + tz[m.c[t]])
-        if facing < 0.0 {
-            push(order, t)
+        if nx1 * tx[i] + ny2 * ty[i] + nz2 * tz[i] < 0.0 {
+            let light = nx1 * lx + ny2 * ly + nz2 * lz
+            if light < 0.0 {
+                light = 0.0
+            }
+            let pal = palette[base + m.tone[t]]
+            let colour = shade(pal[0], pal[1], pal[2], 0.16 + 0.84 * light)
+            fillTri(px, zb, sx[i], sy[i], iz[i], sx[j], sy[j], iz[j], sx[k], sy[k], iz[k], colour)
+            drawn += 1
         }
     }
-    let sorted = sortBy(order, fn(p: int, q: int) -> bool { return depth[p] > depth[q] })
-
-    // ---- paint ----
-    win.clear(w, bg)
-    let base = (shape - 1) * 2
-    for t in sorted {
-        let i = m.a[t]
-        let j = m.b[t]
-        let k = m.c[t]
-        let nx = m.nx[t]
-        let ny = m.ny[t]
-        let nz = m.nz[t]
-        let nx1 = nx * cy + nz * sn
-        let nz1 = nz * cy - nx * sn
-        let ny2 = ny * cp - nz1 * sp
-        let nz2 = ny * sp + nz1 * cp
-        let light = nx1 * lx + ny2 * ly + nz2 * lz
-        if light < 0.0 {
-            light = 0.0
-        }
-        let pal = palette[base + m.tone[t]]
-        let colour = shade(pal[0], pal[1], pal[2], 0.16 + 0.84 * light)
-        fillTri(w, sx[i], sy[i], sx[j], sy[j], sx[k], sy[k], colour)
-        if wire {
+    if wire {
+        for t in 0..faces {
+            let i = m.a[t]
+            let j = m.b[t]
+            let k = m.c[t]
             win.line(w, round(sx[i]), round(sy[i]), round(sx[j]), round(sy[j]), edge)
             win.line(w, round(sx[j]), round(sy[j]), round(sx[k]), round(sy[k]), edge)
             win.line(w, round(sx[k]), round(sy[k]), round(sx[i]), round(sy[i]), edge)
@@ -419,16 +489,16 @@ while win.poll(w) {
 
     // ---- the corner text ----
     frames += 1
-    let now = time.millis()
-    if now - mark >= 500 {
-        fps = frames * 1000 / (now - mark)
+    let clock = time.millis()
+    if clock - mark >= 500 {
+        fps = frames * 1000 / (clock - mark)
         frames = 0
-        mark = now
+        mark = clock
     }
-    win.text(w, 16, 14, "{m.name}   {len(sorted)} of {faces} triangles drawn   {fps} fps   {drawMs} ms a frame", text)
+    win.text(w, 16, 14, "{m.name}   {drawn} of {faces} triangles   {fps} fps   {drawMs} ms to draw", text)
     win.text(w, 16, H - 30, "1-4 shape   arrows turn   W/S zoom   F wireframe   space spin   esc quit", dim)
 
     win.present(w)
-    sleep(1)
 }
+mem.free(zb as int)
 win.close(w)
