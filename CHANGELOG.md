@@ -3,6 +3,28 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.43.0
+
+**Static libraries.** A `from` clause ending in `.lib`, `.a`, `.obj` or
+`.o` names a static library instead of a DLL:
+
+```veyl
+extern fn vy_add(a: int, b: int) -> int from "mathlib.a"
+```
+
+The object code that defines the symbol is pulled out of the archive at
+build time and linked into the program, rather than imported from a DLL
+at run time. The compiler reads `!<arch>` archives and the COFF objects
+inside them, pulls the members a program refers to, and applies their
+ADDR64, ADDR32NB and REL32 relocations.
+
+What links so far is self-contained object code: functions and the data
+they use, calling each other and nothing outside the libraries named.
+Object code that calls into a DLL, the C runtime helper symbols, COMDAT
+sections, weak externals, common symbols and the `.pdata`/`.xdata`
+unwind tables are reported as clear errors rather than a wrong image;
+they come next.
+
 ## 0.42.0
 
 **com: COM interfaces.** DirectX, WIC, WMI and the shell are reached

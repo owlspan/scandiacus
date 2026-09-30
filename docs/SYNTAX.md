@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.42.0** - the language as currently implemented.
+**Version 0.43.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -2770,6 +2770,31 @@ extern fn mz_extract(zip: str, dest: str) -> int from "miniz"
 The `.dll` suffix is optional. `from` is only a keyword in that spot,
 so an ordinary variable or function called `from` still works.
 
+### Static libraries
+
+A `from` string ending in `.lib`, `.a`, `.obj` or `.o` names a static
+library rather than a DLL. Its extension is what chooses static over
+dynamic:
+
+```veyl
+extern fn vy_add(a: int, b: int) -> int from "mathlib.a"
+```
+
+The difference is when the symbol is resolved. A DLL is loaded and its
+functions found by Windows when the program starts. A static library is
+read at build time: the object code that defines the symbol is pulled
+out of the archive and linked into the program, so there is no separate
+file to ship. A relative path is resolved against the source file.
+
+What links so far is self-contained object code - functions and the
+read-only, writable and zeroed data they use, calling each other and
+nothing outside the libraries named. Object code that calls into a DLL,
+the small C runtime helper symbols a C compiler expects a linker to
+supply, COMDAT de-duplication, weak externals, common symbols and the
+`.pdata`/`.xdata` unwind tables that exception handling needs are not
+linked yet; each is reported as an error naming what was missing rather
+than being turned into a wrong program.
+
 ### Types at the boundary
 
 | Veyl type | Passes as | Comes back as |
@@ -3762,7 +3787,7 @@ checker, so it is only reported once every type error is fixed.
 
 ## Known limitations
 
-Honest list of what v0.42.0 does not do yet.
+Honest list of what v0.43.0 does not do yet.
 
 **The language**
 
