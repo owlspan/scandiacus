@@ -1,0 +1,434 @@
+// A software 3D renderer.
+//
+// Meshes are built from maths, turned, projected onto the screen and
+// filled one horizontal line at a time with flat shading. Faces are
+// sorted back to front and drawn in that order - the painter's
+// algorithm - so the near ones cover the far ones without a depth
+// buffer. No GPU and no library: every pixel is decided here.
+//
+// Arrow keys turn it, W and S move closer and further, 1 2 3 4 pick
+// the shape, F shows the wireframe, space stops the spin. Escape quits.
+
+const W = 960
+const H = 640
+
+struct Mesh {
+    name: str
+    xs: []float
+    ys: []float
+    zs: []float
+    a: []int
+    b: []int
+    c: []int
+    // A normal per triangle, pointing out of the surface. Kept from the
+    // maths that built the shape rather than worked out from the
+    // corners, so which way round a triangle was listed never matters.
+    nx: []float
+    ny: []float
+    nz: []float
+    // Which of the two shades of the palette a triangle gets.
+    tone: []int
+}
+
+// ---- building shapes ----
+
+fn tri(m: Mesh, i: int, j: int, k: int, x: float, y: float, z: float, t: int) {
+    push(m.a, i)
+    push(m.b, j)
+    push(m.c, k)
+    let n = sqrt(x * x + y * y + z * z)
+    push(m.nx, x / n)
+    push(m.ny, y / n)
+    push(m.nz, z / n)
+    push(m.tone, t)
+}
+
+fn vert(m: Mesh, x: float, y: float, z: float) {
+    push(m.xs, x)
+    push(m.ys, y)
+    push(m.zs, z)
+}
+
+fn cube() -> Mesh {
+    let m = Mesh{name: "cube"}
+    for i in 0..8 {
+        let x = -1.0
+        let y = -1.0
+        let z = -1.0
+        if i % 2 == 1 {
+            x = 1.0
+        }
+        if (i / 2) % 2 == 1 {
+            y = 1.0
+        }
+        if i / 4 == 1 {
+            z = 1.0
+        }
+        vert(m, x, y, z)
+    }
+    // Each face as four corners and the axis it faces along.
+    let faces = [[1, 3, 7, 5], [0, 4, 6, 2], [2, 6, 7, 3], [0, 1, 5, 4], [4, 5, 7, 6], [0, 2, 3, 1]]
+    let axis = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
+    for f in 0..6 {
+        let q = faces[f]
+        let ax = float(axis[f][0])
+        let ay = float(axis[f][1])
+        let az = float(axis[f][2])
+        tri(m, q[0], q[1], q[2], ax, ay, az, f % 2)
+        tri(m, q[0], q[2], q[3], ax, ay, az, f % 2)
+    }
+    return m
+}
+
+fn sphere(r: float, around: int, rings: int) -> Mesh {
+    let m = Mesh{name: "sphere"}
+    for i in 0..=rings {
+        let theta = PI * float(i) / float(rings)
+        for j in 0..=around {
+            let phi = 2.0 * PI * float(j) / float(around)
+            vert(m, r * sin(theta) * cos(phi), r * cos(theta), r * sin(theta) * sin(phi))
+        }
+    }
+    let row = around + 1
+    for i in 0..rings {
+        for j in 0..around {
+            let p = i * row + j
+            let q = p + row
+            // On a sphere the outward normal is the direction of the
+            // face's own middle.
+            let theta = PI * (float(i) + 0.5) / float(rings)
+            let phi = 2.0 * PI * (float(j) + 0.5) / float(around)
+            let x = sin(theta) * cos(phi)
+            let y = cos(theta)
+            let z = sin(theta) * sin(phi)
+            let t = (i + j) % 2
+            tri(m, p, q, q + 1, x, y, z, t)
+            tri(m, p, q + 1, p + 1, x, y, z, t)
+        }
+    }
+    return m
+}
+
+fn torus(big: float, small: float, around: int, sides: int) -> Mesh {
+    let m = Mesh{name: "torus"}
+    for i in 0..=around {
+        let u = 2.0 * PI * float(i) / float(around)
+        for j in 0..=sides {
+            let v = 2.0 * PI * float(j) / float(sides)
+            let ring = big + small * cos(v)
+            vert(m, ring * cos(u), small * sin(v), ring * sin(u))
+        }
+    }
+    let row = sides + 1
+    for i in 0..around {
+        for j in 0..sides {
+            let p = i * row + j
+            let q = p + row
+            // Out from the tube's centre line, through the middle of
+            // the face.
+            let u = 2.0 * PI * (float(i) + 0.5) / float(around)
+            let v = 2.0 * PI * (float(j) + 0.5) / float(sides)
+            let x = cos(v) * cos(u)
+            let y = sin(v)
+            let z = cos(v) * sin(u)
+            let t = (i / 2) % 2
+            tri(m, p, q, q + 1, x, y, z, t)
+            tri(m, p, q + 1, p + 1, x, y, z, t)
+        }
+    }
+    return m
+}
+
+// A torus whose tube swells and pinches as it goes round, with the
+// normals from the same formula, so it still lights like a solid.
+fn wobble(around: int, sides: int) -> Mesh {
+    let m = Mesh{name: "wobble"}
+    for i in 0..=around {
+        let u = 2.0 * PI * float(i) / float(around)
+        let small = 0.35 + 0.18 * sin(u * 5.0)
+        for j in 0..=sides {
+            let v = 2.0 * PI * float(j) / float(sides)
+            let ring = 1.15 + small * cos(v)
+            vert(m, ring * cos(u), small * sin(v), ring * sin(u))
+        }
+    }
+    let row = sides + 1
+    for i in 0..around {
+        for j in 0..sides {
+            let p = i * row + j
+            let q = p + row
+            let u = 2.0 * PI * (float(i) + 0.5) / float(around)
+            let v = 2.0 * PI * (float(j) + 0.5) / float(sides)
+            tri(m, p, q, q + 1, cos(v) * cos(u), sin(v), cos(v) * sin(u), j % 2)
+            tri(m, p, q + 1, p + 1, cos(v) * cos(u), sin(v), cos(v) * sin(u), j % 2)
+        }
+    }
+    return m
+}
+
+fn build(which: int) -> Mesh {
+    if which == 1 {
+        return cube()
+    }
+    if which == 2 {
+        return sphere(1.35, 32, 18)
+    }
+    if which == 3 {
+        return torus(1.1, 0.45, 40, 20)
+    }
+    return wobble(60, 18)
+}
+
+// ---- drawing ----
+
+// fillTri fills a triangle given in screen coordinates. The corners are
+// sorted top to bottom; each row then runs from the long edge, top to
+// bottom corner, to whichever short edge that row crosses.
+fn fillTri(w: int, ax: float, ay: float, bx: float, by: float, cx: float, cy: float, colour: int) {
+    let x0 = ax
+    let y0 = ay
+    let x1 = bx
+    let y1 = by
+    let x2 = cx
+    let y2 = cy
+    if y1 < y0 {
+        let t = x0
+        x0 = x1
+        x1 = t
+        let u = y0
+        y0 = y1
+        y1 = u
+    }
+    if y2 < y0 {
+        let t = x0
+        x0 = x2
+        x2 = t
+        let u = y0
+        y0 = y2
+        y2 = u
+    }
+    if y2 < y1 {
+        let t = x1
+        x1 = x2
+        x2 = t
+        let u = y1
+        y1 = y2
+        y2 = u
+    }
+    if y2 - y0 < 0.001 {
+        return
+    }
+    let top = ceil(y0)
+    let bottom = floor(y2)
+    if top < 0 {
+        top = 0
+    }
+    if bottom > H - 1 {
+        bottom = H - 1
+    }
+    for row in top..=bottom {
+        let fy = float(row)
+        let xl = x0 + (x2 - x0) * (fy - y0) / (y2 - y0)
+        let xr = x1
+        if fy < y1 {
+            xr = x0 + (x1 - x0) * (fy - y0) / (y1 - y0)
+        } else if y2 - y1 > 0.001 {
+            xr = x1 + (x2 - x1) * (fy - y1) / (y2 - y1)
+        }
+        win.line(w, round(xl), row, round(xr), row, colour)
+    }
+}
+
+// shade scales a palette colour by how much light a face gets.
+fn shade(r: int, g: int, b: int, k: float) -> int {
+    return win.rgb(round(float(r) * k), round(float(g) * k), round(float(b) * k))
+}
+
+// ---- the program ----
+
+let w = must(win.open("veyl 3d", W, H))
+let bg = win.rgb(14, 16, 24)
+let text = win.rgb(200, 205, 220)
+let dim = win.rgb(110, 115, 135)
+let edge = win.rgb(255, 255, 255)
+
+// Light from above, to the left and in front, normalised.
+let lx = -0.45
+let ly = 0.7
+let lz = -0.55
+let ln = sqrt(lx * lx + ly * ly + lz * lz)
+lx = lx / ln
+ly = ly / ln
+lz = lz / ln
+
+// Two shades per shape, alternated over its faces.
+let palette = [[80, 170, 255], [60, 130, 220], [255, 150, 90], [230, 110, 70],
+    [120, 220, 150], [80, 180, 120], [220, 120, 255], [170, 80, 220]]
+
+let shape = 3
+let m = build(shape)
+let yaw = 0.6
+let pitch = 0.45
+let dist = 5.0
+let spin = true
+let wire = false
+let prevF = false
+let prevSpace = false
+
+// Room for the turned and projected corners, reused every frame.
+let tx: []float = []
+let ty: []float = []
+let tz: []float = []
+let sx: []float = []
+let sy: []float = []
+let depth: []float = []
+
+let frames = 0
+let fps = 0
+let mark = time.millis()
+let drawMs = 0
+
+while win.poll(w) {
+    if win.pressed(w, "esc") {
+        break
+    }
+
+    // ---- input ----
+    for k in 1..=4 {
+        if win.pressed(w, "{k}") && shape != k {
+            shape = k
+            m = build(shape)
+        }
+    }
+    if win.pressed(w, "left") {
+        yaw = yaw - 0.04
+    }
+    if win.pressed(w, "right") {
+        yaw = yaw + 0.04
+    }
+    if win.pressed(w, "up") {
+        pitch = pitch - 0.04
+    }
+    if win.pressed(w, "down") {
+        pitch = pitch + 0.04
+    }
+    if win.pressed(w, "w") && dist > 2.5 {
+        dist = dist - 0.08
+    }
+    if win.pressed(w, "s") && dist < 14.0 {
+        dist = dist + 0.08
+    }
+    let f = win.pressed(w, "f")
+    if f && !prevF {
+        wire = !wire
+    }
+    prevF = f
+    let space = win.pressed(w, "space")
+    if space && !prevSpace {
+        spin = !spin
+    }
+    prevSpace = space
+    if spin {
+        yaw = yaw + 0.012
+        pitch = pitch + 0.005
+    }
+
+    let started = time.millis()
+
+    // ---- turn and project every corner ----
+    let cy = cos(yaw)
+    let sn = sin(yaw)
+    let cp = cos(pitch)
+    let sp = sin(pitch)
+    let focal = float(H) * 0.95
+    let n = len(m.xs)
+    clear(tx)
+    clear(ty)
+    clear(tz)
+    clear(sx)
+    clear(sy)
+    for i in 0..n {
+        let x = m.xs[i]
+        let y = m.ys[i]
+        let z = m.zs[i]
+        // Round the vertical axis, then round the horizontal one, then
+        // push the whole thing away from the camera.
+        let x1 = x * cy + z * sn
+        let z1 = z * cy - x * sn
+        let y2 = y * cp - z1 * sp
+        let z2 = y * sp + z1 * cp + dist
+        push(tx, x1)
+        push(ty, y2)
+        push(tz, z2)
+        push(sx, float(W / 2) + x1 * focal / z2)
+        push(sy, float(H / 2) - y2 * focal / z2)
+    }
+
+    // ---- keep the faces that face us, far ones first ----
+    let faces = len(m.a)
+    clear(depth)
+    let order: []int = []
+    for t in 0..faces {
+        let i = m.a[t]
+        // The normal turned the same way as the corners.
+        let nx = m.nx[t]
+        let ny = m.ny[t]
+        let nz = m.nz[t]
+        let nx1 = nx * cy + nz * sn
+        let nz1 = nz * cy - nx * sn
+        let ny2 = ny * cp - nz1 * sp
+        let nz2 = ny * sp + nz1 * cp
+        // Facing us when it points back along the line from the camera
+        // to the face.
+        let facing = nx1 * tx[i] + ny2 * ty[i] + nz2 * tz[i]
+        push(depth, tz[i] + tz[m.b[t]] + tz[m.c[t]])
+        if facing < 0.0 {
+            push(order, t)
+        }
+    }
+    let sorted = sortBy(order, fn(p: int, q: int) -> bool { return depth[p] > depth[q] })
+
+    // ---- paint ----
+    win.clear(w, bg)
+    let base = (shape - 1) * 2
+    for t in sorted {
+        let i = m.a[t]
+        let j = m.b[t]
+        let k = m.c[t]
+        let nx = m.nx[t]
+        let ny = m.ny[t]
+        let nz = m.nz[t]
+        let nx1 = nx * cy + nz * sn
+        let nz1 = nz * cy - nx * sn
+        let ny2 = ny * cp - nz1 * sp
+        let nz2 = ny * sp + nz1 * cp
+        let light = nx1 * lx + ny2 * ly + nz2 * lz
+        if light < 0.0 {
+            light = 0.0
+        }
+        let pal = palette[base + m.tone[t]]
+        let colour = shade(pal[0], pal[1], pal[2], 0.16 + 0.84 * light)
+        fillTri(w, sx[i], sy[i], sx[j], sy[j], sx[k], sy[k], colour)
+        if wire {
+            win.line(w, round(sx[i]), round(sy[i]), round(sx[j]), round(sy[j]), edge)
+            win.line(w, round(sx[j]), round(sy[j]), round(sx[k]), round(sy[k]), edge)
+            win.line(w, round(sx[k]), round(sy[k]), round(sx[i]), round(sy[i]), edge)
+        }
+    }
+    drawMs = time.millis() - started
+
+    // ---- the corner text ----
+    frames += 1
+    let now = time.millis()
+    if now - mark >= 500 {
+        fps = frames * 1000 / (now - mark)
+        frames = 0
+        mark = now
+    }
+    win.text(w, 16, 14, "{m.name}   {len(sorted)} of {faces} triangles drawn   {fps} fps   {drawMs} ms a frame", text)
+    win.text(w, 16, H - 30, "1-4 shape   arrows turn   W/S zoom   F wireframe   space spin   esc quit", dim)
+
+    win.present(w)
+    sleep(1)
+}
+win.close(w)
