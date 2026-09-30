@@ -91,3 +91,33 @@ func itoa64(v int64) string {
 	}
 	return itoa64(v/10) + string(rune('0'+v%10))
 }
+
+func TestNewChecks(t *testing.T) {
+	ok := `
+extern struct V { x: f32, y: f32 }
+let a = new V
+let b = new V{x: 1}
+let c = new [4]V
+let d = new i32
+let e = new [16]u8
+let f = new *V
+let g: *V = b
+let n: u32 = 3
+let h = new [n]i32
+`
+	if errs := checked(t, ok); len(errs) > 0 {
+		t.Fatalf("errors: %v", errs)
+	}
+	bad := []struct{ src, want string }{
+		{"struct P { x: int }\nlet p = new P", "is a Veyl struct"},
+		{"let p = new str", "new allocates C memory"},
+		{"let p = new [1.5]u8", "must be an integer"},
+		{"extern struct V { x: f32 }\nlet p = new V{y: 1}", "no field"},
+	}
+	for _, b := range bad {
+		errs := strings.Join(checked(t, b.src), "\n")
+		if !strings.Contains(errs, b.want) {
+			t.Errorf("%q: want an error containing %q, got %q", b.src, b.want, errs)
+		}
+	}
+}

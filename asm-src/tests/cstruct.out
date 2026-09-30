@@ -1,0 +1,17 @@
+Vec3 12, Packet 40
+kind 0 id 4 flags 8
+stamp 16 pos 24 ok 36
+Packet{kind: 0, id: 0, flags: 0, stamp: 0, pos: Vec3{x: 0, y: 0, z: 0}, ok: false}
+Packet{kind: 0, id: 4000000000, flags: 0, stamp: 18446744073709551615, pos: Vec3{x: 0, y: 2.5, z: 0}, ok: true}
+14
+Vec3{x: 0.5, y: 1, z: 1.5}
+4
+Vec3{x: 0.5, y: 1, z: 1.5}
+25.5
+42
+250 1
+Vec3{x: 1, y: 1.6666667, z: 0}
+Vec3{x: 1, y: 1, z: 9}
+true
+100
+freed

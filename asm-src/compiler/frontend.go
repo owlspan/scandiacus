@@ -72,6 +72,7 @@ type (
 	WhileStmt    = front.WhileStmt
 	Widen        = front.Widen
 	Convert      = front.Convert
+	NewExpr      = front.NewExpr
 )
 
 const TagField = front.TagField

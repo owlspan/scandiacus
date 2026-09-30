@@ -1335,6 +1335,9 @@ func (l *lowerer) coerce(v Reg, want vty) (Reg, bool) {
 		return v, true
 	case want.null && have.eq(vNil):
 		return l.nilValue(want), true
+	case isPtr(want) && have.eq(vNil):
+		// nil is the null pointer.
+		return l.retype(v, want), true
 	case want.null && have.eq(want.notNull()):
 		// The checker normally marks this with a Widen; a position it
 		// does not reach gets the same boxing here rather than a
@@ -2762,6 +2765,9 @@ func (l *lowerer) expr(e Expr) Reg {
 
 	case *Widen:
 		return l.widen(x)
+
+	case *NewExpr:
+		return l.newExpr(x)
 
 	case *Convert:
 		// An untyped literal the checker fitted to a fixed-width type,

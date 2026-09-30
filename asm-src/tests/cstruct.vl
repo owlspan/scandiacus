@@ -1,0 +1,136 @@
+// C-layout structs as ordinary types: allocated with new, freed with
+// delete, used through pointers, in functions, fields, lists and maps,
+// with methods, and laid out exactly as a C compiler would.
+
+extern struct Vec3 {
+    x: f32
+    y: f32
+    z: f32
+}
+
+impl Vec3 {
+    fn dot(self, o: Vec3) -> f32 {
+        return self.x * o.x + self.y * o.y + self.z * o.z
+    }
+    fn scale(self, k: f32) {
+        self.x *= k
+        self.y *= k
+        self.z *= k
+    }
+}
+
+// Layout: each field at a multiple of its own size, the whole padded to
+// its largest.
+extern struct Packet {
+    kind: u8
+    id: u32
+    flags: u16
+    stamp: u64
+    pos: Vec3
+    ok: bool
+}
+print("Vec3 {Vec3.size}, Packet {Packet.size}")
+let pk = new Packet
+let base = pk as int
+print("kind {(&pk.kind as int) - base} id {(&pk.id as int) - base} flags {(&pk.flags as int) - base}")
+print("stamp {(&pk.stamp as int) - base} pos {(&pk.pos as int) - base} ok {(&pk.ok as int) - base}")
+
+// new zeroes, and fills in the fields a literal names.
+print(*pk)
+pk.id = 4000000000
+pk.stamp = 0xFFFFFFFFFFFFFFFF
+pk.pos.y = 2.5
+pk.ok = true
+print(*pk)
+delete(pk)
+
+let v = new Vec3{x: 1, y: 2, z: 3}
+print(v.dot(*v))
+v.scale(0.5)
+print(*v)
+
+// An array of them: new [n]T, indexed, stepped through, copied into.
+let n = 4
+let pts = new [n]Vec3
+for i in 0..n {
+    pts[i].x = f32(i)
+    pts[i].y = f32(i * i)
+}
+let third = pts + 2
+print(third.y)
+pts[3] = *v
+print(pts[3])
+let total: f32 = 0
+for i in 0..n {
+    total += pts[i].dot(pts[i])
+}
+print(total)
+
+// Scalars and buffers too.
+let count = new i32
+*count = 7
+*count *= 6
+print(*count)
+let bytes = new [8]u8
+for i in 0..8 {
+    bytes[i] = u8(250 + i)
+}
+print("{bytes[0]} {bytes[7]}")
+
+// Functions take and return pointers to them.
+fn centroid(ps: *Vec3, count: int) -> *Vec3 {
+    let c = new Vec3
+    for i in 0..count {
+        c.x += ps[i].x
+        c.y += ps[i].y
+    }
+    c.scale(1.0 / f32(count))
+    return c
+}
+let c = centroid(pts, 3)
+print(*c)
+delete(c)
+
+// Held by ordinary Veyl values: a struct field, a list, a map.
+struct Body {
+    name: str
+    at: *Vec3
+}
+let bodies: []Body = []
+for i in 0..3 {
+    push(bodies, Body{name: "b{i}", at: pts + i})
+}
+let byName: {str: *Vec3} = {}
+for b in bodies {
+    byName[b.name] = b.at
+}
+byName["b1"].z = 9
+print(pts[1])
+print(bodies[1].at == pts + 1)
+
+// A linked list in C memory, built and freed by hand.
+extern struct Node {
+    value: i32
+    next: *Node
+}
+let head: *Node = nil
+for i in 0..5 {
+    let nd = new Node{value: i32(i * 10)}
+    nd.next = head
+    head = nd
+}
+let sum = 0
+let cur = head
+while cur != nil {
+    sum += int(cur.value)
+    let next = cur.next
+    delete(cur)
+    cur = next
+}
+print(sum)
+
+delete(pts)
+delete(v)
+delete(count)
+delete(bytes)
+print("freed")

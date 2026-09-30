@@ -496,6 +496,9 @@ func (l *lowerer) methodCall(fld *Field) (recv string, isMethod bool) {
 			}
 			t = ct
 		}
+		if s := l.ptrStruct(t); s != "" {
+			t = vStructOf(s)
+		}
 		if t.k != kStruct {
 			return "", false
 		}
@@ -511,6 +514,9 @@ func (l *lowerer) methodCall(fld *Field) (recv string, isMethod bool) {
 	switch fld.X.(type) {
 	case *Field, *Index, *Call, *StructLit:
 		t, ok := l.staticTypeOf(fld.X)
+		if s := l.ptrStruct(t); ok && s != "" {
+			t = vStructOf(s)
+		}
 		if !ok || t.k != kStruct {
 			return "", false
 		}
@@ -538,6 +544,9 @@ func (l *lowerer) staticTypeOf(e Expr) (vty, bool) {
 		return l.slotTy[slot], true
 	case *Field:
 		base, ok := l.staticTypeOf(x.X)
+		if s := l.ptrStruct(base); ok && s != "" {
+			base = vStructOf(s)
+		}
 		if !ok || base.k != kStruct {
 			return vVoid, false
 		}
@@ -553,6 +562,9 @@ func (l *lowerer) staticTypeOf(e Expr) (vty, bool) {
 		return vVoid, false
 	case *Index:
 		base, ok := l.staticTypeOf(x.X)
+		if s := l.ptrStruct(base); ok && s != "" {
+			return vStructOf(s), true
+		}
 		if !ok || (base.k != kList && base.k != kMap) {
 			return vVoid, false
 		}

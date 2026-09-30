@@ -172,6 +172,17 @@ type Convert struct {
 	T *Type
 }
 
+// NewExpr is `new T`, `new T{...}` or `new [n]T`: zeroed memory with a
+// C layout, from the C heap, freed with delete. See cstruct.go.
+type NewExpr struct {
+	Span
+	Type  string     // T as written
+	Count Expr       // n in new [n]T, or nil for one
+	Lit   *StructLit // the fields in new T{...}, or nil
+	T     *Type      // the pointer type produced, set by the checker
+	Elem  *Type      // T itself, set by the checker
+}
+
 type Unary struct {
 	Span
 	Op Kind // BANG, MINUS, TILDE, STAR (read through a pointer) or AMP (address of)
@@ -318,6 +329,7 @@ func (*Field) exprNode()    {}
 func (*NilLit) exprNode()   {}
 func (*Widen) exprNode()    {}
 func (*Convert) exprNode()  {}
+func (*NewExpr) exprNode()  {}
 func (*ListLit) exprNode()  {}
 func (*MapLit) exprNode()   {}
 func (*Index) exprNode()    {}

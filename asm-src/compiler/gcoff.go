@@ -32,13 +32,19 @@ func (l *lowerer) deleteValue(c *Call) Reg {
 		l.errorAt(c, "delete takes one value, got %d", len(c.Args))
 		return l.void()
 	}
-	if !l.gcOff {
-		l.errorAt(c, "delete is for a program that manages its own memory - put gc off at the top of "+
-			"the file, or leave freeing to the collector")
-		return l.void()
-	}
 	v := l.expr(c.Args[0])
 	t := l.regTy[v]
+	// A pointer is memory from new, which is the C heap's in any
+	// program, collected or not; see cstruct.go.
+	if isPtr(t) {
+		l.freePointer(v)
+		return l.void()
+	}
+	if !l.gcOff {
+		l.errorAt(c, "delete is for a program that manages its own memory - put gc off at the top of "+
+			"the file, or leave freeing to the collector - or, for memory from new, a pointer")
+		return l.void()
+	}
 	switch {
 	case t.null || t.res || t.k == kFunc || l.isView(t):
 		l.errorAt(c.Args[0], "delete frees a list, map, struct, string or bytes, not %s", t)

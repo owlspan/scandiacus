@@ -1286,6 +1286,15 @@ func (p *Parser) parsePrimary() Expr {
 		return &NilLit{Span: at(t)}
 
 	case IDENT:
+		// new T, new T{...}, new [n]T. `new` is only a keyword here, in
+		// front of a type, so atomic.new(0) and a variable called new
+		// are untouched.
+		if t.Lex == "new" {
+			switch p.peekKind(1) {
+			case IDENT, STAR, LBRACKET:
+				return p.parseNew()
+			}
+		}
 		p.advance()
 		if p.check(LT) {
 			if args, ok := p.tryTypeArgs(); ok {
@@ -1327,6 +1336,30 @@ func (p *Parser) parsePrimary() Expr {
 	p.errorAt(t, "expected an expression, found %s", describe(t))
 	p.advance()
 	return &StrLit{Span: at(t), Val: ""} // placeholder so later passes don't nil-panic
+}
+
+// parseNew reads what follows `new`.
+func (p *Parser) parseNew() Expr {
+	kw := p.advance()
+	n := &NewExpr{Span: at(kw)}
+	if lb := p.cur(); p.match(LBRACKET) {
+		p.skipNewlines()
+		n.Count = p.grouped(func() Expr { return p.parseExpr(0) })
+		p.skipNewlines()
+		p.expectClose(RBRACKET, lb, "']'", "new [n]T")
+		n.Type = p.parseTypeRef()
+		return n
+	}
+	if p.check(IDENT) && p.peekKind(1) == LBRACE && p.noBrace == 0 {
+		name := p.advance()
+		if lit, ok := p.parseStructLit(&Ident{Span: at(name), Name: name.Lex}).(*StructLit); ok {
+			n.Lit = lit
+		}
+		n.Type = name.Lex
+		return n
+	}
+	n.Type = p.parseTypeRef()
+	return n
 }
 
 // isStructLitTarget reports whether `x {` should be read as a struct
@@ -1547,6 +1580,13 @@ func reanchor(e Expr, at Span) {
 		reanchor(x.X, at)
 	case *Cast:
 		reanchor(x.X, at)
+	case *NewExpr:
+		if x.Count != nil {
+			reanchor(x.Count, at)
+		}
+		if x.Lit != nil {
+			reanchor(x.Lit, at)
+		}
 	case *Binary:
 		reanchor(x.L, at)
 		reanchor(x.R, at)

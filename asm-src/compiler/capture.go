@@ -169,6 +169,14 @@ func (w *capWalk) expr(e Expr) {
 	case *Cast:
 		w.expr(x.X)
 
+	case *NewExpr:
+		if x.Count != nil {
+			w.expr(x.Count)
+		}
+		if x.Lit != nil {
+			w.expr(x.Lit)
+		}
+
 	case *Binary:
 		w.expr(x.L)
 		w.expr(x.R)
@@ -303,6 +311,13 @@ func captureExpr(e Expr, out map[string]bool) {
 		captureExpr(x.X, out)
 	case *Cast:
 		captureExpr(x.X, out)
+	case *NewExpr:
+		if x.Count != nil {
+			captureExpr(x.Count, out)
+		}
+		if x.Lit != nil {
+			captureExpr(x.Lit, out)
+		}
 	case *Binary:
 		captureExpr(x.L, out)
 		captureExpr(x.R, out)

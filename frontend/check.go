@@ -1047,6 +1047,9 @@ func (c *Checker) expr(e Expr) *Type {
 	case *Convert:
 		return x.T
 
+	case *NewExpr:
+		return c.newExpr(x)
+
 	case *IntLit:
 		return Int
 
@@ -2048,6 +2051,12 @@ func (c *Checker) receiverType(fld *Field) *Type {
 	t := c.expr(fld.X)
 	if t.Kind == KStruct {
 		return t
+	}
+	// A method is called through a pointer to a C struct the way C++
+	// calls one through ->: the pointer is the struct's address, which
+	// is all the method's self is.
+	if t.IsPtr() && t.Elem != nil && c.isExternStruct(t.Elem) {
+		return t.Elem
 	}
 	return nil
 }
