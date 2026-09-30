@@ -3,6 +3,26 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.40.0
+
+**proc: process memory.** A library over the standard Windows debugging
+calls - OpenProcess, ReadProcessMemory, WriteProcessMemory - the
+surface a debugger or profiler uses. `proc.current()` and `proc.pid()`
+for the running process, `proc.open(pid)` / `proc.close(h)` for another
+by id, `proc.read(h, addr, n)` and `proc.write(h, addr, data)` for raw
+bytes, `proc.readU8` / `readI32` / `readI64` and `writeI32` / `writeI64`
+for typed access, and `proc.scan(h, start, size, pattern)` for a byte
+pattern with `??` wildcards.
+
+It is written in Veyl on top of `mem.symbol` and `mem.call`, so it adds
+no import-table plumbing. A call the operating system refuses comes back
+`0`, an empty `bytes`, or `-1`, never a crash, so a scan over a range
+does not have to know in advance which parts are readable.
+
+Listing a process's modules and threads, and finding one by name, are
+not here yet; the toolhelp calls still go through `extern`, as in
+`examples/ffi/memreader.vl`.
+
 ## 0.39.0
 
 Memory and types, the ground C++-style programs stand on.

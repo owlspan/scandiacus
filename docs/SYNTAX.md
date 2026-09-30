@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.39.0** - the language as currently implemented.
+**Version 0.40.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -27,10 +27,11 @@ runtime to install, and building one needs nothing but `veyl.exe`.
 12. [Functions](#functions)
 13. [Builtin library](#builtin-library)
 14. [Native functions (`extern`)](#native-functions-extern)
-15. [`win` - windows, drawing and input](#win---windows-drawing-and-input)
-16. [Reserved words](#reserved-words)
-17. [Compiler commands](#compiler-commands)
-18. [Known limitations](#known-limitations)
+15. [`proc` - process memory](#proc---process-memory)
+16. [`win` - windows, drawing and input](#win---windows-drawing-and-input)
+17. [Reserved words](#reserved-words)
+18. [Compiler commands](#compiler-commands)
+19. [Known limitations](#known-limitations)
 
 ---
 
@@ -3167,6 +3168,68 @@ A DLL does not change the host's console, and a failed `must` or an
 
 ---
 
+## `proc` - process memory
+
+The `proc` library reads and writes another process's memory through
+the standard Windows debugging calls - the same ones a debugger, a
+profiler or a memory-inspection tool uses. It is built on `mem.symbol`
+and `mem.call`, so it needs nothing declared with `extern`.
+
+| Function | Returns | Description |
+| --- | --- | --- |
+| `proc.current()` | `int` | a handle to the running process itself |
+| `proc.pid()` | `int` | the running process's id |
+| `proc.open(pid)` | `int` | a handle to another process for reading and writing, or `0` if it cannot be opened |
+| `proc.close(h)` | `bool` | close a handle from `proc.open` |
+| `proc.read(h, addr, n)` | `bytes` | `n` bytes at `addr`, or an empty `bytes` if the read failed |
+| `proc.write(h, addr, data)` | `int` | write a `bytes`, returning how many bytes were written |
+| `proc.readU8(h, addr)` | `int` | one byte, 0 to 255 |
+| `proc.readI32(h, addr)` | `int` | four bytes, signed |
+| `proc.readI64(h, addr)` | `int` | eight bytes |
+| `proc.writeI32(h, addr, v)` | `bool` | write four bytes |
+| `proc.writeI64(h, addr, v)` | `bool` | write eight bytes |
+| `proc.scan(h, start, size, pattern)` | `int` | the address of the first match of a byte pattern in `[start, start+size)`, or `-1` |
+
+`proc.open` needs the same rights the target runs with: a process
+owned by another user, or one running as administrator, needs this
+program to be as well, and returns `0` otherwise. A handle from
+`proc.open` is closed with `proc.close`; the one from `proc.current`
+is not.
+
+```veyl
+let h = proc.current()
+let cell = mem.alloc(8)
+
+proc.writeI32(h, cell, 1000)
+print(proc.readI32(h, cell))         // 1000
+
+proc.write(h, cell, must(bytes.fromHex("deadbeef")))
+print(bytes.hex(proc.read(h, cell, 4)))   // deadbeef
+mem.free(cell)
+```
+
+A read that fails - an address that is not mapped, or a handle without
+the rights - comes back empty rather than stopping the program, so a
+scan over a range does not have to know in advance which parts are
+readable. `proc.scan` takes a byte pattern in hex separated by spaces,
+with `??` matching any byte, the same form `mem.scan` takes:
+
+```veyl
+let at = proc.scan(h, region, 0x1000, "90 48 8B ?? ??")
+if at != -1 {
+    print(proc.readU8(h, at))         // 144, the 0x90
+}
+```
+
+Opening another process is the same handle in every call:
+`proc.open(pid)` for a pid, then `proc.read`, `proc.write` and
+`proc.scan` on the handle it returns, and `proc.close` at the end.
+Listing a process's modules and threads, and finding one by name, are
+planned; today the Windows toolhelp calls do it through `extern`, as in
+`examples/ffi/memreader.vl`.
+
+---
+
 ## `win` - windows, drawing and input
 
 Veyl opens a real window you can draw in. The shape is a **game loop**:
@@ -3539,7 +3602,7 @@ checker, so it is only reported once every type error is fixed.
 
 ## Known limitations
 
-Honest list of what v0.39.0 does not do yet.
+Honest list of what v0.40.0 does not do yet.
 
 **The language**
 
@@ -3558,6 +3621,10 @@ Honest list of what v0.39.0 does not do yet.
 - **An escaping address is caught within one function.** Passing
   `&x` to a function that keeps it, or smuggling it out as an `int`
   through something the compiler cannot follow, is not detected.
+- **`proc` reads and writes memory but does not enumerate.** Listing a
+  process's modules and threads, or finding one by name, still goes
+  through the Windows toolhelp calls with `extern`, as in
+  `examples/ffi/memreader.vl`.
 - **A missing map key is silent.** `m["absent"]` returns the zero
   value. `has()` and `find()` distinguish it; the bare index was left
   alone because making every map read return `?V` would mean a nil
