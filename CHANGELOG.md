@@ -3,6 +3,18 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.38.0
+
+**Pixels as memory.** `win.pixels(w)` returns a window's or canvas's
+back buffer as a `*u32`, one `0x00RRGGBB` per pixel, so a program can
+draw pixel by pixel at the speed of writing memory rather than one
+call into Windows per line. GDI drawing - text, lines, images - still
+works on the same pixels.
+
+`examples/gui/render3d.vl` is a software 3D renderer built on it: four
+shapes, flat shading, a depth buffer, delta time, several hundred
+frames a second.
+
 ## 0.37.0
 
 Smaller and faster executables. Nothing a program means has changed.
