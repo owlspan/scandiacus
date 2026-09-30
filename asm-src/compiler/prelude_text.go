@@ -401,6 +401,12 @@ fn __vy_isFloat(s: str) -> bool {
 // "?" matching any byte - the form every disassembler and memory tool
 // prints, so one copied from them works as it is.
 fn __vy_memScan(start: int, size: int, pattern: str) -> int {
+    return __vy_scanFrom(start, size, __vy_scanPattern(pattern))
+}
+
+// A pattern as one int a byte, -1 for a wildcard. Parsed apart from the
+// search so that a caller scanning many ranges parses it once.
+fn __vy_scanPattern(pattern: str) -> []int {
     let want: []int = []
     for part in split(trim(pattern), " ") {
         if part == "" {
@@ -416,6 +422,10 @@ fn __vy_memScan(start: int, size: int, pattern: str) -> int {
         }
         push(want, valueOr(b, 0))
     }
+    return want
+}
+
+fn __vy_scanFrom(start: int, size: int, want: []int) -> int {
     let m = len(want)
     if m == 0 {
         return start

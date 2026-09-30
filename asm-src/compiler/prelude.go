@@ -83,6 +83,15 @@ var preludeOf = map[string]string{
 	"proc.writeI32": "__vy_procWriteI32",
 	"proc.writeI64": "__vy_procWriteI64",
 	"proc.scan":     "__vy_procScan",
+	"proc.pids":     "__vy_procPids",
+	"proc.name":     "__vy_procName",
+	"proc.parent":   "__vy_procParent",
+	"proc.find":     "__vy_procFind",
+	"proc.modules":  "__vy_procModules",
+	"proc.base":     "__vy_procBase",
+	"proc.threads":  "__vy_procThreads",
+	"proc.regions":  "__vy_procRegions",
+	"proc.scanAll":  "__vy_procScanAll",
 	"bits.length":   "__vy_bitsLength",
 	"bits.leading":  "__vy_bitsLeading",
 	"bits.trailing": "__vy_bitsTrailing",
@@ -345,10 +354,18 @@ func addPrelude(prog *Program, sources []string) []string {
 	// Unconditionally would reserve `Request` and `Response` in every
 	// program that so much as calls sin, and a user's own struct of
 	// that name would collide with one they never asked for.
+	//
+	// A program that declares a struct of the same name itself means
+	// its own by it, so there the name in its source says nothing; only
+	// a folded-in function that needs the prelude's brings it in.
+	own := map[string]bool{}
+	for _, s := range prog.Structs {
+		own[s.Name] = true
+	}
 	for _, s := range pre.Structs {
 		named := false
 		for _, src := range sources {
-			if mentions(src, s.Name) {
+			if !own[s.Name] && mentions(src, s.Name) {
 				named = true
 				break
 			}
@@ -419,6 +436,14 @@ func preludeChunks() map[string]string {
 			}
 		}
 		for _, line := range lines {
+			// A struct ends the function above it without starting
+			// one, so that function is not taken to mention the
+			// struct's name and drag it into every program.
+			if strings.HasPrefix(line, "struct ") {
+				flush()
+				name = ""
+				body = nil
+			}
 			if strings.HasPrefix(line, "fn ") {
 				flush()
 				rest := line[3:]

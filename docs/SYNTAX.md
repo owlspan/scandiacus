@@ -3224,9 +3224,66 @@ if at != -1 {
 Opening another process is the same handle in every call:
 `proc.open(pid)` for a pid, then `proc.read`, `proc.write` and
 `proc.scan` on the handle it returns, and `proc.close` at the end.
-Listing a process's modules and threads, and finding one by name, are
-planned; today the Windows toolhelp calls do it through `extern`, as in
-`examples/ffi/memreader.vl`.
+
+### Listing processes, modules, threads and regions
+
+| Function | Returns | Description |
+| --- | --- | --- |
+| `proc.pids()` | `[]int` | the id of every running process |
+| `proc.name(pid)` | `str` | a process's executable name, `""` if it is not running |
+| `proc.parent(pid)` | `int` | the pid of the process that started it, or `0` |
+| `proc.find(name)` | `int` | the pid of the first process with that executable name, ignoring case, or `0` |
+| `proc.modules(pid)` | `[]ProcModule` | the executable and DLLs loaded in a process, the executable first |
+| `proc.base(pid, name)` | `int` | where a module is loaded, or `0`; `""` means the executable |
+| `proc.threads(pid)` | `[]int` | the id of every thread of a process |
+| `proc.regions(h)` | `[]ProcRegion` | the committed regions of a process's address space, lowest first |
+| `proc.scanAll(h, pattern)` | `[]int` | the address of every match of a byte pattern in the readable memory of a process |
+
+A pid of `0` in `proc.modules`, `proc.base` and `proc.threads` means
+the running process. `proc.regions` and `proc.scanAll` take a handle,
+from `proc.open` or `proc.current`, because they read the process
+rather than ask the system about it.
+
+A `ProcModule` has `name` (`"kernel32.dll"`), `path` (the full path of
+the file), `base` and `size`. A `ProcRegion` has `base`, `size`,
+`protect` (the Windows page protection, such as `0x04` for read-write),
+`kind` (`0x1000000` an image, `0x40000` a mapped file, `0x20000`
+private memory) and three bools worked out from the protection:
+`readable`, `writable` and `executable`. Both are ordinary structs; a
+program that uses these calls cannot declare a struct of its own with
+either name.
+
+```veyl
+let pid = proc.find("notepad.exe")
+if pid == 0 {
+    print("notepad is not running")
+    exit(1)
+}
+for m in proc.modules(pid) {
+    print("{bits.toBase(m.base, 16)}  {m.size}  {m.name}")
+}
+
+let h = proc.open(pid)
+let total = 0
+for r in proc.regions(h) {
+    if r.writable {
+        total += r.size
+    }
+}
+print("{total} bytes of writable memory in {len(proc.threads(pid))} threads")
+proc.close(h)
+```
+
+A process that cannot be looked into gives an empty list or a `0`, the
+same rights question as `proc.open`. A module list of a process that is
+loading a DLL at that moment is retried rather than reported empty.
+
+`proc.scanAll` walks the readable regions and reads each a megabyte at
+a time, so it needs no start or size and a match lying across two
+reads is still found. Scanning the running process itself also finds
+the scanner's own working copy of whatever it just read; scanning
+another process does not have that echo. Names are read in the system
+code page, so a name with characters outside it comes back altered.
 
 ---
 
@@ -3621,10 +3678,10 @@ Honest list of what v0.40.0 does not do yet.
 - **An escaping address is caught within one function.** Passing
   `&x` to a function that keeps it, or smuggling it out as an `int`
   through something the compiler cannot follow, is not detected.
-- **`proc` reads and writes memory but does not enumerate.** Listing a
-  process's modules and threads, or finding one by name, still goes
-  through the Windows toolhelp calls with `extern`, as in
-  `examples/ffi/memreader.vl`.
+- **`proc` names are in the system code page.** A process or module
+  name with characters outside it comes back altered. There is also no
+  call yet to suspend a thread or read its registers; those still go
+  through `extern`.
 - **A missing map key is silent.** `m["absent"]` returns the zero
   value. `has()` and `find()` distinguish it; the bare index was left
   alone because making every map read return `?V` would mean a nil

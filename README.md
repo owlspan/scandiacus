@@ -133,7 +133,8 @@ pipeline:
 - `&x` on a local variable, for native out-parameters, with the
   compiler refusing an address that would outlive its function
 - `proc`: read and write another process's memory - open, read, write,
-  typed reads and writes, and a pattern scan
+  typed reads and writes, and a pattern scan - and list processes,
+  their modules, threads and memory regions
 
 - `input`, `pause`, `toFloat`, `isFloat`, `count`, `padLeft` and
   `padRight`, and the constants `INF` and `NAN`, with comparisons that

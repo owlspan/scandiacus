@@ -1,0 +1,114 @@
+// proc: listing processes, modules, threads and memory regions. As in
+// proc.vl the subject is the running process itself, so every answer
+// can be checked against something the program already knows.
+
+fn holds(xs: []int, v: int) -> bool {
+    for x in xs {
+        if x == v {
+            return true
+        }
+    }
+    return false
+}
+
+let me = proc.pid()
+let h = proc.current()
+
+// Processes. This one is in the list, has a name and a parent, and is
+// found again by that name.
+let ids = proc.pids()
+print(len(ids) > 1)
+print(holds(ids, me))
+let exe = proc.name(me)
+print(endsWith(lower(exe), ".exe"))
+print(proc.name(proc.find(upper(exe))) == exe)
+print(proc.parent(me) > 0)
+print(proc.name(0x7FFFFFF0) == "")
+print(proc.find("no-such-program-here.exe"))
+print(proc.parent(0x7FFFFFF0))
+
+// Modules. The executable comes first; kernel32 is where the loader
+// says it is; pid 0 and the process's own pid give the same list.
+let mods = proc.modules(0)
+print(len(mods) >= 2)
+print(lower(mods[0].name) == lower(exe))
+print(endsWith(lower(mods[0].path), lower(exe)))
+print(mods[0].base == proc.base(0, ""))
+print(mods[0].size > 0)
+let k32 = mem.call(mem.symbol("kernel32.dll", "GetModuleHandleA"), "kernel32.dll")
+print(k32 != 0)
+print(proc.base(me, "KERNEL32.DLL") == k32)
+print(proc.base(0, "kernel32.dll") == k32)
+print(proc.base(0, "no-such-module.dll"))
+print(len(proc.modules(me)) == len(mods))
+print(len(proc.modules(0x7FFFFFF0)))
+
+// Threads. The one running this is among them.
+let tid = mem.call(mem.symbol("kernel32.dll", "GetCurrentThreadId"))
+print(holds(proc.threads(0), tid))
+print(holds(proc.threads(me), tid))
+print(len(proc.threads(0x7FFFFFF0)))
+
+// Regions come lowest first and do not overlap.
+let regions = proc.regions(h)
+print(len(regions) > 3)
+let ordered = true
+let last = 0
+for r in regions {
+    if r.base < last || r.size <= 0 {
+        ordered = false
+    }
+    last = r.base + r.size
+}
+print(ordered)
+
+// What each kind of address sits in: the heap is read-write data, the
+// code of a system function is executable and not writable.
+fn describe(regions: []ProcRegion, addr: int) -> str {
+    for r in regions {
+        if addr >= r.base && addr < r.base + r.size {
+            return "r={r.readable} w={r.writable} x={r.executable}"
+        }
+    }
+    return "not in any region"
+}
+
+let big = mem.alloc(0x300000)
+regions = proc.regions(h)
+print(describe(regions, big))
+print(describe(regions, mem.symbol("kernel32.dll", "GetModuleHandleA")))
+print(describe(regions, 8))
+
+// A scan of the whole process finds bytes wherever they are. The
+// pattern is put across the megabyte seam the scanner reads in, which
+// is the case a chunked read gets wrong if it does not overlap.
+let seam = 0
+for r in regions {
+    if big >= r.base && big < r.base + r.size {
+        seam = r.base + 0x100000 - 3
+    }
+}
+print(seam > big)
+mem.write8(seam, 0xC3)
+mem.write8(seam + 1, 0x5A)
+mem.write8(seam + 2, 0x11)
+mem.write8(seam + 3, 0xE7)
+mem.write8(seam + 4, 0x9D)
+mem.write8(seam + 5, 0x42)
+mem.write8(seam + 6, 0xB8)
+mem.write8(seam + 7, 0x06)
+print(holds(proc.scanAll(h, "C3 5A 11 E7 9D 42 B8 06"), seam))
+print(holds(proc.scanAll(h, "C3 5A ?? E7 9D ?? B8 06"), seam))
+
+// Two matches in one chunk are both reported.
+mem.copy(big + 64, seam, 8)
+let hits = proc.scanAll(h, "C3 5A 11 E7 9D 42 B8 06")
+print(holds(hits, seam) && holds(hits, big + 64))
+
+// Once the bytes are gone, so are the matches at those addresses.
+mem.fill(big, 0, 0x300000)
+hits = proc.scanAll(h, "C3 5A 11 E7 9D 42 B8 06")
+print(holds(hits, seam) || holds(hits, big + 64))
+print(len(proc.scanAll(h, "")))
+
+mem.free(big)
