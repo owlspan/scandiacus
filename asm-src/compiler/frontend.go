@@ -94,6 +94,7 @@ var (
 	OpText       = front.OpText
 	ParseType    = front.ParseType
 	CTypeSize    = front.CTypeSize
+	PtrToC       = front.PtrToC
 	Qual         = front.Qual
 	ResultOf     = front.ResultOf
 	StructOf     = front.StructOf

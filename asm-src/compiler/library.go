@@ -249,6 +249,7 @@ var sigs = map[string]front.Signature{
 	// Canvases, images, text measurement and sound; see winmedia.go.
 	"win.canvas": {Params: []*Type{Int, Int}, Ret: Int},
 	"win.pixel":  {Params: []*Type{Int, Int, Int}, Ret: Int},
+	"win.pixels": {Params: []*Type{Int}, Ret: PtrToC("u32")},
 	"win.image":  {Params: []*Type{Str}, Ret: ResultOf(Int)},
 	// Private to the prelude's win.image; see winmedia.go.
 	"__imageFromBMP":    {Params: []*Type{Str}, Ret: Int},

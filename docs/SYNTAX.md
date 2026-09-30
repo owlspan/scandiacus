@@ -3176,6 +3176,34 @@ print(win.pixel(c, 32, 32) == win.rgb(255, 255, 255))   // true
 `win.pixel` works on a window too, on what has been drawn since the
 last `present`.
 
+### Pixels
+
+`win.pixels(w)` is the back buffer of a window or canvas as memory: a
+`*u32`, one per pixel, rows top to bottom, `width * y + x` for the pixel
+at `x, y`. A pixel is `0x00RRGGBB` - note that this is not the order
+`win.rgb` uses, which is Windows' own `0x00BBGGRR`.
+
+```veyl
+let px = win.pixels(w)
+let W = win.width(w)
+for x in 0..W {
+    px[100 * W + x] = (255 << 16) | (200 << 8) | 0    // an orange line at y = 100
+}
+win.present(w)
+```
+
+Writing through the pointer is as fast as writing memory, which is
+what a renderer, an emulator or anything drawing many pixels a frame
+wants; every `win.line` or `win.rect` is a call into Windows. The two
+mix freely: `win.text` and the rest draw into the same pixels. GDI
+batches its drawing, so call `win.pixels` after the GDI calls whose
+result you want to read, since it flushes them first.
+
+Nothing checks the index. The buffer is replaced when a resizable
+window changes size, so take the pointer again each frame rather than
+keeping it. `examples/gui/render3d.vl` is a 3D renderer built on this,
+with a depth buffer of its own from `mem.alloc`.
+
 ### What it does not do yet
 
 No JPEG, and no interlaced or 16-bit PNG. One font, at the system

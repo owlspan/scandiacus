@@ -85,8 +85,9 @@ const (
 	winDownAt   = 64
 	winClickAt  = 72
 	winClosedAt = 80
-	winKeysAt   = 88 // 256 bytes, one per virtual key code
-	winBlockLen = winKeysAt + 256
+	winKeysAt   = 88              // 256 bytes, one per virtual key code
+	winBitsAt   = winKeysAt + 256 // the back buffer's pixels; see dibBuffer
+	winBlockLen = winBitsAt + 8
 )
 
 // user32 and gdi32, which the naming rule cannot place any better than
@@ -106,6 +107,7 @@ var gdi32Syms = []string{
 	"TextOutA", "SetTextColor", "SetBkMode", "Rectangle", "Ellipse",
 	"MoveToEx", "LineTo", "CreatePen", "GetStockObject",
 	"GetPixel", "GetObjectA", "StretchBlt", "CreateDIBSection", "GetTextExtentPoint32A",
+	"GdiFlush",
 }
 
 func (l *lowerer) winBuiltin(c *Call, name string) (Reg, bool) {
@@ -375,12 +377,7 @@ func (l *lowerer) winOpen(title, width, height Reg) Reg {
 		mem := l.ccall("CreateCompatibleDC", []Reg{dc}, []vty{vInt}, vInt, false, false)
 		l.emit(Instr{Op: OpStoreMem, A: w, B: mem, Imm: winMemDCAt})
 
-		bmp := l.ccall("CreateCompatibleBitmap", []Reg{dc, a[1], a[2]},
-			[]vty{vInt, vInt, vInt}, vInt, false, false)
-		l.emit(Instr{Op: OpStoreMem, A: w, B: bmp, Imm: winBitmapAt})
-		l.ccall("SelectObject", []Reg{mem, bmp}, []vty{vInt, vInt}, vInt, false, false)
-		l.ccall("SetBkMode", []Reg{mem, l.constant(transparentBk)},
-			[]vty{vInt, vInt}, vInt, true, false)
+		l.dibBuffer(w, mem, a[1], a[2])
 
 		l.ccall("ShowWindow", []Reg{hwnd, l.constant(swShow)},
 			[]vty{vInt, vInt}, vInt, true, false)
@@ -514,16 +511,10 @@ func (l *lowerer) winPoll(w Reg) Reg {
 			l.compare(OpGt, cw, l.constant(0)),
 			l.compare(OpGt, ch, l.constant(0))), Dst: NoReg, Imm: same})
 
-		l.ccall("DeleteObject", []Reg{l.field(win, winBitmapAt, vInt)},
-			[]vty{vInt}, vInt, true, false)
-		nb := l.ccall("CreateCompatibleBitmap",
-			[]Reg{l.field(win, winDCAt, vInt), cw, ch},
-			[]vty{vInt, vInt, vInt}, vInt, false, false)
-		l.emit(Instr{Op: OpStoreMem, A: win, B: nb, Imm: winBitmapAt})
-		l.ccall("SelectObject", []Reg{l.field(win, winMemDCAt, vInt), nb},
-			[]vty{vInt, vInt}, vInt, false, false)
-		l.ccall("SetBkMode", []Reg{l.field(win, winMemDCAt, vInt),
-			l.constant(transparentBk)}, []vty{vInt, vInt}, vInt, true, false)
+		// Out of the DC before it is deleted; a bitmap still selected
+		// into one is not freed.
+		old := l.dibBuffer(win, l.field(win, winMemDCAt, vInt), cw, ch)
+		l.ccall("DeleteObject", []Reg{old}, []vty{vInt}, vInt, true, false)
 		l.emit(Instr{Op: OpStoreMem, A: win, B: cw, Imm: winWidthAt})
 		l.emit(Instr{Op: OpStoreMem, A: win, B: ch, Imm: winHeightAt})
 

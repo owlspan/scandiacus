@@ -56,6 +56,17 @@ func (l *lowerer) mediaBuiltin(c *Call, name string) (Reg, bool) {
 		a := args(2)
 		return l.winCanvas(a[0], a[1]), true
 
+	case "win.pixels":
+		// GDI batches its drawing, so anything drawn with win.line and
+		// friends is flushed into the bits before they are handed over.
+		if !arity(1) {
+			return l.junk(), true
+		}
+		w := l.expr(c.Args[0])
+		l.ccall("GdiFlush", nil, nil, vInt, true, false)
+		p := l.field(w, winBitsAt, vInt)
+		return l.retype(p, vPtr("*u32")), true
+
 	case "win.pixel":
 		// GetPixel answers CLR_INVALID, all ones, outside the surface;
 		// read as a C int that is -1.
@@ -310,15 +321,27 @@ func (l *lowerer) winCanvas(width, height Reg) Reg {
 	mem := l.ccall("CreateCompatibleDC", []Reg{l.constant(0)}, []vty{vInt}, vInt, false, false)
 	l.emit(Instr{Op: OpStoreMem, A: w, B: mem, Imm: winMemDCAt})
 
-	bmi := l.bitmapInfo32(width, height)
-	bits := l.ptrPair()
-	bmp := l.ccall("CreateDIBSection",
-		[]Reg{mem, bmi, l.constant(0), bits, l.constant(0), l.constant(0)},
-		[]vty{vInt, vInt, vInt, vInt, vInt, vInt}, vInt, false, false)
-	l.emit(Instr{Op: OpStoreMem, A: w, B: bmp, Imm: winBitmapAt})
-	l.ccall("SelectObject", []Reg{mem, bmp}, []vty{vInt, vInt}, vInt, false, false)
-	l.ccall("SetBkMode", []Reg{mem, l.constant(transparentBk)}, []vty{vInt, vInt}, vInt, true, false)
+	l.dibBuffer(w, mem, width, height)
 	// A closed flag, so win.poll on a canvas answers false at once.
 	l.emit(Instr{Op: OpStoreMem, A: w, B: l.constant(1), Imm: winClosedAt})
 	return w
+}
+
+// dibBuffer makes a window's or a canvas's back buffer: a 32-bit
+// top-down DIB section selected into its memory DC. GDI draws into it
+// like any bitmap, and the pixels are also plain memory - one u32 a
+// pixel, 0x00RRGGBB, rows top to bottom - which win.pixels hands to the
+// program. It records the bitmap and the pixel address in the block,
+// and returns the bitmap that was selected before, for the caller to
+// delete when this replaces one.
+func (l *lowerer) dibBuffer(w, mem, width, height Reg) Reg {
+	bits := l.ptrPair()
+	bmp := l.ccall("CreateDIBSection",
+		[]Reg{mem, l.bitmapInfo32(width, height), l.constant(0), bits, l.constant(0), l.constant(0)},
+		[]vty{vInt, vInt, vInt, vInt, vInt, vInt}, vInt, false, false)
+	l.emit(Instr{Op: OpStoreMem, A: w, B: bmp, Imm: winBitmapAt})
+	l.emit(Instr{Op: OpStoreMem, A: w, B: l.loadPtr(bits), Imm: winBitsAt})
+	old := l.ccall("SelectObject", []Reg{mem, bmp}, []vty{vInt, vInt}, vInt, false, false)
+	l.ccall("SetBkMode", []Reg{mem, l.constant(transparentBk)}, []vty{vInt, vInt}, vInt, true, false)
+	return old
 }
