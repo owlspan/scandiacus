@@ -49,7 +49,7 @@ pl.hp -= 25
 pl.alive = true
 pl.pos.x = 1.5
 pl.pos.z = -2.0
-pl.ammo = 70000
+pl.ammo = u16(70000)
 mem.fill(pl.name, 66, 3)
 print(pl.hp)
 print(pl.ammo)
@@ -66,13 +66,13 @@ let v = Vec3{x: 1.0, y: 2.0, z: 3.0}
 pl.pos = v
 print(pl.pos)
 impl Vec3 {
-    fn len2(self) -> float {
+    fn len2(self) -> f32 {
         return self.x * self.x + self.y * self.y + self.z * self.z
     }
 }
 print(pl.pos.len2())
 fn heal(target: Player, amount: int) {
-    target.hp += amount
+    target.hp += i32(amount)
 }
 heal(pl, 9)
 print(pl.hp)

@@ -1,0 +1,20 @@
+""
+  crc32   00000000
+  adler32 00000001
+  fnv32   811c9dc5
+  fnv64   14695981039346656037
+"a"
+  crc32   e8b7be43
+  adler32 00620062
+  fnv32   e40c292c
+  fnv64   12638187200555641996
+"hello"
+  crc32   3610a686
+  adler32 062c0215
+  fnv32   4f9f2cab
+  fnv64   11831194018420276491
+"The quick brown fox jumps over the lazy dog"
+  crc32   414fa339
+  adler32 5bdc0fda
+  fnv32   048fff90
+  fnv64   17580284887202820368

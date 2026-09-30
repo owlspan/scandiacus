@@ -196,6 +196,10 @@ func Emit(m *Module) string {
 	e.b.WriteString("    .asciz \"%lld\"\n")
 	e.label("__fmt_str_raw")
 	e.b.WriteString("    .asciz \"%s\"\n")
+	e.label("__fmt_uint")
+	e.b.WriteString("    .asciz \"%llu\\n\"\n")
+	e.label("__fmt_uint_raw")
+	e.b.WriteString("    .asciz \"%llu\"\n")
 	e.label("__fmt_at")
 	e.b.WriteString("    .asciz \"    at %s\\n\"\n")
 	e.label("__fmt_bounds")
@@ -454,6 +458,12 @@ func (e *Emitter) function(f *Func) {
 				e.promoted[s] = r
 			}
 		}
+		// Nothing pooled is still the optimised emitter: a promoted
+		// float slot can only be stored to by the selector's movsd, and
+		// the plain translator would write "mov xmm6, rax".
+		if e.homes == nil {
+			e.homes = map[Reg]string{}
+		}
 	}
 	e.consts, e.dropConst = nil, nil
 	if e.homes != nil {
@@ -546,7 +556,7 @@ func (e *Emitter) instr(in Instr) {
 	if in.Comment != "" {
 		e.comment(in.Comment)
 	}
-	if e.selInstr(in) {
+	if e.selInstr(in) || e.emitFixed(in) {
 		return
 	}
 
@@ -1520,6 +1530,26 @@ __vy_inttostr:
     mov rsp, rbp
     pop rbp
     ret
+
+# The same for a u64, read unsigned.
+__vy_uinttostr:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 64
+    mov qword ptr [rbp-8], rcx
+    mov rcx, 24
+    mov rdx, 6144
+    call __vy_talloc
+    mov qword ptr [rbp-16], rax
+    mov rcx, rax
+    mov rdx, 24
+    lea r8, __fmt_uint_raw[rip]
+    mov r9, qword ptr [rbp-8]
+    call _snprintf
+    mov rax, qword ptr [rbp-16]
+    mov rsp, rbp
+    pop rbp
+    ret
 `)
 	}
 
@@ -1546,11 +1576,20 @@ __vy_inttostr:
 		// entirely, where there is exactly one storage location - the
 		// stack slot at [rsp+32] - so there is nothing to duplicate.
 		e.b.WriteString(`
+# An f32 is the same search, with the round trip judged at single
+# precision: the shortest decimal that reads back to the same f32, so
+# f32(0.1) prints as 0.1 and not as the double it is held in.
+__vy_f32tostr:
+    mov r10d, 1
+    jmp .Lftoa_entry
 __vy_floattostr:
+    xor r10d, r10d
+.Lftoa_entry:
     push rbp
     mov rbp, rsp
     sub rsp, 256
     movsd qword ptr [rbp-8], xmm0
+    mov dword ptr [rbp-32], r10d
     lea rax, [rbp-104]
     mov qword ptr [rbp-24], rax
     mov dword ptr [rbp-16], 1
@@ -1626,6 +1665,11 @@ __vy_floattostr:
     xor edx, edx
     call strtod
     movsd xmm1, qword ptr [rbp-8]
+    cmp dword ptr [rbp-32], 0
+    je .Lftoa_compare
+    cvtsd2ss xmm0, xmm0
+    cvtss2sd xmm0, xmm0
+.Lftoa_compare:
     ucomisd xmm0, xmm1
     je .Lftoa_found
     mov eax, dword ptr [rbp-16]

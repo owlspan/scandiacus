@@ -266,6 +266,14 @@ func (c *Checker) coerce(slot *Expr, want *Type, got *Type) bool {
 		}
 		got = t
 	}
+	// An untyped literal becomes the fixed-width value it names, if it
+	// fits; see fixed.go.
+	if w := innerScalar(want); w.IsFixed() && !got.IsFixed() && isUntypedConst(*slot, w) {
+		if !c.fitLiteral(slot, w) {
+			return true // reported
+		}
+		got = w
+	}
 	if !want.Accepts(got) && !(IsUntypedInt(*slot) && innerScalar(want).Kind == KFloat) {
 		return false
 	}
@@ -596,7 +604,7 @@ func externScalar(t *Type) bool {
 		return true
 	}
 	switch t.Kind {
-	case KInt, KFloat, KStr, KBool, KPtr:
+	case KInt, KFloat, KStr, KBool, KPtr, KFixed:
 		return true
 	}
 	return false
@@ -765,8 +773,15 @@ func (c *Checker) match(st *MatchStmt) {
 
 	seen := map[string]bool{}
 	for _, arm := range st.Cases {
-		for _, v := range arm.Values {
+		for vi, v := range arm.Values {
 			got := c.exprWant(v, subj)
+			if subj.IsFixed() && !got.IsFixed() && isUntypedConst(v, subj) {
+				if c.fitLiteral(&arm.Values[vi], subj) {
+					got = subj
+				} else {
+					continue
+				}
+			}
 			if !subj.Accepts(got) && !(IsUntypedInt(v) && subj.Kind == KFloat) {
 				c.ErrorAt(v, "this match is on %s, but this arm compares against %s", subj, got)
 				continue
@@ -905,6 +920,11 @@ func (c *Checker) checkCompound(st *AssignStmt, want, got *Type) {
 		return
 	}
 
+	if want.IsFixed() {
+		c.fixedCompound(st, op, want, got)
+		return
+	}
+
 	// The bitwise family and %= are int-only, like their binary forms.
 	switch op {
 	case PERCENT, AMP, PIPE, CARET, SHL, SHR:
@@ -921,6 +941,11 @@ func (c *Checker) checkCompound(st *AssignStmt, want, got *Type) {
 		if got.Kind != KStr && !got.IsUnknown() {
 			c.ErrorAt(st, "cannot append %s to %s, which is str", got, target)
 		}
+		return
+	}
+	if got.IsFixed() && want.IsNumeric() {
+		c.ErrorAt(st, "cannot apply %s with %s to %s, which is %s - convert it, as in %s(...)",
+			AssignOpText(st.Op), got, target, want, want)
 		return
 	}
 	if !want.IsNumeric() && !want.IsUnknown() {
@@ -1019,6 +1044,9 @@ func (c *Checker) expr(e Expr) *Type {
 		// Inserted by this pass; already checked when it was created.
 		return x.T
 
+	case *Convert:
+		return x.T
+
 	case *IntLit:
 		return Int
 
@@ -1101,13 +1129,16 @@ func (c *Checker) expr(e Expr) *Type {
 			return Bool
 		}
 		if x.Op == TILDE {
+			if t.IsFixedInt() {
+				return t
+			}
 			if t.Kind != KInt {
 				c.ErrorAt(x, "'~' needs an int, got %s", t)
 				return Unknown
 			}
 			return Int
 		}
-		if !t.IsNumeric() {
+		if !t.IsNumeric() && !t.IsFixed() {
 			c.ErrorAt(x, "'-' needs a number, got %s", t)
 			return Unknown
 		}
@@ -1514,7 +1545,7 @@ func (c *Checker) index(x *Index) *Type {
 		return Unknown
 
 	case collT.Kind == KList:
-		if !idxT.IsUnknown() && idxT.Kind != KInt {
+		if !idxT.IsUnknown() && !idxT.IsInteger() {
 			c.ErrorAt(x.Idx, "a list index must be int, got %s", idxT)
 		}
 		return collT.Elem
@@ -1526,7 +1557,7 @@ func (c *Checker) index(x *Index) *Type {
 		return collT.Elem
 
 	case collT.IsPtr():
-		if !idxT.IsUnknown() && idxT.Kind != KInt {
+		if !idxT.IsUnknown() && !idxT.IsInteger() {
 			c.ErrorAt(x.Idx, "a pointer index must be int, got %s", idxT)
 		}
 		return collT.Pointee()
@@ -1627,6 +1658,9 @@ func (c *Checker) binary(x *Binary) *Type {
 	}
 
 	if t, handled := c.ptrBinary(x, lt, rt); handled {
+		return t
+	}
+	if t, handled := c.fixedBinary(x, lt, rt); handled {
 		return t
 	}
 
@@ -2146,9 +2180,11 @@ var cTypes = map[string]struct {
 	size int
 	t    *Type
 }{
-	"i8": {1, Int}, "u8": {1, Int}, "i16": {2, Int}, "u16": {2, Int},
-	"i32": {4, Int}, "u32": {4, Int}, "i64": {8, Int}, "u64": {8, Int},
-	"f32": {4, Float}, "f64": {8, Float}, "ptr": {8, Int}, "bool": {1, Bool},
+	"i8": {1, fixedTypes["i8"]}, "u8": {1, fixedTypes["u8"]},
+	"i16": {2, fixedTypes["i16"]}, "u16": {2, fixedTypes["u16"]},
+	"i32": {4, fixedTypes["i32"]}, "u32": {4, fixedTypes["u32"]},
+	"i64": {8, Int}, "u64": {8, fixedTypes["u64"]},
+	"f32": {4, fixedTypes["f32"]}, "f64": {8, Float}, "ptr": {8, Int}, "bool": {1, Bool},
 }
 
 // CTypeSize is the size of a C field type, or 0 if it is not one.
@@ -2314,6 +2350,9 @@ func (c *Checker) checkCallbackType(prm *Param, fn string) {
 		c.ErrorAt(prm, "a callback given to %s can only return int, float, bool, ptr or an "+
 			"extern struct, not %s", fn, r)
 	}
+	if r := prm.T.Elem; r.IsFixed() && r.Name == "f32" && len(prm.T.Params) > 4 {
+		c.ErrorAt(prm, "a callback returning f32 can take at most four arguments")
+	}
 }
 
 // checkExportDecl checks an `export fn`: native code calls it, so its
@@ -2333,6 +2372,9 @@ func (c *Checker) checkExportDecl(f *FnDecl) {
 	if f.RetT != nil && f.RetT != Void && !ok(f.RetT) {
 		c.ErrorAt(f, "exported %s cannot return %s - native code can only take back int, "+
 			"float, bool, ptr or an extern struct", f.Name, f.RetT)
+	}
+	if f.RetT.IsFixed() && f.RetT.Name == "f32" && len(f.Params) > 4 {
+		c.ErrorAt(f, "an exported function returning f32 can take at most four arguments")
 	}
 }
 

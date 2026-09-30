@@ -20,7 +20,7 @@ var enumVariants = map[string][]string{}
 func vEnumOf(name string) vty { return vty{k: kInt, name: name} }
 
 func isEnum(t vty) bool {
-	return t.k == kInt && t.name != "" && t.name[0] != '*' && !t.res && !t.null
+	return t.k == kInt && t.name != "" && t.name[0] != '*' && !isFixedName(t.name) && !t.res && !t.null
 }
 
 // enumNamed is the enum an expression names as a type, as in the State

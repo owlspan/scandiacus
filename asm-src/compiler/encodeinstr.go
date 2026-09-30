@@ -137,7 +137,11 @@ func (b *block) prefix(size int, reg int, rm operand, mandatory ...byte) {
 			x = rm.index
 		}
 	}
-	byteRegs := size == 8 && (reg >= 4 && reg <= 7)
+	// spl, bpl, sil and dil exist only with a REX prefix; without one
+	// the same numbers name ah, ch, dh and bh. That holds for the
+	// register in r/m too, as in movzx esi, dil.
+	byteRegs := size == 8 && (reg >= 4 && reg <= 7) ||
+		rm.kind == opReg && rm.size == 8 && rm.reg >= 4 && rm.reg <= 7
 	if v, need := rexByte(size == 64, reg, x, bse); need || byteRegs {
 		b.put(v)
 	}
@@ -433,7 +437,7 @@ func (b *block) encode(m string, ops []operand) error {
 		return b.encodeTest(ops)
 	case "imul":
 		return b.encodeImul(ops)
-	case "idiv", "neg", "not":
+	case "idiv", "div", "neg", "not":
 		return b.encodeUnary(m, ops)
 	case "shl", "sar", "shr":
 		return b.encodeShift(m, ops)
@@ -453,8 +457,8 @@ func (b *block) encode(m string, ops []operand) error {
 		return b.encodeMovups(ops)
 	case "comisd", "ucomisd":
 		return b.encodeComisd(m, ops)
-	case "cvtsi2sd":
-		return b.encodeCvtsi2sd(ops)
+	case "cvtsi2sd", "cvtsi2ss":
+		return b.encodeCvtsi2sd(m, ops)
 	case "cvttsd2si":
 		return b.encodeCvttsd2si(ops)
 	case "xadd":
@@ -711,7 +715,7 @@ func (b *block) encodeImul(ops []operand) error {
 }
 
 func (b *block) encodeUnary(m string, ops []operand) error {
-	digit := map[string]int{"not": 2, "neg": 3, "idiv": 7}[m]
+	digit := map[string]int{"not": 2, "neg": 3, "div": 6, "idiv": 7}[m]
 	if len(ops) != 1 {
 		return fmt.Errorf("%s wants one operand", m)
 	}
@@ -904,11 +908,15 @@ func (b *block) encodeComisd(m string, ops []operand) error {
 	return nil
 }
 
-func (b *block) encodeCvtsi2sd(ops []operand) error {
+func (b *block) encodeCvtsi2sd(m string, ops []operand) error {
 	if len(ops) != 2 || ops[0].kind != opXmm {
-		return fmt.Errorf("cvtsi2sd wants an xmm destination")
+		return fmt.Errorf("%s wants an xmm destination", m)
 	}
-	b.prefix(ops[1].size, ops[0].reg, ops[1], 0xF2)
+	pfx := byte(0xF2)
+	if m == "cvtsi2ss" {
+		pfx = 0xF3
+	}
+	b.prefix(ops[1].size, ops[0].reg, ops[1], pfx)
 	b.put(0x0F, 0x2A)
 	b.modrm(ops[0].reg, ops[1])
 	return nil

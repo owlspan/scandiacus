@@ -912,7 +912,8 @@ func seqArg(c *Checker, x *Call, args []*Type, name string) bool {
 			c.ErrorAt(x.Args[1], "%s expects str for argument 2, got %s", name, args[1])
 		}
 	case KList:
-		if !args[1].IsUnknown() && !args[1].Equal(args[0].Elem) {
+		if !args[1].IsUnknown() && !args[1].Equal(args[0].Elem) &&
+			!(args[0].Elem.IsFixed() && c.Coerce(&x.Args[1], args[0].Elem, args[1])) {
 			c.ErrorAt(x.Args[1], "%s expects %s for argument 2, got %s",
 				name, args[0].Elem, args[1])
 		}
@@ -951,7 +952,8 @@ func checkPush(c *Checker, x *Call, args []*Type) *Type {
 	for i := 1; i < len(args); i++ {
 		// A struct pushed onto a list of an interface becomes one.
 		if !args[i].IsUnknown() && !args[i].Equal(args[0].Elem) &&
-			!(args[0].Elem.Kind == KStruct && c.Coerce(&x.Args[i], args[0].Elem, args[i])) {
+			!((args[0].Elem.Kind == KStruct || args[0].Elem.IsFixed()) &&
+				c.Coerce(&x.Args[i], args[0].Elem, args[i])) {
 			c.ErrorAt(x.Args[i], "cannot push %s into %s", args[i], args[0])
 			return Unknown
 		}

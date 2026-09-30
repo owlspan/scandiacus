@@ -31,14 +31,7 @@ func (l *lowerer) pointee(n Node, t vty) (f structField, size int64, ok bool) {
 	case cKinds[rest] != 0:
 		f.kind = cKinds[rest]
 		size = int64(CTypeSize(rest))
-		switch rest {
-		case "f32", "f64":
-			f.t = vFloat
-		case "bool":
-			f.t = vBool
-		default:
-			f.t = vInt
-		}
+		f.t = cScalarVty(rest)
 	case strings.HasPrefix(rest, "*"):
 		f.kind, f.t, size = memI64, vPtr(rest), 8
 	default:

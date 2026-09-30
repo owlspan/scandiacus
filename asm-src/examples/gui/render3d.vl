@@ -1,13 +1,3 @@
-// A software 3D renderer.
-//
-// Meshes are built from maths, turned, projected onto the screen and
-// filled pixel by pixel with flat shading, straight into the window's
-// back buffer through a pointer, with a depth buffer deciding which
-// face is in front at each pixel. No GPU and no library: every pixel is
-// decided here.
-//
-// Arrow keys turn it, W and S move closer and further, 1 2 3 4 pick
-// the shape, F shows the wireframe, space stops the spin. Escape quits.
 
 const W = 960
 const H = 640
@@ -20,9 +10,7 @@ struct Mesh {
     a: []int
     b: []int
     c: []int
-    // A normal per triangle, pointing out of the surface. Kept from the
-    // maths that built the shape rather than worked out from the
-    // corners, so which way round a triangle was listed never matters.
+
     nx: []float
     ny: []float
     nz: []float
@@ -66,7 +54,7 @@ fn cube() -> Mesh {
         }
         vert(m, x, y, z)
     }
-    // Each face as four corners and the axis it faces along.
+    
     let faces = [[1, 3, 7, 5], [0, 4, 6, 2], [2, 6, 7, 3], [0, 1, 5, 4], [4, 5, 7, 6], [0, 2, 3, 1]]
     let axis = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
     for f in 0..6 {
@@ -139,8 +127,7 @@ fn torus(big: float, small: float, around: int, sides: int) -> Mesh {
     return m
 }
 
-// A torus whose tube swells and pinches as it goes round, with the
-// normals from the same formula, so it still lights like a solid.
+
 fn wobble(around: int, sides: int) -> Mesh {
     let m = Mesh{name: "wobble"}
     for i in 0..=around {
@@ -291,7 +278,7 @@ fn fillTri(px: *u32, zb: *f64, ax: float, ay: float, az: float, bx: float, by: f
             while at <= last {
                 if z > zb[at] {
                     zb[at] = z
-                    px[at] = colour
+                    px[at] = u32(colour)
                 }
                 z = z + dz
                 at += 1

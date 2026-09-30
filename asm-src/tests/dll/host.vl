@@ -12,6 +12,8 @@ extern fn shout(s: str) -> ptr from "mathmod"
 extern fn either(a: bool, b: bool) -> bool from "mathmod"
 extern struct Pair { x: i32, y: i32 }
 extern fn swap(p: Pair) from "mathmod"
+extern fn narrow(a: u8, b: i8, c: u16, d: i16) from "mathmod"
+extern fn blend(a: f32, b: f32, t: f32) -> f32 from "mathmod"
 
 print("host running")
 print(add(40, 2))
@@ -31,3 +33,12 @@ let second = LoadLibraryA("mathmod2.dll")
 print(first != 0 && second != 0 && first != second)
 print(GetProcAddress(first, "add") != 0)
 print(GetProcAddress(first, "missing") == 0)
+
+// Fixed-width arguments, through a declaration and then as raw words
+// with junk above each value's width.
+narrow(200, -100, 60000, -30000)
+let dirty = 0x7777777700000000
+mem.call(GetProcAddress(first, "narrow"), dirty | 200, dirty | 0x9C, dirty | 60000, dirty | 0x8AD0)
+mem.call(GetProcAddress(first, "narrow6"), 1, 2, 3, 4, dirty | 4000000000, dirty | 0xFF)
+print(blend(0, 10, 0.3))
+print(blend(0.1, 0.7, 0.5))

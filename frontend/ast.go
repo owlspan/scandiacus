@@ -163,6 +163,15 @@ type Widen struct {
 	T *Type // the nullable type produced
 }
 
+// Convert is an untyped literal the checker has fitted to a
+// fixed-width type: X is the literal, rewritten to the value the machine
+// holds, and T is the type. See fixed.go.
+type Convert struct {
+	Span
+	X Expr
+	T *Type
+}
+
 type Unary struct {
 	Span
 	Op Kind // BANG, MINUS, TILDE, STAR (read through a pointer) or AMP (address of)
@@ -308,6 +317,7 @@ func (*Interp) exprNode()   {}
 func (*Field) exprNode()    {}
 func (*NilLit) exprNode()   {}
 func (*Widen) exprNode()    {}
+func (*Convert) exprNode()  {}
 func (*ListLit) exprNode()  {}
 func (*MapLit) exprNode()   {}
 func (*Index) exprNode()    {}

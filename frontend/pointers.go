@@ -94,7 +94,9 @@ func (c *Checker) cast(x *Cast) *Type {
 	if got.IsUnknown() || want.IsUnknown() {
 		return want
 	}
-	isAddr := func(t *Type) bool { return t.Kind == KInt || t.IsPtr() || c.isExternStruct(t) }
+	isAddr := func(t *Type) bool {
+		return t.Kind == KInt || t.IsPtr() || c.isExternStruct(t) || t.IsFixed() && t.Name == "u64"
+	}
 	if !isAddr(want) || !isAddr(got) {
 		c.ErrorAt(x, "'as' turns one kind of address into another - an int, a pointer or an "+
 			"extern struct - and cannot make %s into %s", got, want)
@@ -112,14 +114,14 @@ func (c *Checker) ptrBinary(x *Binary, lt, rt *Type) (t *Type, handled bool) {
 	}
 	switch x.Op {
 	case PLUS:
-		if lt.IsPtr() && rt.Kind == KInt {
+		if lt.IsPtr() && rt.IsInteger() {
 			return lt, true
 		}
-		if lt.Kind == KInt && rt.IsPtr() {
+		if lt.IsInteger() && rt.IsPtr() {
 			return rt, true
 		}
 	case MINUS:
-		if lt.IsPtr() && rt.Kind == KInt {
+		if lt.IsPtr() && rt.IsInteger() {
 			return lt, true
 		}
 		if lt.IsPtr() && lt.Equal(rt) {

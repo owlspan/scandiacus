@@ -60,10 +60,10 @@ fn processes() -> {int: str} {
     if snap == -1 {
         return found
     }
-    let entry = ProcessEntry{size: ProcessEntry.size}
+    let entry = ProcessEntry{size: u32(ProcessEntry.size)}
     let more = Process32First(snap, entry)
     while more {
-        found[entry.pid] = mem.str(entry.exe)
+        found[int(entry.pid)] = mem.str(entry.exe)
         more = Process32Next(snap, entry)
     }
     CloseHandle(snap)
@@ -87,7 +87,7 @@ fn baseAddress(pid: int) -> int {
     if snap == -1 {
         return 0
     }
-    let entry = ModuleEntry{size: ModuleEntry.size}
+    let entry = ModuleEntry{size: u32(ModuleEntry.size)}
     let base = 0
     if Module32First(snap, entry) {
         base = entry.base

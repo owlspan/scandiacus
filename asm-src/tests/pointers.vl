@@ -67,7 +67,7 @@ print("{b.next == nil} {a.next != nil} {a.next == b}")
 let n = a
 let total = 0
 while n != nil {
-    total += n.value
+    total += int(n.value)
     n = n.next
 }
 print(total)
@@ -93,17 +93,17 @@ print("{bp[51]} {bp[52]}")
 
 extern fn qsort(base: *i32, n: int, size: int, cmp: fn(*i32, *i32) -> int) from "msvcrt"
 fn ascending(x: *i32, y: *i32) -> int {
-    return *x - *y
+    return int(*x) - int(*y)
 }
 let nums = mem.alloc(5 * 4) as *i32
 let vals = [30, -1, 12, 0, 5]
 for i in 0..5 {
-    nums[i] = vals[i]
+    nums[i] = i32(vals[i])
 }
 qsort(nums, 5, 4, ascending)
 let sorted: []int = []
 for i in 0..5 {
-    push(sorted, nums[i])
+    push(sorted, int(nums[i]))
 }
 print(sorted)
 

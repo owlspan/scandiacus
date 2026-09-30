@@ -71,6 +71,7 @@ type (
 	Cast         = front.Cast
 	WhileStmt    = front.WhileStmt
 	Widen        = front.Widen
+	Convert      = front.Convert
 )
 
 const TagField = front.TagField
@@ -167,6 +168,7 @@ const (
 	KStruct   = front.KStruct
 	KEnum     = front.KEnum
 	KPtr      = front.KPtr
+	KFixed    = front.KFixed
 	KUnknown  = front.KUnknown
 	KVoid     = front.KVoid
 	LBRACE    = front.LBRACE

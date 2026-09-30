@@ -213,6 +213,9 @@ func (t vty) String() string {
 		}
 		return "int"
 	case kFloat:
+		if t.name != "" {
+			return t.name
+		}
 		return "float"
 	case kBool:
 		return "bool"
@@ -293,6 +296,8 @@ func vtyOf(t *Type) (vty, bool) {
 		return vEnumOf(t.Name), true
 	case KPtr:
 		return vPtr(t.String()), true
+	case KFixed:
+		return vFixed(t.Name), true
 
 	case KBytes:
 		return vBytes, true
@@ -526,6 +531,26 @@ const (
 	// match. Appended, not inserted: opNames is positional.
 	OpPeek // Dst = the value at address A
 	OpPoke // the value B is written at address A
+
+	// Fixed-width numbers; see fixed.go. Appended, not inserted.
+	OpExt        // Dst = A extended from the width Imm (a mem* kind)
+	OpF32Round   // Dst = A rounded to single precision
+	OpIntToF32   // Dst = f32(A), rounded once
+	OpU64ToFloat // Dst = float(A), A read unsigned
+	OpU64ToF32   // Dst = f32(A), A read unsigned
+	OpFloatToU64 // Dst = u64(A); B holds 2^63 as a float
+	OpDivU       // Dst = A / B, unsigned
+	OpModU       // Dst = A % B, unsigned
+	OpShrU       // Dst = A >> B, filling with zeros
+	OpLtU
+	OpLeU
+	OpGtU
+	OpGeU
+
+	// Across the native boundary, where an f32 is a single: OpF32Bits
+	// is A narrowed, its low 32 bits holding it; OpF32FromBits is back.
+	OpF32Bits
+	OpF32FromBits
 )
 
 // The widths OpPeek and OpPoke move. A narrow store keeps the low bits,
@@ -763,7 +788,7 @@ func (l *lowerer) collectExtern(fd *FnDecl) {
 		// A pointer comes back whole, like ptr.
 	case r == "int" || r == "bool":
 		es.ret32 = true
-	case r == "" || r == "float" || r == "str" || r == "ptr":
+	case r == "" || r == "float" || r == "str" || r == "ptr" || isFixedName(r) || r == "i64" || r == "f64":
 	default:
 		l.errorAt(fd, "return type %q cannot come back from native code", fd.Ret)
 		return
@@ -829,7 +854,7 @@ type lowerer struct {
 	// defers holds, for each block being lowered, the statements it has
 	// deferred so far; see defer.go.
 	defers [][]Stmt
-	sigs  map[string]sig
+	sigs   map[string]sig
 
 	// externFns holds the native functions the program declared with
 	// `extern fn`. Keyed by plain name, the same way sigs is, because an
@@ -1713,9 +1738,18 @@ func (l *lowerer) compound(n Node, k Kind, target vty, cur, v Reg) (Reg, bool) {
 		return v, false
 	}
 
+	wrap := false
+	if isFloat {
+		wrap = isF32(target)
+	} else if op != OpConcat {
+		op, wrap = fixedIntOp(op, target)
+	}
 	d := l.newReg()
 	l.regTy[d] = target
 	l.emit(Instr{Op: op, Dst: d, A: cur, B: v})
+	if wrap {
+		return l.wrapFixed(d, target), true
+	}
 	return d, true
 }
 
@@ -1994,6 +2028,10 @@ func (l *lowerer) callExtern(c *Call, name string, es externSig) Reg {
 			if es.params[i].k == kFloat && l.regTy[v].k == kInt {
 				v = l.toFloat(v)
 			}
+			if isF32(es.params[i]) {
+				// C reads a float argument as a single.
+				v = l.unaryOp(OpF32Bits, v, es.params[i])
+			}
 		} else {
 			// An argument beyond the named parameters of a variadic
 			// extern has no declaration to convert toward; it is passed
@@ -2009,6 +2047,18 @@ func (l *lowerer) callExtern(c *Call, name string, es externSig) Reg {
 	d := l.ccall(name, args, argTypes, es.ret, es.ret32, es.variadic)
 	if es.ret.k == kStr && d != NoReg {
 		d = l.dupStr(d)
+	}
+	if d != NoReg && fixedOf(es.ret) != "" {
+		// A C function returning a narrow value leaves the rest of the
+		// register undefined, and a float as a single.
+		if isF32(es.ret) {
+			d = l.unaryOp(OpF32FromBits, d, es.ret)
+		} else if ext := fixedExt[fixedOf(es.ret)]; ext != 0 {
+			e := l.newReg()
+			l.regTy[e] = es.ret
+			l.emit(Instr{Op: OpExt, Dst: e, A: d, B: NoReg, Imm: ext})
+			d = e
+		}
 	}
 	return d
 }
@@ -2086,7 +2136,7 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 			l.printMap(c, a, l.regTy[a])
 		case kFloat:
 			l.mod.needs("floattostr")
-			l.emit(Instr{Op: OpPrintFloat, A: a, Dst: NoReg, Comment: "print"})
+			l.emit(Instr{Op: OpPrintFloat, A: a, Dst: NoReg, Imm: printFlavor(l.regTy[a]), Comment: "print"})
 		case kBool:
 			l.emit(Instr{Op: OpPrintBool, A: a, Dst: NoReg, Comment: "print"})
 		case kStr:
@@ -2099,7 +2149,7 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 			l.renderBytes(a)
 			l.writeLit("\n")
 		default:
-			l.emit(Instr{Op: OpPrintInt, A: a, Dst: NoReg, Comment: "print"})
+			l.emit(Instr{Op: OpPrintInt, A: a, Dst: NoReg, Imm: printFlavor(l.regTy[a]), Comment: "print"})
 		}
 		return l.void()
 
@@ -2123,7 +2173,7 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 			}
 		case kFloat:
 			l.mod.needs("floattostr")
-			l.emit(Instr{Op: OpWriteFloat, A: a, Dst: NoReg, Comment: "write"})
+			l.emit(Instr{Op: OpWriteFloat, A: a, Dst: NoReg, Imm: printFlavor(l.regTy[a]), Comment: "write"})
 		case kBool:
 			l.mod.needs("booltostr")
 			d := l.newReg()
@@ -2133,7 +2183,7 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 		case kBytes:
 			l.renderBytes(a)
 		default:
-			l.emit(Instr{Op: OpWriteInt, A: a, Dst: NoReg, Comment: "write"})
+			l.emit(Instr{Op: OpWriteInt, A: a, Dst: NoReg, Imm: printFlavor(l.regTy[a]), Comment: "write"})
 		}
 		return l.void()
 
@@ -2203,28 +2253,12 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 	case "abs", "min", "max":
 		return l.numMath(c, name)
 
-	case "int":
+	case "int", "float", "i8", "u8", "i16", "u16", "i32", "u32", "u64", "f32":
 		if !arity(1) {
 			return l.junk()
 		}
-		v := l.expr(c.Args[0])
-		if l.regTy[v].k == kFloat {
-			d := l.newReg()
-			l.regTy[d] = vInt
-			l.emit(Instr{Op: OpFloatToInt, Dst: d, A: v, B: NoReg})
-			return d
-		}
-		return v
-
-	case "float":
-		if !arity(1) {
-			return l.junk()
-		}
-		v := l.expr(c.Args[0])
-		if l.regTy[v].k == kInt {
-			return l.toFloat(v)
-		}
-		return v
+		to, _ := conversionTarget(name)
+		return l.convert(l.expr(c.Args[0]), to)
 
 	case "divf":
 		if !arity(2) {
@@ -2504,13 +2538,13 @@ func (l *lowerer) toStr(v Reg, at Node) Reg {
 		l.mod.needs("inttostr")
 		d := l.newReg()
 		l.regTy[d] = vStr
-		l.emit(Instr{Op: OpIntToStr, Dst: d, A: v, B: NoReg})
+		l.emit(Instr{Op: OpIntToStr, Dst: d, A: v, B: NoReg, Imm: printFlavor(l.regTy[v])})
 		return d
 	case kFloat:
 		l.mod.needs("floattostr")
 		d := l.newReg()
 		l.regTy[d] = vStr
-		l.emit(Instr{Op: OpFloatToStr, Dst: d, A: v, B: NoReg})
+		l.emit(Instr{Op: OpFloatToStr, Dst: d, A: v, B: NoReg, Imm: printFlavor(l.regTy[v])})
 		return d
 	case kList, kMap, kStruct, kBytes:
 		return l.strOf(at, v, l.regTy[v])
@@ -2683,11 +2717,15 @@ func (l *lowerer) expr(e Expr) Reg {
 		switch x.Op {
 		case MINUS:
 			if l.regTy[a].k == kFloat {
-				l.regTy[d] = vFloat
+				// Negation is exact, so an f32 stays one without rounding.
+				l.regTy[d] = l.regTy[a]
 				l.emit(Instr{Op: OpFNeg, Dst: d, A: a, B: NoReg})
 			} else {
 				l.regTy[d] = vInt
 				l.emit(Instr{Op: OpNeg, Dst: d, A: a, B: NoReg})
+				if fixedOf(l.regTy[a]) != "" {
+					return l.wrapFixed(d, l.regTy[a])
+				}
 			}
 		case BANG:
 			l.regTy[d] = vBool
@@ -2695,6 +2733,9 @@ func (l *lowerer) expr(e Expr) Reg {
 		case TILDE:
 			l.regTy[d] = vInt
 			l.emit(Instr{Op: OpBNot, Dst: d, A: a, B: NoReg})
+			if fixedOf(l.regTy[a]) != "" {
+				return l.wrapFixed(d, l.regTy[a])
+			}
 		default:
 			l.errorAt(x, "the assembly backend does not handle unary %s yet", x.Op)
 		}
@@ -2721,6 +2762,14 @@ func (l *lowerer) expr(e Expr) Reg {
 
 	case *Widen:
 		return l.widen(x)
+
+	case *Convert:
+		// An untyped literal the checker fitted to a fixed-width type,
+		// already rewritten to the value the machine holds.
+		want, _ := vtyOf(x.T)
+		v := l.expr(x.X)
+		l.regTy[v] = want
+		return v
 
 	case *StructLit:
 		return l.structLit(x)
@@ -2918,6 +2967,9 @@ func (l *lowerer) binary(x *Binary) Reg {
 			l.regTy[d] = vFloat
 		}
 		l.emit(Instr{Op: fop, Dst: d, A: a, B: b})
+		if l.regTy[d].k == kFloat && isF32(at) {
+			return l.wrapFixed(d, at)
+		}
 		return d
 	}
 
@@ -2960,14 +3012,21 @@ func (l *lowerer) binary(x *Binary) Reg {
 		return l.junk()
 	}
 
+	op, wrap := fixedIntOp(op, at)
 	d := l.newReg()
 	switch op {
-	case OpEq, OpNe, OpLt, OpLe, OpGt, OpGe:
+	case OpEq, OpNe, OpLt, OpLe, OpGt, OpGe, OpLtU, OpLeU, OpGtU, OpGeU:
 		l.regTy[d] = vBool
 	default:
 		l.regTy[d] = vInt
+		if fixedOf(at) != "" {
+			l.regTy[d] = at
+		}
 	}
 	l.emit(Instr{Op: op, Dst: d, A: a, B: b})
+	if wrap {
+		return l.wrapFixed(d, at)
+	}
 	return d
 }
 

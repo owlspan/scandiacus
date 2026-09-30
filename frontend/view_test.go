@@ -69,8 +69,8 @@ extern struct Vec3 { x: f32, y: f32, z: f32 }
 extern struct Player { hp: i32, pos: Vec3, name: [16]u8 }
 extern fn GetThing(p: Player, buf: bytes) -> Player
 let p = Player(4096)
-let hp: int = p.hp
-let x: float = p.pos.x
+let hp: i32 = p.hp
+let x: f32 = p.pos.x
 let addr: int = p.name
 p.hp = 5
 p.hp -= 1
@@ -104,7 +104,7 @@ func TestExportFn(t *testing.T) {
 	src := `
 extern struct Vec2 { x: f32, y: f32 }
 export fn add(a: int, b: int) -> int { return a + b }
-export fn scale(v: Vec2, k: float) { v.x = v.x * k }
+export fn scale(v: Vec2, k: f32) { v.x = v.x * k }
 fn export(n: int) -> int { return n }
 let export2 = export(3)
 `

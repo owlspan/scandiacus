@@ -1,0 +1,72 @@
+// Fixed-width types across the native boundary. A C function returning
+// a narrow value leaves the rest of rax undefined, and a float argument
+// or result is a single, not a double: both are handled from the
+// declaration, so the values come out right with no masking by hand.
+
+extern fn strtoul(s: str, end: ptr, base: i32) -> u32 from "msvcrt"
+extern fn _strtoui64(s: str, end: ptr, base: i32) -> u64 from "msvcrt"
+extern fn sqrtf(x: f32) -> f32 from "msvcrt"
+extern fn powf(x: f32, y: f32) -> f32 from "msvcrt"
+extern fn toupper(c: i32) -> i32 from "msvcrt"
+extern fn _rotl(v: u32, n: i32) -> u32 from "msvcrt"
+
+// Above 2^31: read as an int this would come out negative.
+print(strtoul("4000000000", 0, 10))
+print(_strtoui64("18446744073709551615", 0, 10))
+print(sqrtf(2))
+print(powf(1.5, 3))
+print(toupper(97))
+print(_rotl(0x80000001, 1))
+
+// Memory read at its width gives the width's type.
+extern struct Header {
+    magic: u32
+    version: u16
+    flags: u8
+    kind: i8
+    scale: f32
+    size: u64
+}
+let raw = mem.alloc(Header.size)
+let h = Header(raw)
+h.magic = 0xCAFEBABE
+h.version = 65535
+h.flags = 0x80
+h.kind = -1
+h.scale = 0.1
+h.size = 0xFFFFFFFFFFFFFFFF
+print("{h.magic} {h.version} {h.flags} {h.kind} {h.scale} {h.size}")
+h.version += 1
+h.flags <<= 1
+print("{h.version} {h.flags}")
+print(Header.size)
+mem.free(raw)
+
+// A pointer reads and writes at its element's width and type.
+let words = mem.alloc(8) as *u16
+words[0] = 65535
+words[1] = 1
+words[0] += 2
+print("{words[0]} {words[1]}")
+let signed = words as *i16
+signed[1] = -2
+print(words[1])
+
+// A native sort over u16 values, with a Veyl comparison.
+extern fn qsort(base: *u16, n: int, size: int, cmp: fn(*u16, *u16) -> i32) from "msvcrt"
+fn byValue(a: *u16, b: *u16) -> i32 {
+    return i32(*a) - i32(*b)
+}
+let nums = mem.alloc(5 * 2) as *u16
+let vals: []u16 = [60000, 3, 40000, 7, 65535]
+for i in 0..5 {
+    nums[i] = vals[i]
+}
+qsort(nums, 5, 2, byValue)
+let sorted: []u16 = []
+for i in 0..5 {
+    push(sorted, nums[i])
+}
+print(sorted)
+mem.free(nums as int)
+mem.free(words as int)

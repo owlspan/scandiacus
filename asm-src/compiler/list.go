@@ -574,25 +574,25 @@ func (l *lowerer) emitStr(v Reg) {
 
 func (l *lowerer) emitInt(v Reg) {
 	if l.buf < 0 {
-		l.emit(Instr{Op: OpWriteInt, A: v, Dst: NoReg})
+		l.emit(Instr{Op: OpWriteInt, A: v, Dst: NoReg, Imm: printFlavor(l.regTy[v])})
 		return
 	}
 	l.mod.needs("inttostr")
 	d := l.newReg()
 	l.regTy[d] = vStr
-	l.emit(Instr{Op: OpIntToStr, Dst: d, A: v, B: NoReg})
+	l.emit(Instr{Op: OpIntToStr, Dst: d, A: v, B: NoReg, Imm: printFlavor(l.regTy[v])})
 	l.emitStr(d)
 }
 
 func (l *lowerer) emitFloat(v Reg) {
 	if l.buf < 0 {
-		l.emit(Instr{Op: OpWriteFloat, A: v, Dst: NoReg})
+		l.emit(Instr{Op: OpWriteFloat, A: v, Dst: NoReg, Imm: printFlavor(l.regTy[v])})
 		return
 	}
 	l.mod.needs("floattostr")
 	d := l.newReg()
 	l.regTy[d] = vStr
-	l.emit(Instr{Op: OpFloatToStr, Dst: d, A: v, B: NoReg})
+	l.emit(Instr{Op: OpFloatToStr, Dst: d, A: v, B: NoReg, Imm: printFlavor(l.regTy[v])})
 	l.emitStr(d)
 }
 

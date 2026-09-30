@@ -192,7 +192,7 @@ var raFloatRegs = [4]string{"xmm2", "xmm3", "xmm4", "xmm5"}
 // cannot reach one of those without movq.
 func floatPoolable(op Op, def bool) bool {
 	switch op {
-	case OpFAdd, OpFSub, OpFMul, OpFDiv, OpFNeg:
+	case OpFAdd, OpFSub, OpFMul, OpFDiv, OpFNeg, OpF32Round:
 		return true
 	case OpFEq, OpFNe, OpFLt, OpFLe, OpFGt, OpFGe:
 		return !def

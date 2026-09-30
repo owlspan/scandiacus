@@ -142,6 +142,10 @@ func foldInstr(m *Module, in Instr, ic map[Reg]int64, fc map[Reg]float64) (Instr
 			Imm: v}, true
 	}
 
+	if out, ok := foldFixed(m, in, ic, fc); ok {
+		return out, true
+	}
+
 	switch in.Op {
 	case OpNeg:
 		if aok {
@@ -379,6 +383,8 @@ func deadOK(op Op) bool {
 		OpIntToFloat, OpFloatToInt, OpSqrt, OpFMod,
 		OpBAnd, OpBOr, OpBXor, OpBNot, OpShl, OpShr,
 		OpEq, OpNe, OpLt, OpLe, OpGt, OpGe, OpNot,
+		OpExt, OpF32Round, OpIntToF32, OpU64ToFloat, OpU64ToF32, OpFloatToU64,
+		OpShrU, OpLtU, OpLeU, OpGtU, OpGeU,
 		OpIndexAddr, OpLoadByte, OpPeek,
 		OpStackPtr, OpGlobalAddr, OpSymAddr, OpSlotAddr:
 		return true

@@ -222,7 +222,7 @@ func (e *Emitter) fuseBranch(cmp, br Instr, uses map[Reg]int) bool {
 	if e.homes == nil {
 		return false
 	}
-	cc, ok := map[Op]string{OpEq: "e", OpNe: "ne", OpLt: "l", OpLe: "le", OpGt: "g", OpGe: "ge"}[cmp.Op]
+	cc, ok := condCodes[cmp.Op]
 	if !ok || cmp.Dst == NoReg || uses[cmp.Dst] != 1 {
 		return false
 	}
@@ -230,7 +230,8 @@ func (e *Emitter) fuseBranch(cmp, br Instr, uses map[Reg]int) bool {
 		return false
 	}
 	if br.Op == OpJumpNot {
-		cc = map[string]string{"e": "ne", "ne": "e", "l": "ge", "ge": "l", "le": "g", "g": "le"}[cc]
+		cc = map[string]string{"e": "ne", "ne": "e", "l": "ge", "ge": "l", "le": "g", "g": "le",
+			"b": "ae", "ae": "b", "be": "a", "a": "be"}[cc]
 	}
 	e.cmp(cmp)
 	e.line("j%s .L%s_%d", cc, e.labelBase(), br.Imm)

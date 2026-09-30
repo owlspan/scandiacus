@@ -40,12 +40,8 @@ func viewLayout(sd *StructDecl) *structLayout {
 			sf.t = vPtr(f.T.String())
 		case sf.kind == 0:
 			sf.t = vStructOf(f.Type)
-		case f.Type == "f32" || f.Type == "f64":
-			sf.t = vFloat
-		case f.Type == "bool":
-			sf.t = vBool
 		default:
-			sf.t = vInt
+			sf.t = cScalarVty(f.Type)
 		}
 		lay.fields = append(lay.fields, sf)
 	}
@@ -100,7 +96,7 @@ func (l *lowerer) viewRead(base Reg, f structField) Reg {
 	if f.t.k == kBool {
 		return l.compare(OpNe, v, l.constant(0))
 	}
-	if isPtr(f.t) {
+	if isPtr(f.t) || fixedOf(f.t) != "" {
 		l.regTy[v] = f.t
 	}
 	return v

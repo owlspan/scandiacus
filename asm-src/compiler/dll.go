@@ -62,9 +62,12 @@ type Export struct {
 func exportOf(fd *FnDecl) Export {
 	var widen []widenArg
 	for i, p := range fd.Params {
-		if strings.TrimSpace(p.Type) == "bool" {
-			widen = append(widen, widenArg{pos: i, isBool: true})
+		if t := strings.TrimSpace(p.Type); t != "int" {
+			widen = append(widen, widenFor(i, t)...)
 		}
+	}
+	if strings.TrimSpace(fd.Ret) == "f32" {
+		widen = append(widen, widenArg{pos: -1, kind: memF32})
 	}
 	return Export{
 		Name:  fd.Name,

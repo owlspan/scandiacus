@@ -115,7 +115,8 @@ func (e *Emitter) immB(in Instr) (int64, bool) {
 	}
 	switch in.Op {
 	case OpAdd, OpSub, OpBAnd, OpBOr, OpBXor, OpMul,
-		OpEq, OpNe, OpLt, OpLe, OpGt, OpGe, OpStoreMem:
+		OpEq, OpNe, OpLt, OpLe, OpGt, OpGe, OpStoreMem,
+		OpLtU, OpLeU, OpGtU, OpGeU:
 		return v, true
 	case OpShl, OpShr:
 		if v >= 0 && v < 64 {
@@ -279,7 +280,7 @@ func (e *Emitter) selInstr(in Instr) bool {
 		}
 		return true
 
-	case OpEq, OpNe, OpLt, OpLe, OpGt, OpGe:
+	case OpEq, OpNe, OpLt, OpLe, OpGt, OpGe, OpLtU, OpLeU, OpGtU, OpGeU:
 		cc := condCodes[in.Op]
 		e.line("xor edx, edx")
 		e.cmp(in)
@@ -333,7 +334,8 @@ func (e *Emitter) selInstr(in Instr) bool {
 	return false
 }
 
-var condCodes = map[Op]string{OpEq: "e", OpNe: "ne", OpLt: "l", OpLe: "le", OpGt: "g", OpGe: "ge"}
+var condCodes = map[Op]string{OpEq: "e", OpNe: "ne", OpLt: "l", OpLe: "le", OpGt: "g", OpGe: "ge",
+	OpLtU: "b", OpLeU: "be", OpGtU: "a", OpGeU: "ae"}
 
 // cmp compares A with B, using each where it lives. x86 has no compare
 // of two memory operands, so one of those goes through rax.
@@ -404,6 +406,18 @@ func (e *Emitter) selArith(in Instr) {
 		OpBAnd: "and", OpBOr: "or", OpBXor: "xor",
 	}[in.Op]
 	d, a, b := e.loc(in.Dst), e.loc(in.A), e.srcB(in)
+	if b == "0" && in.Op != OpMul && in.Op != OpBAnd {
+		// x + 0, which is how the lowerer gives a value another type
+		// (retype): only the move is left.
+		if d != a {
+			if !isRegLoc(d) && !isRegLoc(a) {
+				e.line("mov rax, %s", a)
+				a = "rax"
+			}
+			e.line("mov %s, %s", d, a)
+		}
+		return
+	}
 	if isRegLoc(d) {
 		if d == b && d != a {
 			// The result's register holds B, so loading A into it first

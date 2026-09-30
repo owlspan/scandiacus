@@ -38,6 +38,12 @@ import (
 type widenArg struct {
 	pos    int
 	isBool bool
+
+	// kind, when set, is the mem* width of a fixed-width argument: an
+	// integer is extended from it, an f32 (memF32) widened to the
+	// double Veyl holds it as. A pos of -1 with memF32 is an f32
+	// return, narrowed on the way back out.
+	kind int64
 }
 
 // A Thunk is one stub: its own symbol, the Veyl function it enters, and
@@ -81,14 +87,47 @@ func callbackWidening(text string) []widenArg {
 	}
 	var out []widenArg
 	for i, part := range strings.Split(inner, ",") {
-		switch strings.TrimSpace(part) {
-		case "int":
-			out = append(out, widenArg{pos: i})
-		case "bool":
-			out = append(out, widenArg{pos: i, isBool: true})
-		}
+		out = append(out, widenFor(i, part)...)
+	}
+	if rest := strings.TrimSpace(s[end+1:]); strings.HasPrefix(rest, "->") &&
+		strings.TrimSpace(rest[2:]) == "f32" {
+		out = append(out, widenArg{pos: -1, kind: memF32})
 	}
 	return out
+}
+
+// widenFor is what argument i, written as this type, needs on arrival.
+func widenFor(i int, typ string) []widenArg {
+	switch t := strings.TrimSpace(typ); {
+	case t == "int":
+		return []widenArg{{pos: i}}
+	case t == "bool":
+		return []widenArg{{pos: i, isBool: true}}
+	case t == "f32":
+		return []widenArg{{pos: i, kind: memF32}}
+	case fixedExt[t] != 0:
+		return []widenArg{{pos: i, kind: fixedExt[t]}}
+	}
+	return nil
+}
+
+// thunkShape names what a stub does, so two callbacks into the same
+// function that widen differently get different stubs.
+func thunkShape(widen []widenArg) string {
+	shape := ""
+	for _, w := range widen {
+		kind := "i"
+		switch {
+		case w.isBool:
+			kind = "b"
+		case w.pos < 0:
+			kind = "r"
+		case w.kind != 0:
+			kind = fmt.Sprintf("k%d_", w.kind)
+		}
+		shape += fmt.Sprintf("%s%d", kind, w.pos+1)
+	}
+	return shape
 }
 
 // callbackArg lowers the argument passed for a function-typed extern
@@ -110,15 +149,7 @@ func (l *lowerer) callbackArg(e Expr, want vty, widen []widenArg) Reg {
 		return l.junk()
 	}
 
-	shape := ""
-	for _, w := range widen {
-		kind := "i"
-		if w.isBool {
-			kind = "b"
-		}
-		shape += fmt.Sprintf("%s%d", kind, w.pos)
-	}
-	sym := "__vy_cb_" + sanitizeSym(id.Name) + "_" + shape
+	sym := "__vy_cb_" + sanitizeSym(id.Name) + "_" + thunkShape(widen)
 	known := false
 	for _, t := range l.mod.Thunks {
 		if t.Sym == sym {
@@ -147,7 +178,16 @@ var (
 // where the caller put it and where the Veyl function will look.
 func (e *Emitter) thunk(t Thunk) {
 	e.b.WriteString("\n" + t.Sym + ":\n")
+	retF32 := false
 	for _, w := range t.Widen {
+		if w.pos < 0 {
+			retF32 = true
+			continue
+		}
+		if w.kind != 0 {
+			e.thunkFixed(w)
+			continue
+		}
 		if w.pos < 4 {
 			r64, r32, r8 := argRegs[w.pos], argRegs32[w.pos], argRegs8[w.pos]
 			if w.isBool {
@@ -171,5 +211,70 @@ func (e *Emitter) thunk(t Thunk) {
 		}
 		e.line("mov %s, rax", at)
 	}
+	if retF32 {
+		// The Veyl function returns a double; native code wants a
+		// single. Called rather than jumped to, so there is a way back
+		// through here. The checker allows this with register arguments
+		// only, whose places do not move when this frame is pushed.
+		e.line("sub rsp, 40")
+		e.line("call %s", t.Target)
+		e.line("cvtsd2ss xmm0, xmm0")
+		e.line("add rsp, 40")
+		e.line("ret")
+		return
+	}
 	e.line("jmp %s", t.Target)
+}
+
+// The 16-bit names of the argument registers.
+var argRegs16 = [4]string{"cx", "dx", "r8w", "r9w"}
+
+// thunkFixed widens one fixed-width argument into the form Veyl holds
+// it in: an integer extended from its width, an f32 made a double.
+func (e *Emitter) thunkFixed(w widenArg) {
+	if w.kind == memF32 {
+		if w.pos < 4 {
+			x := xmmArgs[w.pos]
+			e.line("cvtss2sd %s, %s", x, x)
+			return
+		}
+		at := fmt.Sprintf("[rsp+%d]", 8+8*w.pos)
+		e.line("cvtss2sd xmm5, dword ptr %s", at)
+		e.line("movsd qword ptr %s, xmm5", at)
+		return
+	}
+	if w.pos < 4 {
+		r64, r32 := argRegs[w.pos], argRegs32[w.pos]
+		switch w.kind {
+		case memI8:
+			e.line("movsx %s, %s", r64, argRegs8[w.pos])
+		case memU8:
+			e.line("movzx %s, %s", r32, argRegs8[w.pos])
+		case memI16:
+			e.line("movsx %s, %s", r64, argRegs16[w.pos])
+		case memU16:
+			e.line("movzx %s, %s", r32, argRegs16[w.pos])
+		case memI32:
+			e.line("movsxd %s, %s", r64, r32)
+		case memU32:
+			e.line("mov %s, %s", r32, r32)
+		}
+		return
+	}
+	at := fmt.Sprintf("[rsp+%d]", 8+8*w.pos)
+	switch w.kind {
+	case memI8:
+		e.line("movsx rax, byte ptr %s", at)
+	case memU8:
+		e.line("movzx eax, byte ptr %s", at)
+	case memI16:
+		e.line("movsx rax, word ptr %s", at)
+	case memU16:
+		e.line("movzx eax, word ptr %s", at)
+	case memI32:
+		e.line("movsxd rax, dword ptr %s", at)
+	case memU32:
+		e.line("mov eax, dword ptr %s", at)
+	}
+	e.line("mov qword ptr %s, rax", at)
 }

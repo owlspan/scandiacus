@@ -46,6 +46,10 @@ const (
 	// anywhere an address as an int does.
 	KPtr
 
+	// KFixed is a fixed-width number: i8, u8, i16, u16, i32, u32, u64
+	// or f32, named by Name. See fixed.go.
+	KFixed
+
 	// KNilLit is the type of the bare literal `nil`. It fits into any
 	// nullable type and nothing else, the way an untyped integer literal
 	// fits into a float.
@@ -196,7 +200,7 @@ func (t *Type) String() string {
 		return "[]" + t.Elem.String()
 	case KMap:
 		return "{" + t.Key.String() + ": " + t.Elem.String() + "}"
-	case KStruct, KEnum:
+	case KStruct, KEnum, KFixed:
 		return t.Name
 	case KPtr:
 		if t.Elem != nil {
@@ -245,7 +249,7 @@ func (t *Type) Equal(u *Type) bool {
 		return t.Elem.Equal(u.Elem)
 	case KMap:
 		return t.Key.Equal(u.Key) && t.Elem.Equal(u.Elem)
-	case KStruct, KEnum:
+	case KStruct, KEnum, KFixed:
 		return t.Name == u.Name
 	case KPtr:
 		if (t.Elem == nil) != (u.Elem == nil) {
@@ -436,6 +440,12 @@ func ParseType(s string) *Type {
 		return Bool
 	case "bytes":
 		return Bytes
+	case "i64":
+		return Int
+	case "f64":
+		return Float
+	case "i8", "u8", "i16", "u16", "i32", "u32", "u64", "f32":
+		return FixedOf(s)
 	case "ptr":
 		// A raw machine word, only meaningful on an extern declaration.
 		// Everywhere else it behaves exactly like an int; the two spellings
