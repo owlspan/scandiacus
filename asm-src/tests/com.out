@@ -1,0 +1,46 @@
+0114020000000000c000000000000046
+0c00000000000000c000000000000046
+6B29FC40-CA47-1067-B31D-00DD010662DA
+410062000000
+2
+round trip
+true
+0
+true
+0
+24
+0
+0
+0
+7
+written
+2
+1
+true
+1
+false
+1
+true
+com.query: 0x80004002
+true
+0x80004002
+0x00000001
+true
+0
+0
+true
+com.create: 0x800401F0, COM is not started on this thread - call com.init() first
+true
+0
+0
+made by a Veyl program
+0
+0
+--fast -n 3
+0
+00021401-0000-0000-C000-000000000046
+0
+true
+com.create: 0x80040154
+automation string
+34

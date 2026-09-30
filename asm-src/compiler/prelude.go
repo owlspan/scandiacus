@@ -216,6 +216,21 @@ var preludeOf = map[string]string{
 	"chars":    "__vy_chars",
 
 	"mem.scan": "__vy_memScan",
+	"mem.wide": "__vy_memWide",
+	"mem.wstr": "__vy_memWstr",
+
+	"com.init":     "__vy_comInit",
+	"com.done":     "__vy_comDone",
+	"com.guid":     "__vy_comGuid",
+	"com.guidText": "__vy_comGuidText",
+	"com.create":   "__vy_comCreate",
+	"com.query":    "__vy_comQuery",
+	"com.addRef":   "__vy_comAddRef",
+	"com.release":  "__vy_comRelease",
+	"com.bstr":     "__vy_comBstr",
+	"com.bstrFree": "__vy_comBstrFree",
+	"com.hex":      "__vy_comHex",
+	"com.message":  "__vy_comMessage",
 
 	"win.image": "__vy_winImage",
 }
@@ -494,4 +509,5 @@ var preludeSource = strings.Join([]string{
 	preludeText,
 	preludePNG,
 	preludeProc,
+	preludeCom,
 }, "\n")

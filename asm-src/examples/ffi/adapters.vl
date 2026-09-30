@@ -1,0 +1,50 @@
+// adapters: list the display adapters in this machine through DXGI.
+//
+//     veyl run adapters.vl
+//
+// DXGI is a COM API, as all of DirectX is: there is no flat function to
+// call for this, only interfaces. An interface is reached by its method
+// slot - the position of the method in the interface's declaration,
+// counting the methods it inherits first - so the slot numbers below
+// are read off dxgi.h: IUnknown has 3 methods, IDXGIObject adds 4,
+// IDXGIFactory 5 and IDXGIFactory1 starts at 12 with EnumAdapters1.
+
+let create = mem.symbol("dxgi.dll", "CreateDXGIFactory1")
+if create == 0 {
+    print("adapters: this system has no DXGI 1.1")
+    exit(1)
+}
+
+let factory = 0
+let hr = mem.call(create, com.guid("770aae78-f26f-4dba-a829-253c83d1b387"), &factory)
+if factory == 0 {
+    print("adapters: no DXGI factory, {com.hex(hr)}")
+    exit(1)
+}
+
+// DXGI_ADAPTER_DESC1: a 128-character wide name, then the ids and the
+// three memory sizes.
+let desc = mem.alloc(312)
+let index = 0
+while true {
+    let adapter = 0
+    // EnumAdapters1 fails with DXGI_ERROR_NOT_FOUND past the last one.
+    if com.call(factory, 12, index, &adapter) < 0 {
+        break
+    }
+    // IDXGIAdapter1::GetDesc1 is slot 10.
+    if com.call(adapter, 10, desc) >= 0 {
+        let video = mem.readI64(desc + 272) / (1024 * 1024)
+        let note = ""
+        if (mem.readU32(desc + 304) & 2) != 0 {
+            note = " (software)"
+        }
+        print("{index}: {mem.wstr(desc)}{note}")
+        print("   vendor {com.hex(mem.readU32(desc + 256))}  device {com.hex(mem.readU32(desc + 260))}")
+        print("   {video} MB of video memory")
+    }
+    com.release(adapter)
+    index += 1
+}
+mem.free(desc)
+com.release(factory)

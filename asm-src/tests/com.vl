@@ -1,0 +1,110 @@
+// com: calling COM interfaces through their method tables. Two objects
+// every Windows has: a memory stream from ole32, and the shell's
+// shortcut object.
+
+// GUIDs. The first three groups are stored little-endian.
+print(bytes.hex(com.guid("{{00021401-0000-0000-C000-000000000046}}")))
+print(bytes.hex(com.guid("0000000c-0000-0000-c000-000000000046")))
+let g = com.guid("6B29FC40-CA47-1067-B31D-00DD010662DA")
+print(com.guidText(mem.addr(g)))
+
+// Wide strings, both ways.
+print(bytes.hex(mem.wide("Ab")))
+print(len(mem.wide("")))
+print(mem.wstr(mem.addr(mem.wide("round trip"))))
+print(mem.wstr(0) == "")
+
+// A stream over memory. IStream's methods, after IUnknown's three:
+// 3 Read, 4 Write, 5 Seek.
+let out = mem.alloc(8)
+let hr = mem.call(mem.symbol("ole32.dll", "CreateStreamOnHGlobal"), 0, 1, out) & 0xFFFFFFFF
+print(hr)
+let stream = mem.readI64(out)
+print(stream != 0)
+
+let text = "written through a vtable"
+let count = mem.alloc(8)
+print(com.call(stream, 4, text, len(text), count))
+print(mem.readU32(count))
+
+// Seek back to the start; the new position comes back through a
+// pointer, here the address of a local.
+let pos = 99
+print(com.call(stream, 5, 0, 0, &pos))
+print(pos)
+
+let buf = mem.alloc(64)
+print(com.call(stream, 3, buf, 7, count))
+print(mem.readU32(count))
+print(mem.str(buf))
+
+// Reference counting.
+print(com.addRef(stream))
+print(com.release(stream))
+
+// The same object through other interfaces, and one it does not have.
+let unknown = must(com.query(stream, "00000000-0000-0000-C000-000000000046"))
+print(unknown != 0)
+print(com.release(unknown))
+let again = com.query(stream, "0000000C-0000-0000-C000-000000000046")
+print(failed(again))
+print(com.release(must(again)))
+let missing = com.query(stream, "12345678-1234-1234-1234-123456789ABC")
+print(failed(missing))
+print(errorOf(missing))
+
+// A failed method returns a negative HRESULT: seeking from an origin
+// that does not exist.
+let bad = com.call(stream, 5, 0, 77, 0)
+print(bad < 0)
+print(com.hex(0 - 2147467262))
+print(com.hex(1))
+print(len(com.message(bad)) > 0)
+print(com.release(stream))
+print(com.release(0))
+
+// Creating an object by class id needs COM started on the thread.
+let early = com.create("00021401-0000-0000-C000-000000000046", "000214F9-0000-0000-C000-000000000046")
+print(failed(early))
+print(errorOf(early))
+
+print(com.init())
+let link = must(com.create("00021401-0000-0000-C000-000000000046", "000214F9-0000-0000-C000-000000000046"))
+
+// IShellLinkW: 7 SetDescription, 6 GetDescription, 11 SetArguments,
+// 10 GetArguments. Strings go in and come out as UTF-16.
+print(com.call(link, 7, mem.wide("made by a Veyl program")))
+let wbuf = mem.alloc(520)
+print(com.call(link, 6, wbuf, 260))
+print(mem.wstr(wbuf))
+print(com.call(link, 11, mem.wide("--fast -n 3")))
+print(com.call(link, 10, wbuf, 260))
+print(mem.wstr(wbuf))
+
+// The shortcut's IPersistFile, reached by QueryInterface. Slot 3 is
+// GetClassID, which hands back the class the object was made from.
+let file = must(com.query(link, "0000010B-0000-0000-C000-000000000046"))
+let clsid = mem.alloc(16)
+print(com.call(file, 3, clsid))
+print(com.guidText(clsid))
+com.release(file)
+print(com.release(link))
+
+// A class nobody registered.
+let none = com.create("12345678-1234-1234-1234-123456789ABC", "00000000-0000-0000-C000-000000000046")
+print(failed(none))
+print(errorOf(none))
+
+// A BSTR holds what it was made from.
+let b = com.bstr("automation string")
+print(mem.wstr(b))
+print(mem.readU32(b - 4))
+com.bstrFree(b)
+com.bstrFree(0)
+
+com.done()
+mem.free(out)
+mem.free(count)
+mem.free(buf)
+mem.free(wbuf)
+mem.free(clsid)

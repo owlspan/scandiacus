@@ -405,6 +405,26 @@ var sigs = map[string]front.Signature{
 	"mem.call":     {Params: []*Type{Int}, Rest: Any, Ret: Int},
 	"mem.callF":    {Params: []*Type{Int}, Rest: Any, Ret: Float},
 	"mem.symbol":   {Params: []*Type{Str, Str}, Ret: Int},
+	"mem.wide":     {Params: []*Type{Str}, Ret: Bytes},
+	"mem.wstr":     {Params: []*Type{Int}, Ret: Str},
+
+	// com: calling COM interfaces. The three calls are lowered beside
+	// mem.call; the rest is in prelude_com.go.
+	"com.call":     {Params: []*Type{Int, Int}, Rest: Any, Ret: Int},
+	"com.call64":   {Params: []*Type{Int, Int}, Rest: Any, Ret: Int},
+	"com.callF":    {Params: []*Type{Int, Int}, Rest: Any, Ret: Float},
+	"com.init":     {Ret: Bool},
+	"com.done":     {Ret: Void},
+	"com.guid":     {Params: []*Type{Str}, Ret: Bytes},
+	"com.guidText": {Params: []*Type{Int}, Ret: Str},
+	"com.create":   {Params: []*Type{Str, Str}, Ret: ResultOf(Int)},
+	"com.query":    {Params: []*Type{Int, Str}, Ret: ResultOf(Int)},
+	"com.addRef":   {Params: []*Type{Int}, Ret: Int},
+	"com.release":  {Params: []*Type{Int}, Ret: Int},
+	"com.bstr":     {Params: []*Type{Str}, Ret: Int},
+	"com.bstrFree": {Params: []*Type{Int}, Ret: Void},
+	"com.hex":      {Params: []*Type{Int}, Ret: Str},
+	"com.message":  {Params: []*Type{Int}, Ret: Str},
 
 	// proc: another process's memory, the standard Windows debug
 	// surface. See prelude_proc.go.

@@ -135,6 +135,9 @@ pipeline:
 - `proc`: read and write another process's memory - open, read, write,
   typed reads and writes, and a pattern scan - and list processes,
   their modules, threads and memory regions
+- `com`: call COM interfaces through their method tables, which is how
+  DirectX, WMI and the shell are reached, with GUIDs, `CoCreateInstance`
+  and wide strings
 
 - `input`, `pause`, `toFloat`, `isFloat`, `count`, `padLeft` and
   `padRight`, and the constants `INF` and `NAN`, with comparisons that

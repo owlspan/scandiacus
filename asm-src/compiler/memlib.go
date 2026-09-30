@@ -66,37 +66,42 @@ func (l *lowerer) rawMemBuiltin(c *Call, name string) (Reg, bool) {
 			return l.junk(), true
 		}
 		target := l.intArg(c, 0)
-		var args []Reg
-		var types []vty
-		for _, a := range c.Args[1:] {
-			v := l.expr(a)
-			t := l.regTy[v]
-			switch {
-			case t.null || t.res:
-				l.errorAt(a, "%s cannot pass %s to native code", name, t)
-				return l.junk(), true
-			case t.k == kFloat:
-				types = append(types, vFloat)
-			case t.k == kInt, t.k == kBool, t.k == kStr, t.k == kBytes, l.isView(t):
-				types = append(types, vInt)
-			default:
-				l.errorAt(a, "%s passes ints, floats, bools, strings, bytes and extern structs; this is %s", name, t)
-				return l.junk(), true
-			}
-			args = append(args, v)
-		}
-		if len(args) > l.fn.MaxCallArgs {
-			l.fn.MaxCallArgs = len(args)
+		args, types, ok := l.nativeArgs(c.Args[1:], name)
+		if !ok {
+			return l.junk(), true
 		}
 		ret := vInt
 		if name == "mem.callF" {
 			ret = vFloat
 		}
-		d := l.newReg()
-		l.regTy[d] = ret
-		l.emit(Instr{Op: OpCallAddr, Dst: d, A: target, B: NoReg, Args: args, ArgTypes: types,
-			RetType: ret, Variadic: true, Comment: name})
-		return d, true
+		return l.callAddr(target, args, types, ret, false, name), true
+
+	case "com.call", "com.call64", "com.callF":
+		// A method of a COM interface. The object's first word points at
+		// its table of methods, the method is the slot'th address in it,
+		// and the object itself goes as the first argument - which is all
+		// a C++ virtual call is. com.call keeps the low 32 bits of the
+		// result, sign-extended, because nearly every method returns an
+		// HRESULT and a failure is a negative one; com.call64 keeps the
+		// whole register, for the few that return a pointer or a count.
+		if len(c.Args) < 2 {
+			l.errorAt(c, "%s takes an interface pointer, a method slot and then the method's arguments", name)
+			return l.junk(), true
+		}
+		obj, slot := l.intArg(c, 0), l.intArg(c, 1)
+		rest, types, ok := l.nativeArgs(c.Args[2:], name)
+		if !ok {
+			return l.junk(), true
+		}
+		vtable := l.loadWidth(obj, memI64)
+		target := l.loadWidth(l.arith(OpAdd, vtable, l.arith(OpMul, slot, l.constant(8))), memI64)
+		args := append([]Reg{obj}, rest...)
+		types = append([]vty{vInt}, types...)
+		ret := vInt
+		if name == "com.callF" {
+			ret = vFloat
+		}
+		return l.callAddr(target, args, types, ret, name == "com.call", name), true
 
 	case "mem.symbol":
 		// Where a DLL's export is, loading the DLL if it is not loaded
@@ -265,6 +270,45 @@ func (l *lowerer) rawMemBuiltin(c *Call, name string) (Reg, bool) {
 		return d, true
 	}
 	return NoReg, false
+}
+
+// nativeArgs lowers the arguments of a call to native code at an
+// address, and says how each travels: a float as a float, everything
+// else that can go at all as a word.
+func (l *lowerer) nativeArgs(exprs []Expr, name string) ([]Reg, []vty, bool) {
+	var args []Reg
+	var types []vty
+	for _, a := range exprs {
+		v := l.expr(a)
+		t := l.regTy[v]
+		switch {
+		case t.null || t.res:
+			l.errorAt(a, "%s cannot pass %s to native code", name, t)
+			return nil, nil, false
+		case t.k == kFloat:
+			types = append(types, vFloat)
+		case t.k == kInt, t.k == kBool, t.k == kStr, t.k == kBytes, l.isView(t):
+			types = append(types, vInt)
+		default:
+			l.errorAt(a, "%s passes ints, floats, bools, strings, bytes and extern structs; this is %s", name, t)
+			return nil, nil, false
+		}
+		args = append(args, v)
+	}
+	return args, types, true
+}
+
+// callAddr emits the call itself. ret32 sign-extends a 32-bit result,
+// whose upper half the callee leaves undefined.
+func (l *lowerer) callAddr(target Reg, args []Reg, types []vty, ret vty, ret32 bool, name string) Reg {
+	if len(args) > l.fn.MaxCallArgs {
+		l.fn.MaxCallArgs = len(args)
+	}
+	d := l.newReg()
+	l.regTy[d] = ret
+	l.emit(Instr{Op: OpCallAddr, Dst: d, A: target, B: NoReg, Args: args, ArgTypes: types,
+		RetType: ret, Ret32: ret32, Variadic: true, Comment: name})
+	return d
 }
 
 // heapCall calls one of the Heap functions on the process heap, which

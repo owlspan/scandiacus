@@ -28,10 +28,11 @@ runtime to install, and building one needs nothing but `veyl.exe`.
 13. [Builtin library](#builtin-library)
 14. [Native functions (`extern`)](#native-functions-extern)
 15. [`proc` - process memory](#proc---process-memory)
-16. [`win` - windows, drawing and input](#win---windows-drawing-and-input)
-17. [Reserved words](#reserved-words)
-18. [Compiler commands](#compiler-commands)
-19. [Known limitations](#known-limitations)
+16. [`com` - COM interfaces](#com---com-interfaces)
+17. [`win` - windows, drawing and input](#win---windows-drawing-and-input)
+18. [Reserved words](#reserved-words)
+19. [Compiler commands](#compiler-commands)
+20. [Known limitations](#known-limitations)
 
 ---
 
@@ -2470,6 +2471,8 @@ ordinary arithmetic:
 | `mem.fill(p, byte, n)` | - | `n` copies of one byte |
 | `mem.str(p)` | `str` | the NUL-terminated text at `p`, copied |
 | `mem.strN(p, n)` | `str` | at most `n` bytes, stopping at a NUL |
+| `mem.wide(s)` | `bytes` | `s` as UTF-16 with its terminating zero, for a Windows function taking a wide string |
+| `mem.wstr(p)` | `str` | the zero-terminated UTF-16 text at `p`, as a `str` |
 | `mem.bytes(p, n)` | `bytes` | `n` bytes at `p`, copied |
 | `mem.addr(v)` | `int` | where a `bytes`, `str` or extern struct lives |
 | `mem.protect(p, n, mode)` | `bool` | make pages `"r"`, `"rw"`, `"rx"`, `"rwx"`, `"x"` or `""` (no access) |
@@ -3287,6 +3290,106 @@ code page, so a name with characters outside it comes back altered.
 
 ---
 
+## `com` - COM interfaces
+
+DirectX, WIC, WMI, the shell and most Windows APIs newer than the flat
+Win32 ones are COM: there is no function to call, only objects with
+interfaces. A COM object is a pointer to a pointer to a table of
+function addresses, and calling a method means calling one slot of that
+table with the object as the first argument. `com.call` does exactly
+that.
+
+| Function | Returns | Description |
+| --- | --- | --- |
+| `com.call(obj, slot, args...)` | `int` | call the method in `slot` and return its `HRESULT`: `0` or more is success, negative is failure |
+| `com.call64(obj, slot, args...)` | `int` | the same, keeping the whole 64-bit result, for a method returning a pointer or a count |
+| `com.callF(obj, slot, args...)` | `float` | the same, for a method returning a `double` |
+| `com.init()` | `bool` | start COM on this thread; needed before `com.create` |
+| `com.done()` | - | the matching stop |
+| `com.create(clsid, iid)` | `int!` | a new object of a class, through one of its interfaces |
+| `com.query(obj, iid)` | `int!` | the same object through another interface (`QueryInterface`) |
+| `com.addRef(obj)` | `int` | take a reference; returns the new count |
+| `com.release(obj)` | `int` | drop a reference; returns the new count. `0` does nothing |
+| `com.guid(text)` | `bytes` | a GUID from its text form, as the 16 bytes a call takes a pointer to |
+| `com.guidText(p)` | `str` | the text form of the GUID stored at address `p` |
+| `com.bstr(s)` | `int` | a new `BSTR`, the string type of automation interfaces |
+| `com.bstrFree(b)` | - | free one |
+| `com.hex(hr)` | `str` | an `HRESULT` as it is written in documentation: `0x80004002` |
+| `com.message(hr)` | `str` | the system's text for an `HRESULT`, `""` if it has none |
+
+**The slot** is the method's position in the interface's declaration,
+counting inherited methods first. Every interface starts with
+`IUnknown`'s three - `QueryInterface` 0, `AddRef` 1, `Release` 2 - so
+the first method an interface adds to `IUnknown` is slot 3. For
+`IDXGIFactory1`, which inherits `IDXGIObject` (4 methods) and
+`IDXGIFactory` (5), `EnumAdapters1` is slot 3 + 4 + 5 = 12. The header
+file that declares the interface is where to count.
+
+**Arguments** go as they do for `mem.call`: an `int`, `bool`, `str`,
+`bytes`, pointer or extern struct is one word and a `float` a `double`.
+A `bytes` passes as the address of its data, so `com.guid(...)` and
+`mem.wide(...)` can be passed directly. An out-parameter takes the
+address of a local or of a block from `mem.alloc`.
+
+**GUIDs** are written without braces, `"00021401-0000-0000-C000-000000000046"`,
+because `{` starts an interpolation in a string. A GUID copied with its
+braces works if they are doubled: `"{{00021401-...}}"`. Text that is not
+a GUID stops the program.
+
+A memory stream, written and read back through `IStream` (3 `Read`,
+4 `Write`, 5 `Seek`):
+
+```veyl
+let stream = 0
+mem.call(mem.symbol("ole32.dll", "CreateStreamOnHGlobal"), 0, 1, &stream)
+
+let text = "through a vtable"
+com.call(stream, 4, text, len(text), 0)      // Write
+com.call(stream, 5, 0, 0, 0)                 // Seek to the start
+
+let buf = mem.alloc(64)
+com.call(stream, 3, buf, 7, 0)               // Read 7 bytes
+print(mem.str(buf))                          // through
+mem.free(buf)
+com.release(stream)
+```
+
+An object made from its class id, with wide strings in and out - the
+shell's shortcut object, `IShellLinkW` (6 `GetDescription`,
+7 `SetDescription`):
+
+```veyl
+com.init()
+let link = must(com.create("00021401-0000-0000-C000-000000000046",
+                           "000214F9-0000-0000-C000-000000000046"))
+com.call(link, 7, mem.wide("made by a Veyl program"))
+
+let buf = mem.alloc(520)
+com.call(link, 6, buf, 260)
+print(mem.wstr(buf))                         // made by a Veyl program
+
+let file = com.query(link, "0000010B-0000-0000-C000-000000000046")
+if failed(file) {
+    print(errorOf(file))                     // com.query: 0x80004002
+}
+com.release(link)
+com.done()
+```
+
+`com.create` and `com.query` fail with the `HRESULT` in the message.
+`com.create` before `com.init` fails with `0x800401F0` and says so. An
+interface pointer is an `int`; nothing checks that it is one, that the
+slot exists, or that the arguments are what the method takes, exactly
+as with `mem.call`. `examples/ffi/adapters.vl` lists the display
+adapters through DXGI this way.
+
+Not here: implementing a COM interface in Veyl, for an API that calls
+back through one, and `VARIANT` helpers for automation interfaces - a
+`VARIANT` is 24 bytes with its type in the first two and its value at
+offset 8, read with `mem.readU16` and friends.
+
+---
+
 ## `win` - windows, drawing and input
 
 Veyl opens a real window you can draw in. The shape is a **game loop**:
@@ -3678,6 +3781,10 @@ Honest list of what v0.41.0 does not do yet.
 - **An escaping address is caught within one function.** Passing
   `&x` to a function that keeps it, or smuggling it out as an `int`
   through something the compiler cannot follow, is not detected.
+- **A COM interface can be called but not implemented.** `com.call`
+  reaches any method of any interface; an API that wants to call back
+  through an interface the program supplies has nothing to be given
+  yet.
 - **`proc` names are in the system code page.** A process or module
   name with characters outside it comes back altered. There is also no
   call yet to suspend a thread or read its registers; those still go
