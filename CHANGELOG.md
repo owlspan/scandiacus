@@ -3,6 +3,28 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.42.0
+
+**com: COM interfaces.** DirectX, WIC, WMI and the shell are reached
+through COM objects, not flat functions. `com.call(obj, slot, args...)`
+calls a method by its slot in the interface and returns the `HRESULT`;
+`com.call64` and `com.callF` are for the methods that return a pointer
+or a `double`.
+
+Around it: `com.init()` / `com.done()`, `com.create(clsid, iid)` and
+`com.query(obj, iid)` (both return a result carrying the `HRESULT` on
+failure), `com.addRef` / `com.release`, `com.guid(text)` and
+`com.guidText(p)`, `com.bstr` / `com.bstrFree`, `com.hex(hr)` and
+`com.message(hr)`.
+
+**Wide strings.** `mem.wide(s)` gives a `str` as zero-terminated UTF-16
+and `mem.wstr(p)` reads one back, for COM and for any Windows function
+with a W in its name.
+
+`examples/ffi/adapters.vl` lists the display adapters through DXGI.
+Implementing an interface in Veyl, for an API that calls back through
+one, is not here yet.
+
 ## 0.41.0
 
 **proc: listing.** The other half of the `proc` library - finding
