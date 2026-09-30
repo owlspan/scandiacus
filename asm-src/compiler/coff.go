@@ -480,11 +480,18 @@ func linkStatic(obj *object, root string, imports map[string]string) error {
 		}
 	}
 
-	// Pass two: turn each kept section's relocations into the image's own.
+	// Pass two: turn each kept section's relocations into the image's own,
+	// collecting the external symbols no member defines.
+	deps := &staticDeps{direct: map[string]bool{}, imp: map[string]bool{}}
 	for _, mi := range order {
-		if err := relocateMember(obj, members[mi], mi); err != nil {
+		if err := relocateMember(obj, members[mi], mi, deps); err != nil {
 			return err
 		}
+	}
+
+	// Satisfy those external symbols as DLL imports.
+	if err := resolveObjectImports(obj, deps); err != nil {
+		return err
 	}
 
 	// Every referenced library symbol must now have a definition.
@@ -570,9 +577,18 @@ func alignImage(buf *[]byte, align int) int {
 	return len(*buf)
 }
 
+// staticDeps collects the external symbols object code refers to that no
+// member defines, so they can be satisfied as DLL imports afterwards.
+// A direct reference (a call, a rip-relative load) needs a thunk; an
+// __imp_ reference wants the import-table slot itself.
+type staticDeps struct {
+	direct map[string]bool
+	imp    map[string]bool
+}
+
 // relocateMember turns one object's relocations into entries on obj.relocs,
 // resolving each to a name writePE can look up.
-func relocateMember(obj *object, m *coffObject, mi int) error {
+func relocateMember(obj *object, m *coffObject, mi int, deps *staticDeps) error {
 	for si := range m.sections {
 		sec := &m.sections[si]
 		if !sec.kept {
@@ -587,7 +603,7 @@ func relocateMember(obj *object, m *coffObject, mi int) error {
 			}
 			target := m.symbols[rel.sym]
 
-			name, err := relocTargetName(obj, m, mi, int(rel.sym), target)
+			name, err := relocTargetName(obj, m, mi, int(rel.sym), target, deps)
 			if err != nil {
 				return err
 			}
@@ -622,9 +638,11 @@ func relocateMember(obj *object, m *coffObject, mi int) error {
 //
 // A target defined in this same member (a static function, a section) is
 // given a unique internal name and registered on the spot. A target that
-// is an external symbol keeps its own name, which another member's
-// definition or the program itself supplies.
-func relocTargetName(obj *object, m *coffObject, mi, symIdx int, s coffSym) (string, error) {
+// is defined by another member, or by the program, keeps its own name. A
+// target that nothing here defines is recorded as a dependency to satisfy
+// as a DLL import; an __imp_ reference wants the import slot itself, so it
+// resolves to the slot's own name.
+func relocTargetName(obj *object, m *coffObject, mi, symIdx int, s coffSym, deps *staticDeps) (string, error) {
 	if s.section > 0 {
 		sec := &m.sections[s.section-1]
 		if !sec.kept {
@@ -642,7 +660,86 @@ func relocTargetName(obj *object, m *coffObject, mi, symIdx int, s coffSym) (str
 			return "", fmt.Errorf("%s references the common symbol %s, "+
 				"which is not supported yet", m.member, s.name)
 		}
+		if base := strings.TrimPrefix(s.name, "__imp_"); base != s.name {
+			deps.imp[base] = true
+			return iatSym(base), nil
+		}
+		if _, ok := obj.sym[s.name]; !ok {
+			deps.direct[s.name] = true
+		}
 		return s.name, nil
 	}
 	return "", fmt.Errorf("%s: a relocation names an unusable symbol", m.member)
+}
+
+// runtimeHelpers are symbols a C compiler expects the linker to supply
+// itself - stack probes, the constructor shim, the stack-guard cookie -
+// rather than import from a DLL. They are not linked yet, so a program
+// that needs one gets a clear error instead of an image that will not
+// load.
+var runtimeHelpers = map[string]bool{
+	"__chkstk_ms": true, "___chkstk_ms": true, "__chkstk": true, "___chkstk": true,
+	"__main": true, "___main": true,
+	"_fltused": true, "__fltused": true,
+	"__security_cookie": true, "__security_check_cookie": true,
+	"__GSHandlerCheck": true, "__CxxFrameHandler3": true,
+}
+
+// resolveObjectImports satisfies the external symbols object code needs
+// that no member defines, by importing them from a DLL the way the loader
+// resolves the rest of the program's imports. A direct reference also gets
+// a jmp thunk so an ordinary call reaches the imported address.
+func resolveObjectImports(obj *object, deps *staticDeps) error {
+	need := map[string]bool{}
+	for s := range deps.imp {
+		need[s] = true
+	}
+	for s := range deps.direct {
+		need[s] = true
+	}
+
+	var helpers []string
+	for s := range need {
+		if runtimeHelpers[s] {
+			helpers = append(helpers, s)
+		}
+	}
+	if len(helpers) > 0 {
+		sort.Strings(helpers)
+		return fmt.Errorf("the static library needs the C runtime helper(s) %s, "+
+			"which are not linked yet", strings.Join(helpers, ", "))
+	}
+
+	// Add each needed symbol to the import set, then rebuild a sorted,
+	// duplicate-free extern list for the import table.
+	externSet := map[string]bool{}
+	for _, e := range obj.externs {
+		externSet[e] = true
+	}
+	for s := range need {
+		externSet[s] = true
+	}
+	obj.externs = obj.externs[:0]
+	for e := range externSet {
+		obj.externs = append(obj.externs, e)
+	}
+	sort.Strings(obj.externs)
+
+	// A direct reference reaches the import through a six-byte thunk, the
+	// same one link.go writes for the program's own externs. An __imp_
+	// reference already points at the slot, so it needs none.
+	var direct []string
+	for s := range deps.direct {
+		if _, ok := obj.sym[s]; !ok {
+			direct = append(direct, s)
+		}
+	}
+	sort.Strings(direct)
+	for _, s := range direct {
+		off := len(obj.text)
+		obj.text = append(obj.text, 0xFF, 0x25, 0, 0, 0, 0) // jmp qword ptr [rip+d32]
+		obj.sym[s] = symbol{secText, off}
+		obj.relocs = append(obj.relocs, reloc{at: off + 2, sym: iatSym(s), next: off + 6})
+	}
+	return nil
 }
