@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.43.0** - the language as currently implemented.
+**Version 0.44.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -2786,14 +2786,15 @@ read at build time: the object code that defines the symbol is pulled
 out of the archive and linked into the program, so there is no separate
 file to ship. A relative path is resolved against the source file.
 
-What links so far is self-contained object code - functions and the
-read-only, writable and zeroed data they use, calling each other and
-nothing outside the libraries named. Object code that calls into a DLL,
-the small C runtime helper symbols a C compiler expects a linker to
-supply, COMDAT de-duplication, weak externals, common symbols and the
-`.pdata`/`.xdata` unwind tables that exception handling needs are not
-linked yet; each is reported as an error naming what was missing rather
-than being turned into a wrong program.
+Object code that calls the C runtime or a Win32 function works: the
+symbols it needs are imported from their DLL the same way a program's own
+`extern` declarations are. What is not linked yet is the small C runtime
+helper symbols a C compiler expects a linker to supply itself (stack
+probes, the constructor shim, the stack-guard cookie), COMDAT
+de-duplication, weak externals, common symbols, and the `.pdata`/`.xdata`
+unwind tables that exception handling needs. Each of those is reported as
+an error naming what was missing rather than being turned into a wrong
+program.
 
 ### Types at the boundary
 
@@ -3787,7 +3788,7 @@ checker, so it is only reported once every type error is fixed.
 
 ## Known limitations
 
-Honest list of what v0.43.0 does not do yet.
+Honest list of what v0.44.0 does not do yet.
 
 **The language**
 

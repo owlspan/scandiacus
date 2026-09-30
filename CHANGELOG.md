@@ -3,6 +3,19 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.44.0
+
+**Static libraries can call into DLLs.** Object code pulled from a static
+library usually calls the C runtime or a Win32 function - `printf`,
+`strlen`, and the like. Those symbols are now imported from their DLL
+automatically, the same way a program's own `extern` declarations are, so
+a static library that uses the C runtime links and runs.
+
+Still not linked: the small C runtime helper symbols a C compiler expects
+a linker to supply itself (stack probes, the constructor shim, the
+stack-guard cookie), COMDAT sections, weak externals, common symbols and
+the `.pdata`/`.xdata` unwind tables. Each is reported as a clear error.
+
 ## 0.43.0
 
 **Static libraries.** A `from` clause ending in `.lib`, `.a`, `.obj` or
