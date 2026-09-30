@@ -7,7 +7,7 @@ endif
 
 syn keyword veylKeyword break const continue defer else false fn for if impl import in
 syn keyword veylKeyword let match nil own pub return self step struct true unsafe while
-syn keyword veylKeyword var enum extern export
+syn keyword veylKeyword var enum extern export new
 
 syn keyword veylType int float str bool bytes void i8 u8 i16 u16 i32 u32 i64 u64 f32 f64 ptr
 

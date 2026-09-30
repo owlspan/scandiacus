@@ -3,6 +3,47 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.39.0
+
+Memory and types, the ground C++-style programs stand on.
+
+**Fixed-width numbers.** `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `u64`
+and `f32` are real variable types: locals, parameters, returns, fields,
+list and map elements. Each wraps at its own width, unsigned ones
+divide, shift and compare unsigned, and an `f32` rounds to single
+precision after every operation, so the answers match C's exactly.
+There are still no implicit conversions: `i32(x)`, `u8(x)`, `f32(x)`
+and the rest convert, wrapping like a C cast, and a literal fits any of
+them when its value is in range. `i64` and `f64` name `int` and
+`float`.
+
+Reading memory at a width now gives that width's type: an extern
+struct's `u32` field reads as `u32` and a `*u16` as `u16`, where both
+used to read as `int`. Code that mixed them with `int` converts
+explicitly now, as in `int(entry.pid)` or `u32(colour)`.
+
+At the native boundary an `f32` argument is passed as a C `float`, a
+narrow or `f32` result is read at its width, and callback and export
+stubs extend each fixed-width argument whatever native code left in
+the rest of the register.
+
+**new and delete.** `new T`, `new [n]T` and `new T{x: 1}` allocate
+zeroed C-layout memory from the C heap and give back a `*T`;
+`delete(p)` frees it. It is never collected or moved, and native code
+can free what Veyl allocated and the other way round. Methods can be
+called through a pointer to an extern struct.
+
+**&local.** `&x` gives the address of a local variable or parameter -
+a number of any width, a `bool` or a pointer - for native
+out-parameters with no `mem.alloc` first. The compiler refuses an
+address that would outlive its function: returned, stored in a global,
+a field, a list or a map, or held by a closure.
+
+Fixed along the way: the encoder dropped the REX prefix `sil` and
+`dil` need as a source operand, a function with a float slot in an xmm
+register but nothing else pooled could emit an instruction the
+encoder refused, and `let p: *T = nil` failed to compile.
+
 ## 0.38.0
 
 **Pixels as memory.** `win.pixels(w)` returns a window's or canvas's

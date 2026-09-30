@@ -158,7 +158,11 @@
       "patterns": [
         {
           "name": "keyword.control.veyl",
-          "match": "\\b(if|else|while|for|in|step|break|continue|return|match)\\b"
+          "match": "\\b(if|else|while|for|in|step|break|continue|return|match|defer)\\b"
+        },
+        {
+          "name": "keyword.operator.new.veyl",
+          "match": "\\bnew\\b(?=\\s*[\\[A-Za-z_*])"
         },
         {
           "name": "keyword.declaration.veyl",
@@ -175,7 +179,7 @@
         {
           "comment": "Reserved but not implemented - flagged so it is obvious the compiler will refuse them.",
           "name": "invalid.illegal.reserved.veyl",
-          "match": "\\b(defer|own|unsafe)\\b"
+          "match": "\\b(own|unsafe)\\b"
         }
       ]
     },

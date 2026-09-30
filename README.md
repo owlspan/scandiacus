@@ -126,6 +126,12 @@ pipeline:
   by any struct with the methods, as in Go
 - garbage collected by default, or `gc off` at the top of a file to
   free memory by hand with `delete`, as in C++
+- fixed-width numbers, `i8` to `u64` and `f32`, that wrap and round
+  exactly as C's do, with `i32(x)`-style conversions
+- `new T` and `new [n]T` for C-layout memory from the C heap, freed
+  with `delete`, and methods called through a pointer
+- `&x` on a local variable, for native out-parameters, with the
+  compiler refusing an address that would outlive its function
 
 - `input`, `pause`, `toFloat`, `isFloat`, `count`, `padLeft` and
   `padRight`, and the constants `INF` and `NAN`, with comparisons that
@@ -244,6 +250,8 @@ asm-src/
     textlib.go      the primitives under input and the text builtins
     memlib.go       raw memory: alloc, free, reads and writes by width
     views.go        extern structs, C layouts at an address
+    fixed.go        i8 to u64 and f32: wrapping, unsigned ops, rounding
+    cstruct.go      new and delete, and variables kept in memory for &x
     winmedia.go     images, canvases, text measurement and sound
     prelude_png.go  the PNG decoder and DEFLATE, in Veyl
     callback.go     Veyl functions called from native code

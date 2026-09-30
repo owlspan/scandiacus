@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.38.0** - the language as currently implemented.
+**Version 0.39.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -151,6 +151,8 @@ total = 5           // error: undefined variable "total"
 | `?T`      | a `T`, or nothing            | `nil`               |
 | `T!`      | a `T`, or a reason it failed | `fail("bad input")` |
 | `fn(A) -> B` | a function                | `fn(n: int) -> int { ... }` |
+| `i8` ... `u64`, `f32` | a number of a fixed width | see [Fixed-width numbers](#fixed-width-numbers) |
+| `*T`      | the address of a `T` in C memory | see [Pointers](#pointers) |
 
 A number literal is an `int` unless it contains a `.`, in which case it
 is a `float`.
@@ -241,6 +243,86 @@ print(7 / 2)          // 3
 print(divf(7, 2))     // 3.5
 print(7.0 / 2.0)      // 3.5
 ```
+
+### Fixed-width numbers
+
+`int` and `float` are 64 bits. When a program needs the widths C code,
+file formats and other programs' memory use, there are these:
+
+| Type | Holds |
+| --- | --- |
+| `i8` `i16` `i32` | signed, -128 to 127, -32768 to 32767, and so on |
+| `u8` `u16` `u32` `u64` | unsigned, 0 to 255, 0 to 65535, and so on |
+| `f32` | a single-precision float, what C calls `float` |
+
+`i64` and `f64` are other names for `int` and `float`.
+
+They are ordinary types: a variable, a parameter, a return, a field, a
+list element or a map value can be one. Arithmetic wraps at the type's
+width, the way C's does:
+
+```veyl
+let a: u8 = 250
+print(a + 10)             // 4
+let b: i8 = 127
+print(b + 1)              // -128
+let c: u32 = 0
+print(c - 1)              // 4294967295
+let h: u32 = 2166136261
+h *= 16777619             // wraps at 32 bits, no masking needed
+```
+
+Unsigned values divide, shift right and compare as unsigned: a `u64`
+above 2^63 is a large number, not a negative one, and `>>` on any
+unsigned type fills with zeros. A signed division that overflows,
+`i32(-2147483648) / -1`, wraps instead of stopping the program. An
+`f32` rounds to single precision after every operation, so it gives
+exactly the answers C's `float` does, and prints as the shortest
+decimal that reads back to the same `f32`:
+
+```veyl
+let x: f32 = 0.1
+print(x + 0.2)            // 0.3
+print(x + 0.2 == 0.3)     // true, in single precision
+print(float(x))           // 0.10000000149011612
+```
+
+There are still no implicit conversions. `i8(x)`, `u8(x)`, `i16(x)`,
+`u16(x)`, `i32(x)`, `u32(x)`, `u64(x)`, `f32(x)`, `int(x)` and
+`float(x)` convert between any two number types. An integer narrows by
+keeping its low bits, like a C cast, and a float truncates toward zero:
+
+```veyl
+let big = 300
+print(u8(big))            // 44
+print(i8(200))            // -56
+print(u32(-1))            // 4294967295
+print(i32(-3.99))         // -3
+let n: i32 = 5
+let total = n + 1         // fine: 1 is a literal
+let m = 1
+let bad = n + m           // error: cannot mix i32 and int
+let good = n + i32(m)     // fine
+```
+
+A literal, or an expression made only of literals, fits any of them
+when its value is in range, and is an error when it is not:
+
+```veyl
+let mask: u32 = (255 << 16) | 7    // fine
+let full: u64 = 0xFFFFFFFFFFFFFFFF // fine
+let over: u8 = 256                 // error: 256 does not fit in u8
+```
+
+A shift's count can be any integer type. `%`, `&`, `|`, `^`, `~`, `<<`
+and `>>` work on the integer types, not on `f32`. Reading memory at a
+width gives that width's type: a `*u16` reads a `u16`, and an extern
+struct's `i32` field reads an `i32`.
+
+A value of one is still a single machine word, sign- or zero-extended
+from its width, so it costs what an `int` does; the extra instruction
+that puts a result back into range is one `movzx`, `movsx` or 32-bit
+`mov`.
 
 ### Lists and maps
 
@@ -1315,6 +1397,8 @@ too. `pause` writes `Press Enter to continue...` first.
 | `toFloat(s, fallback)`| `float` | parses text; `fallback` if it isn't a number     |
 | `isInt(s)`            | `bool`  | whether the text parses as a whole number        |
 | `isFloat(s)`          | `bool`  | whether the text parses as a number              |
+| `int(x)` `float(x)`   | `int`, `float` | any number, converted                     |
+| `i8(x)` ... `u64(x)`, `f32(x)` | that type | any number, wrapped like a C cast - see [Fixed-width numbers](#fixed-width-numbers) |
 
 Surrounding whitespace is ignored, so `toInt(" 7 ")` gives `7`.
 
@@ -2767,8 +2851,8 @@ extern struct Player {
 
 | Field type | Reads as |
 | --- | --- |
-| `i8` `u8` `i16` `u16` `i32` `u32` `i64` `u64` | `int`, sign- or zero-extended |
-| `f32` `f64` | `float` |
+| `i8` `u8` `i16` `u16` `i32` `u32` `u64` `f32` | that [fixed-width type](#fixed-width-numbers) |
+| `i64` `f64` | `int`, `float` |
 | `ptr` | `int`, all 64 bits |
 | `bool` | `bool`, one byte, anything but 0 is true |
 | another extern struct | a view of it, inside this one |
@@ -2881,10 +2965,50 @@ let pz = &vs[2].z             // *f32
 *pz = 8.0
 ```
 
-It cannot take the address of a Veyl variable. A variable lives in a
-register or a stack slot that the compiler moves around, so it has no
-address that stays true. Put the value in memory from `mem.alloc` or
-an extern struct and point at that.
+`&` on a variable gives its address, which is what a native function
+with an out-parameter wants:
+
+```veyl
+extern fn strtol(s: str, end: **u8, base: i32) -> i32 from "msvcrt"
+extern fn frexp(x: float, exp: *i32) -> float from "msvcrt"
+
+let end: *u8 = nil
+let n = strtol("1234xyz", &end, 10)   // n is 1234, end points at "xyz"
+let e: i32 = 0
+let m = frexp(12.0, &e)               // m is 0.75, e is 4
+
+fn bump(p: *i32) {
+    *p += 1
+}
+let count: i32 = 41
+bump(&count)                           // count is 42
+```
+
+A variable can be a number of any width, a `bool` or a pointer; the
+pointer's type is the variable's own, so `&count` above is a `*i32`,
+`&x` for an `int` is a `*i64` and for a `float` a `*f64`. While its
+address is taken the variable is kept in memory at that width, so what
+native code writes through the pointer, even into part of it, is what
+the variable reads afterwards. For an extern struct variable, which is
+already an address, `&v` is a pointer to the struct it views.
+
+The variable lives until its function returns, and its address must
+not outlive that. The compiler follows the address through the
+function - into other variables, through `+`, `-` and `as` - and
+refuses the ways out it can see:
+
+```veyl
+fn broken() -> *i32 {
+    let x: i32 = 5
+    return &x            // error: the address of a local variable
+}                        //        cannot be returned - use new
+```
+
+Returning it, storing it in a global, a field, a list, a map or
+through another pointer, and using it in a closure are all errors.
+Passing it to a function you call is not, as in C: that function must
+not keep it. A `for` loop's variable, a `const` and a global have no
+address to give.
 
 `as` changes what an address is seen as, never the address: between
 `int`, any pointer type, and an extern struct view. A pointer goes
@@ -2908,6 +3032,65 @@ qsort(nums, 5, 4, ascending)
 Nothing checks that a pointer points somewhere valid, the same as C:
 reading through a bad one stops the program. `print(p)` prints the
 address as a number.
+
+### `new` and `delete`
+
+`new` allocates zeroed memory from the C heap for one value and gives
+back a pointer to it; `new [n]T` allocates `n` of them in a row, and
+`new T{...}` fills fields in. `delete(p)` frees it.
+
+```veyl
+extern struct Vec3 { x: f32, y: f32, z: f32 }
+
+let v = new Vec3{x: 1, y: 2}      // *Vec3
+v.z = 3
+let pts = new [100]Vec3           // *Vec3 to the first of 100
+pts[5] = *v                       // copies the twelve bytes
+let flags = new [64]u8            // *u8
+let count = new i32               // *i32
+*count += 1
+
+delete(v)
+delete(pts)
+delete(flags)
+delete(count)
+```
+
+`T` is a C scalar (`i8` to `u64`, `f32`, `f64`, `bool`, `ptr`, and
+`int` and `float` as `i64` and `f64`), an extern struct or a pointer
+type. A Veyl struct is made with a literal instead; the collector owns
+it.
+
+This memory is never collected and never moved. That is the
+difference from a literal, `Vec3{...}`, whose bytes the collector owns
+and frees once nothing refers to them. `new` memory is freed by
+`delete` or not at all, and it comes from the same C runtime as
+native code linked against `msvcrt`, so either side can free what the
+other allocated. A pointer to it can be kept anywhere - a local, a
+field of a Veyl struct, a list, a map, a global - and passed to native
+code as it is. `delete` on `nil` does nothing; using memory after
+`delete`, or deleting it twice, is undefined, as in C. When memory
+runs out, `new` stops the program with a runtime error.
+
+A pointer to an extern struct reaches its fields and calls its methods
+the way C++'s `->` does:
+
+```veyl
+impl Vec3 {
+    fn scale(self, k: f32) {
+        self.x *= k
+        self.y *= k
+        self.z *= k
+    }
+}
+
+let p = new Vec3{x: 1, y: 2, z: 3}
+p.scale(2)
+print(*p)                         // Vec3{x: 2, y: 4, z: 6}
+```
+
+Assigning a pointer or a view copies the address. `*dst = *src`, or
+`dst[i] = src`, copies the bytes.
 
 ### Callbacks
 
@@ -2938,6 +3121,14 @@ The types in the callback's signature follow the rest of the boundary:
 `int` and `bool` are the C types, 32 bits, and `ptr` is a full 64-bit
 value - so a handle, a pointer, an `LPARAM` or an `LRESULT` is `ptr`. A
 `float` is a double. The Veyl function itself takes plain `int`s.
+
+A fixed-width type in the signature is exactly that C type: `u8`,
+`i16`, `u32` and the rest arrive at their width, whatever the caller
+left in the rest of the register, and `f32` is a C `float`, in and out.
+The same holds for an extern declaration, whose `f32` parameters are
+passed as singles and whose narrow results are read at their width,
+and for `export fn`. A callback or an export returning `f32` can take
+at most four arguments.
 
 Only a function declared with `fn`, named directly, can be a callback.
 A closure carries its captured variables somewhere native code does
@@ -3348,7 +3539,7 @@ checker, so it is only reported once every type error is fixed.
 
 ## Known limitations
 
-Honest list of what v0.38.0 does not do yet.
+Honest list of what v0.39.0 does not do yet.
 
 **The language**
 
@@ -3357,11 +3548,16 @@ Honest list of what v0.38.0 does not do yet.
 - **A native call through an address is untyped.** `mem.call` passes
   words and takes back `rax`; an `extern fn` is still the way to give
   a native function a checked signature.
-- **No fixed-width number types.** `i32`, `f32` and the rest describe
-  memory, in extern structs, pointers and the `mem` functions; a Veyl
-  variable is still an `int` or a `float`.
-- **`&` works on memory only.** A field of an extern struct, `*p` or
-  `p[i]` has an address; a Veyl variable does not.
+- **The library takes `int` and `float`.** `abs`, `min`, `max`, `sqrt`
+  and the rest of the math functions, the `mem` functions and the
+  bounds of a `for` range do not take the fixed-width types yet: convert
+  with `int(x)` or `float(x)`. A map key cannot be one either.
+- **`&` has no global to point at.** A local variable, a parameter, a
+  field of an extern struct, `*p` and `p[i]` have addresses; a global
+  and a loop variable do not.
+- **An escaping address is caught within one function.** Passing
+  `&x` to a function that keeps it, or smuggling it out as an `int`
+  through something the compiler cannot follow, is not detected.
 - **A missing map key is silent.** `m["absent"]` returns the zero
   value. `has()` and `find()` distinguish it; the bare index was left
   alone because making every map read return `?V` would mean a nil

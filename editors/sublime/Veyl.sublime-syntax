@@ -71,7 +71,7 @@ contexts:
       scope: constant.numeric.veyl
 
   Keywords:
-    - match: '\b(break|const|continue|defer|else|enum|export|extern|false|fn|for|if|impl|import|in|let|match|nil|own|pub|return|self|step|struct|true|unsafe|var|while)\b'
+    - match: '\b(break|const|continue|defer|else|enum|export|extern|false|fn|for|if|impl|import|in|let|match|new|nil|own|pub|return|self|step|struct|true|unsafe|var|while)\b'
       scope: keyword.control.veyl
 
   types:

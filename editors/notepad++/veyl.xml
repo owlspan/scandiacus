@@ -12,7 +12,7 @@
             <Keywords name="Numbers, prefix2">0b</Keywords>
             <Keywords name="Numbers, extras1">_</Keywords>
             <Keywords name="Operators1">+ - * / % = &lt; &gt; ! &amp; | ^ ~ ? : . , ( ) [ ] { }</Keywords>
-            <Keywords name="Keywords1">break const continue defer else enum export extern false fn for if impl import in let match nil own pub return self step struct true unsafe var while</Keywords>
+            <Keywords name="Keywords1">break const continue defer else enum export extern false fn for if impl import in let match new nil own pub return self step struct true unsafe var while</Keywords>
             <Keywords name="Keywords2">int float str bool bytes void i8 u8 i16 u16 i32 u32 i64 u64 f32 f64 ptr</Keywords>
             <Keywords name="Keywords3">E INF NAN PI abs acos all any asin atan atan2 beep cbrt ceil charAt chars clamp clear contains cos count divf each endsWith errorOf exit exp fail failed filter find first float floor has hideConsole hypot indexOf input insert int isFloat isInt isNan isOk isWin11 join keys last len lines log log10 log2 lower map max messageBox min mod must ok openWindow padLeft padRight pause pop pow print push random randomInt reduce remove removeAt repeat replace reverse round setTitle sign sin sleep slice sort sortBy split sqrt startsWith str substr sum tan toFloat toInt trim trunc upper valueOr values winBuild write</Keywords>
             <Keywords name="Keywords4">args bits bytes csv hash http json log mem net os rand re sound stats task term time url win zip</Keywords>
