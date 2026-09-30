@@ -203,7 +203,7 @@ func main() {
 		if err := missingForeignDLLs(filepath.Dir(path), mod); err != nil {
 			fail("%v", err)
 		}
-		buildExe(mod, out)
+		buildExe(mod, out, filepath.Dir(path))
 		// A package may carry a native library. Put it beside the
 		// executable, or the program will not start on a machine that
 		// does not happen to have it.
@@ -219,7 +219,7 @@ func main() {
 		if err := missingForeignDLLs(filepath.Dir(path), mod); err != nil {
 			fail("%v", err)
 		}
-		buildExe(mod, out)
+		buildExe(mod, out, filepath.Dir(path))
 		copyDLLsBeside(out, packageDLLs(filepath.Dir(path)))
 		run := programCmd(out, args[2:])
 		run.Stdout, run.Stderr, run.Stdin = os.Stdout, os.Stderr, os.Stdin
@@ -332,17 +332,25 @@ func report(errs []string) {
 // It is kept because it is the reference the byte encoder is checked
 // against, and because a program that runs one way and not the other
 // localises a bug to the half that changed.
-func buildExe(mod *Module, out string) {
+func buildExe(mod *Module, out, root string) {
 	asmText := Emit(mod)
 	if !envOff("VEYL_NOPEEP") && !envOff("VEYL_NOOPT") {
 		asmText = peephole(asmText)
 	}
 
+	if mod.DLL && len(staticImports) > 0 {
+		fail("a DLL cannot yet link a static library; the code that references " +
+			"it would have to be linked into the DLL and that is not written")
+	}
+
 	if os.Getenv("VEYL_LINK") != "mingw" {
-		obj, err := assembleObject(asmText)
+		obj, err := assembleObject(asmText, staticSymbolSet())
 		if err != nil {
 			fail("the generated assembly could not be encoded. This is a "+
 				"compiler bug, not a mistake in your program.\n%v", err)
+		}
+		if err := linkStatic(obj, root, staticImports); err != nil {
+			fail("%v", err)
 		}
 		opt := peOptions{dll: mod.DLL, name: filepath.Base(out), exports: mod.Exports}
 		if err := writePE(obj, out, opt); err != nil {
@@ -355,11 +363,13 @@ func buildExe(mod *Module, out string) {
 	if mod.DLL {
 		fail("VEYL_LINK=mingw cannot build a DLL; unset it to use the built-in linker")
 	}
-	buildExeWithMinGW(asmText, out)
+	buildExeWithMinGW(asmText, out, root)
 }
 
 // buildExeWithMinGW writes the assembly, then assembles and links it.
-func buildExeWithMinGW(asmText string, out string) {
+// Any static library the program named is handed to gcc, which links it
+// the same way the built-in path does.
+func buildExeWithMinGW(asmText string, out, root string) {
 	tmp, err := os.MkdirTemp("", "veyl-build-*")
 	if err != nil {
 		fail("%v", err)
@@ -379,7 +389,15 @@ func buildExeWithMinGW(asmText string, out string) {
 		fail("the assembler rejected the generated code. This is a compiler "+
 			"bug, not a mistake in your program.\n%s\n%s", err, outp)
 	}
-	if outp, err := toolchainCmd(binDir, cc, objPath, "-o", out).CombinedOutput(); err != nil {
+	linkArgs := []string{objPath, "-o", out}
+	for _, f := range staticLibFiles() {
+		if filepath.IsAbs(f) {
+			linkArgs = append(linkArgs, f)
+		} else {
+			linkArgs = append(linkArgs, filepath.Join(root, f))
+		}
+	}
+	if outp, err := toolchainCmd(binDir, cc, linkArgs...).CombinedOutput(); err != nil {
 		fail("linking failed.\n%s\n%s", err, outp)
 	}
 }

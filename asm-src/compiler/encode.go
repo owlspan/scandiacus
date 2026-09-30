@@ -26,12 +26,32 @@ import (
 
 // A reloc is a place in the code that needs an address filled in once
 // everything has one.
+//
+// The zero value describes what the encoder itself emits: a rel32 field
+// in .text. sec and kind exist for the relocations that come out of a
+// static library's object files, which land in other sections and are
+// not all rel32; see coff.go. Leaving both at their zero value keeps
+// every reloc the encoder writes exactly as it was.
 type reloc struct {
-	at     int    // byte offset of the 4-byte field
+	at     int    // byte offset of the field
 	sym    string // what it refers to
 	next   int    // offset of the instruction after this one, for rel32
 	isCall bool   // a call or jump, as opposed to a data reference
+
+	sec  secID   // the section the field lives in (secText for the encoder)
+	kind relKind // how to fill it in (relRel32 for the encoder)
 }
+
+// relKind is how a reloc's field is filled once the target has an
+// address. The encoder only ever needs relRel32; the rest come from
+// object files linked in from a static library.
+type relKind int
+
+const (
+	relRel32    relKind = iota // target - (fieldRVA) as a signed 32-bit
+	relAddr64                  // imageBase + targetRVA, a full 64-bit address
+	relAddr32NB                // targetRVA, a 32-bit image-relative address
+)
 
 // An item is one instruction: either settled bytes, or a branch whose
 // width is not decided yet.

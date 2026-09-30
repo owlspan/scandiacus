@@ -35,6 +35,7 @@ type secID int
 const (
 	secText secID = iota
 	secRdata
+	secData // writable initialised data, only ever from linked object files
 	secBss
 	numSections
 )
@@ -49,14 +50,20 @@ type symbol struct {
 type object struct {
 	text    []byte
 	rdata   []byte
+	data    []byte // writable initialised bytes, only from linked objects
 	bssLen  int
 	sym     map[string]symbol
-	relocs  []reloc  // all of them are into .text
+	relocs  []reloc  // into any section; see reloc.sec
 	externs []string // sorted, so two builds agree
 }
 
 // assembleObject reads the generated assembly and produces an object.
-func assembleObject(text string) (*object, error) {
+//
+// static names the externs that a linked static library will define. They
+// still appear as `.extern` in the assembly and as ordinary calls, but no
+// import thunk is written for them: linkStatic defines the symbol from the
+// library's own code instead, so the call reaches it directly.
+func assembleObject(text string, static map[string]bool) (*object, error) {
 	obj := &object{sym: map[string]symbol{}}
 	b := &block{at: map[string]int{}}
 	extern := map[string]bool{}
@@ -98,6 +105,14 @@ func assembleObject(text string) (*object, error) {
 		}
 	}
 
+	// An extern a static library defines is not imported: drop it here so
+	// no thunk and no import-table entry is made for it. linkStatic gives
+	// the name a real definition from the library's object code.
+	for name := range extern {
+		if static[name] {
+			delete(extern, name)
+		}
+	}
 	obj.externs = sortedKeys(extern)
 
 	// One thunk per extern, at the end of the text, labelled with the
@@ -203,6 +218,8 @@ func (obj *object) size(sec secID) int {
 	switch sec {
 	case secRdata:
 		return len(obj.rdata)
+	case secData:
+		return len(obj.data)
 	case secBss:
 		return obj.bssLen
 	}
@@ -223,6 +240,9 @@ func (obj *object) emit(sec secID, bs []byte) error {
 	switch sec {
 	case secRdata:
 		obj.rdata = append(obj.rdata, bs...)
+		return nil
+	case secData:
+		obj.data = append(obj.data, bs...)
 		return nil
 	case secBss:
 		return fmt.Errorf(".bss cannot hold initialised bytes")

@@ -208,12 +208,21 @@ func writePE(obj *object, out string, opt peOptions) error {
 		reloc = emptyRelocations(textRVA)
 		next = alignUp(relocRVA+len(reloc), sectionAlignment)
 	}
+
+	// Writable initialised data, present only when a static library was
+	// linked in; the compiler's own output never uses it.
+	dataRVA := 0
+	if len(obj.data) > 0 {
+		dataRVA = next
+		next = alignUp(next+len(obj.data), sectionAlignment)
+	}
 	bssRVA := next
 
 	// Where each section begins, so a symbol's offset becomes an RVA.
 	base := map[secID]int{
 		secText:  textRVA,
 		secRdata: rdataRVA,
+		secData:  dataRVA,
 		secBss:   bssRVA,
 	}
 
@@ -228,21 +237,51 @@ func writePE(obj *object, out string, opt peOptions) error {
 		return base[s.sec] + s.off, true
 	}
 
+	// sectionBytes gives the byte slice a reloc's field lives in and the
+	// address that slice starts at. .rdata may have been merged into the
+	// text above, in which case its bytes are a window into text.
+	sectionBytes := func(sec secID) ([]byte, int) {
+		switch sec {
+		case secRdata:
+			if rdataAt >= 0 {
+				return text[rdataAt:], rdataRVA
+			}
+			return obj.rdata, rdataRVA
+		case secData:
+			return obj.data, dataRVA
+		}
+		return text, textRVA
+	}
+
 	for _, r := range obj.relocs {
 		target, ok := resolve(r.sym)
 		if !ok {
 			return fmt.Errorf("nothing defines %s", r.sym)
 		}
-		// Every reference left in the text is rel32, whether it is a
-		// call or a rip-relative load, and both count from the end of
-		// the instruction. Whatever is already in the field is the
-		// addend the encoder put there.
-		addend := int32(binary.LittleEndian.Uint32(text[r.at : r.at+4]))
-		delta := target - (textRVA + r.next) + int(addend)
-		if delta < -(1<<31) || delta >= 1<<31 {
-			return fmt.Errorf("%s is too far away to reach", r.sym)
+		buf, secRVA := sectionBytes(r.sec)
+		switch r.kind {
+		case relAddr64:
+			// A full 64-bit address. The image loads at a fixed base with
+			// its relocations stripped, so the absolute value is written
+			// once here and never moved.
+			addend := int64(binary.LittleEndian.Uint64(buf[r.at : r.at+8]))
+			binary.LittleEndian.PutUint64(buf[r.at:r.at+8], uint64(int64(imageBase)+int64(target)+addend))
+		case relAddr32NB:
+			// An image-relative 32-bit address.
+			addend := int32(binary.LittleEndian.Uint32(buf[r.at : r.at+4]))
+			binary.LittleEndian.PutUint32(buf[r.at:r.at+4], uint32(int32(target)+addend))
+		default:
+			// rel32: a call, a jump or a rip-relative load, all counted
+			// from the end of the instruction. Whatever is already in the
+			// field is the addend, put there by the encoder or carried in
+			// from the object file.
+			addend := int32(binary.LittleEndian.Uint32(buf[r.at : r.at+4]))
+			delta := target - (secRVA + r.next) + int(addend)
+			if delta < -(1<<31) || delta >= 1<<31 {
+				return fmt.Errorf("%s is too far away to reach", r.sym)
+			}
+			binary.LittleEndian.PutUint32(buf[r.at:r.at+4], uint32(int32(delta)))
 		}
-		binary.LittleEndian.PutUint32(text[r.at:r.at+4], uint32(int32(delta)))
 	}
 
 	entrySym := entrySymbol
@@ -273,6 +312,10 @@ func writePE(obj *object, out string, opt peOptions) error {
 			peSection{".reloc", relocRVA, len(reloc), reloc, scnData | scnRead | scnDiscardable})
 		img.exportRVA, img.exportSize = edataRVA, len(edata)
 		img.relocRVA, img.relocSize = relocRVA, len(reloc)
+	}
+	if len(obj.data) > 0 {
+		sections = append(sections,
+			peSection{".data", dataRVA, len(obj.data), obj.data, scnData | scnRead | scnWrite})
 	}
 	if obj.bssLen > 0 {
 		sections = append(sections,

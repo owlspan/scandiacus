@@ -732,6 +732,7 @@ type externSig struct {
 	variadic bool
 	sym      string
 	dll      string
+	static   bool // dll names a static library (.lib/.a/.o), linked at build time
 }
 
 // collectExtern records one extern declaration. The checker has already
@@ -794,7 +795,11 @@ func (l *lowerer) collectExtern(fd *FnDecl) {
 		return
 	}
 	es.ret = ret
-	if es.dll != "" && !strings.HasSuffix(strings.ToLower(es.dll), ".dll") &&
+	if es.dll != "" && isStaticLib(es.dll) {
+		// A static library is linked in at build time, not imported at run
+		// time; its extension is kept as written so the file can be found.
+		es.static = true
+	} else if es.dll != "" && !strings.HasSuffix(strings.ToLower(es.dll), ".dll") &&
 		!strings.HasSuffix(strings.ToLower(es.dll), ".exe") {
 		// Windows loads "miniz" and "miniz.dll" identically, but the import
 		// table stores one canonical spelling and the missing-DLL check
@@ -2067,7 +2072,9 @@ func (l *lowerer) callExtern(c *Call, name string, es externSig) Reg {
 		args[i] = v
 		argTypes[i] = l.regTy[v]
 	}
-	if es.dll != "" {
+	if es.static {
+		registerStatic(name, es.dll)
+	} else if es.dll != "" {
 		overrideImport(name, es.dll)
 	}
 	d := l.ccall(name, args, argTypes, es.ret, es.ret32, es.variadic)

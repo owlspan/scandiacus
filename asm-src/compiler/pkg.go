@@ -387,6 +387,11 @@ func missingForeignDLLs(root string, mod *Module) error {
 	var missing []string
 	seen := map[string]bool{}
 	for sym := range mod.Externs {
+		// A symbol from a static library is not a DLL import; the library
+		// file is checked separately below.
+		if staticImports[sym] != "" {
+			continue
+		}
 		dll := importDLL(sym)
 		if knownSystemDLL[dll] || seen[dll] {
 			continue
@@ -403,6 +408,20 @@ func missingForeignDLLs(root string, mod *Module) error {
 		}
 		missing = append(missing, msg)
 	}
+
+	// Static libraries are files that have to exist at build time. Check
+	// each named one, resolving a relative path against the source.
+	for _, f := range staticLibFiles() {
+		path := f
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(root, f)
+		}
+		if _, err := os.Stat(path); err != nil {
+			missing = append(missing, fmt.Sprintf("this program links %s, which could not be found.\n"+
+				"        Put the static library next to the program, or give its full path in the from clause.", f))
+		}
+	}
+
 	sort.Strings(missing)
 	if len(missing) == 0 {
 		return nil
