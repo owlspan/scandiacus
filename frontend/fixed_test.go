@@ -92,6 +92,45 @@ func itoa64(v int64) string {
 	return itoa64(v/10) + string(rune('0'+v%10))
 }
 
+func TestAddrLocalEscapes(t *testing.T) {
+	ok := `
+fn put(out: *i32) {
+    *out = 3
+}
+fn fine() -> i32 {
+    let x: i32 = 0
+    put(&x)
+    let p = &x
+    let q = p
+    *q += 1
+    return x
+}
+`
+	if errs := checked(t, ok); len(errs) > 0 {
+		t.Fatalf("errors: %v", errs)
+	}
+	bad := []struct{ src, want string }{
+		{"fn f() -> *i32 {\n    let x: i32 = 5\n    return &x\n}", "cannot be returned"},
+		{"fn f() -> *i32 {\n    let x: i32 = 5\n    let p = &x\n    let q = p + 1\n    return q\n}", "cannot be returned"},
+		{"fn f() -> int {\n    let x = 5\n    return (&x) as int\n}", "cannot be returned"},
+		{"var keep: *i32 = nil\nfn f() {\n    let x: i32 = 5\n    keep = &x\n}", "outlives the function"},
+		{"extern struct B { p: *i32 }\nfn f(b: B) {\n    let x: i32 = 1\n    b.p = &x\n}", "outlives the function"},
+		{"fn f() -> []*i32 {\n    let x: i32 = 5\n    return [&x]\n}", "put in a list"},
+		{"fn f() -> fn() -> i32 {\n    let x: i32 = 1\n    let p = &x\n    return fn() -> i32 { return *p }\n}", "this closure uses p"},
+		{"fn f() {\n    let x = 1\n    let g = fn() { let p = &x }\n}", "cannot take its address"},
+		{"let s = \"a\"\nlet p = &s", "only a number, a bool or a pointer variable"},
+		{"const k = 5\nlet p = &k", "k is const"},
+		{"var g = 5\nfn f() {\n    let p = &g\n}", "is a global"},
+		{"for i in 0..3 {\n    let p = &i\n}", "i is a loop variable"},
+	}
+	for _, b := range bad {
+		errs := strings.Join(checked(t, b.src), "\n")
+		if !strings.Contains(errs, b.want) {
+			t.Errorf("%q: want an error containing %q, got %q", b.src, b.want, errs)
+		}
+	}
+}
+
 func TestNewChecks(t *testing.T) {
 	ok := `
 extern struct V { x: f32, y: f32 }

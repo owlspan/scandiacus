@@ -209,6 +209,9 @@ func (l *lowerer) liftFunc(fd *FnDecl, t vty, captured []capture) string {
 		l.emit(Instr{Op: OpParam, Dst: d, A: NoReg, B: NoReg, Imm: int64(i),
 			Comment: pa.Name})
 		slot := l.declareMaybeBoxed(pa.Name, params[i], inner[pa.Name])
+		if pa.Addressed {
+			l.keepInMemory(fd, pa.Name, slot)
+		}
 		l.storeLocal(slot, d)
 	}
 

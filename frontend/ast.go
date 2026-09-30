@@ -188,6 +188,10 @@ type Unary struct {
 	Op Kind // BANG, MINUS, TILDE, STAR (read through a pointer) or AMP (address of)
 	X  Expr
 	T  *Type // AMP only: the pointer type, set by the checker
+
+	// Local is set by the checker on &x for a variable x: the address
+	// of the variable itself. See addr.go.
+	Local bool
 }
 
 // Cast is `x as *T`: the same address, seen as another pointer type or
@@ -409,6 +413,10 @@ type Param struct {
 	// Default is the value after `=`, as in greeting: str = "hi", which a
 	// call that leaves the argument off gets a copy of. A constant.
 	Default Expr
+
+	// Addressed is set by the checker when the function takes &name, so
+	// a backend keeps the parameter in memory. See addr.go.
+	Addressed bool
 }
 
 type FnDecl struct {
@@ -489,6 +497,10 @@ type LetStmt struct {
 	// Used is filled in by the resolver. Go rejects unused locals, so
 	// codegen emits a `_ = x` discard only when this is false.
 	Used bool
+
+	// Addressed is set by the checker when &Name is taken, so a backend
+	// keeps the variable in memory at its C width. See addr.go.
+	Addressed bool
 
 	// Set on a top-level const, which becomes a real global rather than
 	// a local of the implicit main.

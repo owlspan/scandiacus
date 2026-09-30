@@ -36,6 +36,8 @@ func (c *Checker) deref(x *Unary) *Type {
 // things around in, so it has no address to give out.
 func (c *Checker) addrOf(x *Unary) *Type {
 	switch inner := x.X.(type) {
+	case *Ident:
+		return c.addrLocal(x, inner)
 	case *Unary:
 		if inner.Op == STAR {
 			// &*p is p.

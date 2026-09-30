@@ -14,12 +14,16 @@ import (
 // Like every other stage it accumulates errors rather than aborting, and
 // every error names Veyl types (str, float) and never Go ones.
 type Checker struct {
-	file     string
-	funcs    map[string]*FnDecl
-	structs  map[string]*StructDecl
-	enums    map[string]*EnumDecl
-	methods  map[string]map[string]*FnDecl // struct name -> method name -> decl
-	scopes   []map[string]*Type
+	file    string
+	funcs   map[string]*FnDecl
+	structs map[string]*StructDecl
+	enums   map[string]*EnumDecl
+	methods map[string]map[string]*FnDecl // struct name -> method name -> decl
+	scopes  []map[string]*Type
+
+	// loopVars are a for loop's variables, by the scope they live in;
+	// see addr.go.
+	loopVars map[int]map[string]bool
 	consts   []map[string]bool // parallel to scopes: names declared const
 	narrowed []map[string]bool // names proved non-nil, innermost last
 	curFn    *FnDecl
@@ -155,6 +159,7 @@ func (c *Checker) push() {
 }
 
 func (c *Checker) pop() {
+	delete(c.loopVars, len(c.scopes)-1)
 	c.scopes = c.scopes[:len(c.scopes)-1]
 	c.consts = c.consts[:len(c.consts)-1]
 }
@@ -474,6 +479,7 @@ func (c *Checker) Check(p *Program) {
 	c.push()
 	c.stmts(p.Main)
 	c.pop()
+	c.escapes(nil, p.Main)
 
 	// Last, the generic instances all that asked for, in the scope of
 	// the globals alone.
@@ -562,6 +568,7 @@ func (c *Checker) checkFn(f *FnDecl) {
 	c.stmts(f.Body.Stmts)
 	c.pop()
 	c.curFn = prev
+	c.escapes(f.Params, f.Body.Stmts)
 }
 
 // checkExternDecl validates the shape of an extern declaration. Only
@@ -729,6 +736,7 @@ func (c *Checker) stmt(s Stmt) {
 		}
 		c.push()
 		c.define(st.Var, Int)
+		c.markLoopVars(st.Var)
 		c.stmts(st.Body.Stmts)
 		c.pop()
 
@@ -887,6 +895,7 @@ func (c *Checker) forEach(st *ForStmt) {
 	if st.Var2 != "" {
 		c.define(st.Var2, valT)
 	}
+	c.markLoopVars(st.Var, st.Var2)
 	c.stmts(st.Body.Stmts)
 	c.pop()
 }
@@ -1382,6 +1391,7 @@ func (c *Checker) funcLit(x *FuncLit) *Type {
 	c.stmts(f.Body.Stmts)
 	c.pop()
 	c.curFn = prev
+	c.escapes(f.Params, f.Body.Stmts)
 
 	x.T = signatureOf(f)
 	return x.T

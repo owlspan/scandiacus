@@ -1,0 +1,115 @@
+// &local: the address of a variable, for native out-parameters and for
+// passing a variable to be changed. The variable is kept at its own C
+// width while its address is out, so what native code writes is what
+// Veyl reads back.
+
+// Native functions writing through out-parameters of several widths.
+extern fn strtol(s: str, end: **u8, base: i32) -> i32 from "msvcrt"
+extern fn modf(x: float, whole: *f64) -> float from "msvcrt"
+extern fn modff(x: f32, whole: *f32) -> f32 from "msvcrt"
+extern fn frexp(x: float, exp: *i32) -> float from "msvcrt"
+extern fn memset(dst: *u8, c: i32, n: int) -> *u8 from "msvcrt"
+
+let text = "1234xyz"
+let end: *u8 = nil
+let n = strtol(text, &end, 10)
+print("{n} {mem.str(end as int)} {(end as int) - mem.addr(text)}")
+
+let whole = 0.0
+let frac = modf(3.75, &whole)
+print("{whole} {frac}")
+
+let wholef: f32 = 0
+let fracf = modff(2.25, &wholef)
+print("{wholef} {fracf}")
+
+let exp: i32 = -1
+let mant = frexp(12.0, &exp)
+print("{mant} {exp}")
+
+// A native write of only the low bytes: the rest of the variable was
+// set, and is not read.
+let word: i32 = -1
+memset(&word as *u8, 0, 2)
+print(word)
+let small: u16 = 0
+memset(&small as *u8, 255, 1)
+print(small)
+
+// Reading and writing through the pointer, and the variable seeing it.
+fn bump(p: *i32) {
+    *p += 1
+}
+let counter: i32 = 41
+bump(&counter)
+print(counter)
+
+fn swap(a: *u8, b: *u8) {
+    let t = *a
+    *a = *b
+    *b = t
+}
+let x: u8 = 1
+let y: u8 = 200
+swap(&x, &y)
+print("{x} {y}")
+
+let f: f32 = 0.5
+let pf = &f
+*pf = 0.1
+print(f)
+f += 1
+print(*pf)
+
+let flag = false
+let pb = &flag
+*pb = true
+print(flag)
+
+let big = 7
+let pi = &big
+pi[0] = -5
+print(big)
+big += 10
+print(*pi)
+
+// A pointer variable's own address: **T.
+let target = new i32
+*target = 99
+let ptr: *i32 = nil
+let pp = &ptr
+*pp = target
+print(*ptr)
+delete(target)
+
+// A parameter has an address too.
+fn doubled(v: int) -> int {
+    let p = &v
+    *p *= 2
+    return v
+}
+print(doubled(21))
+
+// An extern struct variable is already an address: & gives a pointer
+// to the struct.
+extern struct Pair {
+    a: i32
+    b: i32
+}
+let pair = Pair{a: 1, b: 2}
+let pp2 = &pair
+pp2.b = 20
+print(pair)
+
+// Held in a local and moved around, the address stays good for the
+// whole call.
+fn sumTo(limit: int) -> int {
+    let acc = 0
+    let p = &acc
+    let q = p
+    for i in 1..limit + 1 {
+        *q += i
+    }
+    return acc
+}
+print(sumTo(100))

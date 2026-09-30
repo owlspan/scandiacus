@@ -923,6 +923,10 @@ type lowerer struct {
 	// literal has no element to infer from, so `let xs: []int = []` can
 	// only work if the annotation reaches the literal.
 	hint vty
+
+	// memSlots are the slots of each function kept in memory because
+	// their address is taken, with the width; see cstruct.go.
+	memSlots map[*Func]map[int64]int64
 }
 
 type loopTarget struct {
@@ -1139,6 +1143,9 @@ func (l *lowerer) function(fd *FnDecl) {
 		l.emit(Instr{Op: OpParam, Dst: d, A: NoReg, B: NoReg, Imm: int64(i),
 			Comment: pa.Name})
 		slot := l.declareMaybeBoxed(pa.Name, s.params[i], l.boxNames[pa.Name])
+		if pa.Addressed {
+			l.keepInMemory(fd, pa.Name, slot)
+		}
 		l.storeLocal(slot, d)
 	}
 
@@ -1235,6 +1242,10 @@ func (l *lowerer) declareMaybeBoxed(name string, t vty, box bool) int64 {
 // storeLocal writes a value to a declared slot, through the box when
 // there is one.
 func (l *lowerer) storeLocal(slot int64, v Reg) {
+	if k, kept := l.memSlot(slot); kept {
+		l.storeWidth(l.slotAddr(slot), v, k)
+		return
+	}
 	if l.boxed[slot] {
 		cell := l.newReg()
 		l.regTy[cell] = vInt
@@ -1248,6 +1259,15 @@ func (l *lowerer) storeLocal(slot int64, v Reg) {
 // loadLocal reads a declared slot, through the box when there is one.
 func (l *lowerer) loadLocal(slot int64) Reg {
 	t := l.slotTy[slot]
+	if k, kept := l.memSlot(slot); kept {
+		d := l.loadWidth(l.slotAddr(slot), k)
+		if t.k == kBool {
+			// C's bool is any nonzero byte; Veyl's is 0 or 1.
+			return l.compare(OpNe, d, l.constant(0))
+		}
+		l.regTy[d] = t
+		return d
+	}
 	if l.boxed[slot] {
 		cell := l.newReg()
 		l.regTy[cell] = vInt
@@ -1432,6 +1452,9 @@ func (l *lowerer) stmt(s Stmt) {
 			t = declared
 		}
 		slot := l.declareMaybeBoxed(st.Name, t, l.boxNames[st.Name])
+		if st.Addressed {
+			l.keepInMemory(st, st.Name, slot)
+		}
 		l.storeLocal(slot, v)
 
 	case *AssignStmt:

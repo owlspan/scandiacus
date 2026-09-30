@@ -99,6 +99,8 @@ func (l *lowerer) addrOf(x *Unary) Reg {
 		return l.junk()
 	}
 	switch inner := x.X.(type) {
+	case *Ident: // &x
+		return l.addrOfLocal(x, inner, want)
 	case *Unary: // &*p
 		return l.retype(l.expr(inner.X), want)
 	case *Index: // &p[i]
