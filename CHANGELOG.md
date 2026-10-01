@@ -3,6 +3,22 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.52.0
+
+**SQLite on Linux and macOS.** The `db` library - open, exec, query,
+changes, lastId, close - now works off Windows. On Windows it still loads
+the `sqlite3.dll` the `sqlite` package ships; on Linux the build links the
+system `-lsqlite3`, and on macOS it loads the `libsqlite3.dylib` that
+comes with the OS at run time (so the cross toolchain needs no macOS SDK
+stub for it). Each `sqlite3_` call the library makes is answered by an
+ms_abi wrapper that forwards to the real one, the same bridge every other
+runtime call uses, and sqlite is linked only when a program actually uses
+`db`.
+
+Test: tests/db.vl opens an in-memory database, inserts and queries rows,
+and checks changes and lastId; skipped on Windows, which reaches the same
+library through the packaged DLL.
+
 ## 0.51.0
 
 **TCP sockets on Linux and macOS.** The `net` library - listen, accept,
