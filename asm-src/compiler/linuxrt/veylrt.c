@@ -28,6 +28,8 @@
  */
 
 #define _GNU_SOURCE
+#define _XOPEN_SOURCE 700  /* macOS needs this for the ucontext routines */
+#define _DARWIN_C_SOURCE   /* ...and this to keep its _np and MAP_ANON extras */
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -42,6 +44,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -51,6 +54,10 @@
 #include <time.h>
 #include <ucontext.h>
 #include <unistd.h>
+
+#ifndef MAP_ANONYMOUS
+#define MAP_ANONYMOUS MAP_ANON /* the two spellings; macOS has only MAP_ANON */
+#endif
 
 #define MS __attribute__((ms_abi))
 #define VYW(name) MS __vyw_##name
@@ -459,7 +466,16 @@ int VYW(_pclose)(FILE *f)
 
 char * VYW(fgets)(char *buf, int n, FILE *f) { return fgets(buf, n, f); }
 u32 VYW(GetCurrentProcessId)(void) { return (u32)getpid(); }
-u32 VYW(GetCurrentThreadId)(void) { return (u32)gettid(); }
+u32 VYW(GetCurrentThreadId)(void)
+{
+#ifdef __APPLE__
+	uint64_t tid = 0;
+	pthread_threadid_np(NULL, &tid);
+	return (u32)tid;
+#else
+	return (u32)gettid();
+#endif
+}
 u32 VYW(GetActiveProcessorCount)(unsigned short group) { (void)group; return (u32)sysconf(_SC_NPROCESSORS_ONLN); }
 void VYW(Sleep)(u32 ms)
 {
@@ -1284,6 +1300,12 @@ int VYW(ReadProcessMemory)(struct handle *h, const void *addr, void *buf, size_t
 		memcpy(buf, addr, n);
 		done = n;
 	} else {
+#ifdef __APPLE__
+		/* Reading another process needs mach_vm_read, which is not wired
+		 * up yet; reading our own works, which is what the tests do. */
+		set_errno_error();
+		return 0;
+#else
 		struct iovec local = {buf, n};
 		struct iovec remote = {(void *)addr, n};
 		ssize_t r = process_vm_readv(h->fd, &local, 1, &remote, 1, 0);
@@ -1292,6 +1314,7 @@ int VYW(ReadProcessMemory)(struct handle *h, const void *addr, void *buf, size_t
 			return 0;
 		}
 		done = (size_t)r;
+#endif
 	}
 	if (got)
 		*got = done;
@@ -1309,6 +1332,10 @@ int VYW(WriteProcessMemory)(struct handle *h, void *addr, const void *buf, size_
 		memcpy(addr, buf, n);
 		done = n;
 	} else {
+#ifdef __APPLE__
+		set_errno_error();
+		return 0;
+#else
 		struct iovec local = {(void *)buf, n};
 		struct iovec remote = {addr, n};
 		ssize_t r = process_vm_writev(h->fd, &local, 1, &remote, 1, 0);
@@ -1317,6 +1344,7 @@ int VYW(WriteProcessMemory)(struct handle *h, void *addr, const void *buf, size_
 			return 0;
 		}
 		done = (size_t)r;
+#endif
 	}
 	if (put)
 		*put = done;
@@ -1429,6 +1457,14 @@ void VYW(WakeConditionVariable)(void **cv) { pthread_cond_signal(cond_of(cv)); }
 /* The bounds of the calling thread's stack, for the collector's scan. */
 void VYW(GetCurrentThreadStackLimits)(uintptr_t *low, uintptr_t *high)
 {
+#ifdef __APPLE__
+	/* pthread_get_stackaddr_np returns the high end; the stack grows down
+	 * from there for pthread_get_stacksize_np bytes. */
+	void *hi = pthread_get_stackaddr_np(pthread_self());
+	size_t size = pthread_get_stacksize_np(pthread_self());
+	*low = (uintptr_t)hi - size;
+	*high = (uintptr_t)hi;
+#else
 	pthread_attr_t a;
 	void *addr = NULL;
 	size_t size = 0;
@@ -1438,6 +1474,7 @@ void VYW(GetCurrentThreadStackLimits)(uintptr_t *low, uintptr_t *high)
 	}
 	*low = (uintptr_t)addr;
 	*high = (uintptr_t)addr + size;
+#endif
 }
 
 int VYW(SetThreadStackGuarantee)(u32 *size) { (void)size; return 1; }
@@ -1492,8 +1529,13 @@ static void on_signal(int sig, siginfo_t *si, void *uc_)
 	memset(record, 0, sizeof record);
 	memset(context, 0, sizeof context);
 	memcpy(record, &code, 4);
+#ifdef __APPLE__
+	u64 rip = (u64)uc->uc_mcontext->__ss.__rip;
+	u64 rsp = (u64)uc->uc_mcontext->__ss.__rsp;
+#else
 	u64 rip = (u64)uc->uc_mcontext.gregs[REG_RIP];
 	u64 rsp = (u64)uc->uc_mcontext.gregs[REG_RSP];
+#endif
 	memcpy(context + 0xF8, &rip, 8);
 	memcpy(context + 0x98, &rsp, 8);
 

@@ -71,6 +71,11 @@ func defaultTarget() string {
 		return "linux"
 	case "windows":
 		return "windows"
+	case "macos", "mac", "darwin":
+		return "macos"
+	}
+	if runtime.GOOS == "darwin" {
+		return "macos"
 	}
 	if runtime.GOOS == "linux" {
 		return "linux"
@@ -83,7 +88,7 @@ func targetLinux() bool { return target == "linux" }
 // exeName is the file a build writes for a source path.
 func exeName(source string) string {
 	base := strings.TrimSuffix(source, filepath.Ext(source))
-	if targetLinux() {
+	if targetLinux() || targetMac() {
 		return base
 	}
 	return base + ".exe"

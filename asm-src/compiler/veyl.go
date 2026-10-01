@@ -31,7 +31,7 @@ import (
 	"strings"
 )
 
-const Version = "0.46.0"
+const Version = "0.47.0"
 
 const usage = `veyl ` + Version + ` - the Veyl compiler
 
@@ -187,6 +187,8 @@ func main() {
 			target = "linux"
 		case opt == "--windows" || opt == "--target=windows":
 			target = "windows"
+		case opt == "--macos" || opt == "--mac" || opt == "--target=macos":
+			target = "macos"
 		default:
 			fail("unknown option %q", opt)
 		}
@@ -221,6 +223,11 @@ func main() {
 			out = strings.TrimSuffix(path, filepath.Ext(path)) + ".dll"
 			mod.DLL = true
 		}
+		if targetMac() {
+			buildMac(mod, out)
+			fmt.Printf("wrote %s\n", out)
+			break
+		}
 		if targetLinux() {
 			buildLinux(mod, out)
 			fmt.Printf("wrote %s\n", out)
@@ -242,7 +249,9 @@ func main() {
 		}
 		defer os.RemoveAll(tmp)
 		out := exeName(filepath.Join(tmp, "prog.vl"))
-		if targetLinux() {
+		if targetMac() {
+			buildMac(mod, out)
+		} else if targetLinux() {
 			buildLinux(mod, out)
 		} else {
 			if err := missingForeignDLLs(filepath.Dir(path), mod); err != nil {
@@ -273,7 +282,9 @@ func main() {
 // run on a Linux machine; without wine it is attempted directly and the
 // failure names the file.
 func programCmd(exe string, args []string) *exec.Cmd {
-	if !targetLinux() && runtime.GOOS != "windows" {
+	// Only a Windows-target program needs wine, and only off Windows. A
+	// Linux or macOS program runs directly on its own system.
+	if !targetLinux() && !targetMac() && runtime.GOOS != "windows" {
 		if wine, err := exec.LookPath("wine"); err == nil {
 			return exec.Command(wine, append([]string{exe}, args...)...)
 		}
