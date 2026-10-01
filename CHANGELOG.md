@@ -3,6 +3,16 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.49.0
+
+**macOS sound (CoreAudio).** The `sound` library and the MCI music calls
+now play on macOS, through an AudioQueue from the AudioToolbox framework
+(loaded with dlopen, like the rest of the macOS backend). The mixer is the
+same as on Linux - a set of voices summed each frame - with CoreAudio
+pulling the mixed samples through a callback. So a macOS build now has the
+window, input and sound a game needs. Still experimental and built
+without a Mac to test on.
+
 ## 0.48.0
 
 **macOS windows and input (Cocoa).** A windowed program now builds for
