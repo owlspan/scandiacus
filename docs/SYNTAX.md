@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.51.0** - the language as currently implemented.
+**Version 0.52.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -2257,11 +2257,17 @@ since the input comes from outside; encoding cannot.
 
 ### `db` - SQLite
 
-Needs the `sqlite` package, which carries the library:
+On Windows it needs the `sqlite` package, which carries the library:
 
 ```
 veyl get sqlite
 ```
+
+Linux and macOS use the system SQLite instead: a Linux build links
+`-lsqlite3` (install it with the system package manager, for example
+`apt install libsqlite3-dev`), and a macOS build loads the
+`libsqlite3.dylib` that ships with the OS. The `import "sqlite"` line is
+harmless there - it just brings the helper functions below.
 
 Then:
 
@@ -3794,7 +3800,7 @@ checker, so it is only reported once every type error is fixed.
 
 ## Known limitations
 
-Honest list of what v0.51.0 does not do yet.
+Honest list of what v0.52.0 does not do yet.
 
 **The language**
 
@@ -3869,12 +3875,14 @@ Honest list of what v0.51.0 does not do yet.
 - **Windows and graphics both run on Linux.** The `win` library -
   windows, the frame buffer, keyboard and mouse, drawing, text, images
   and `sound` - works on Linux through X11 and PulseAudio, so a game
-  runs the same on both. Still Windows-only: `com`, `proc`, the `http` client (WinHTTP), `db`
-  (sqlite), raw native calls through `mem.call` / `mem.symbol` (they use
-  the Windows calling convention), static `.lib` archives, and `--dll`
-  builds. TCP sockets (the `net` library) work on all three. A Linux build that uses one names the
-  calls and stops. A plain `extern fn` on Linux reaches the C functions
-  the Linux runtime provides.
+  runs the same on both. Still Windows-only: `com`, `proc`, the `http`
+  client (WinHTTP), raw native calls through `mem.call` / `mem.symbol`
+  (they use the Windows calling convention), static `.lib` archives, and
+  `--dll` builds. TCP sockets (the `net` library) and `db` (SQLite) work
+  on all three - Linux and macOS use the system sqlite rather than the
+  packaged DLL. A Linux build that uses a Windows-only call names it and
+  stops. A plain `extern fn` on Linux reaches the C functions the Linux
+  runtime provides.
 - **A Linux build needs the system tools.** It assembles and links with
   `as`, `objcopy` and `cc` for now, where a Windows build needs nothing.
 - **One window per program**, no images, no sound, one font at one

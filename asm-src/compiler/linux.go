@@ -17,10 +17,10 @@ package main
 // own PE writer. An ELF writer of the compiler's own is the obvious next
 // step and does not change anything above this file.
 //
-// What is not on Linux yet: windows and drawing, sound, COM, sockets and
-// HTTP, sqlite, process inspection, and static .lib archives (those are
-// COFF). A program that needs one is told which calls it used rather
-// than getting a link error.
+// What is not on Linux yet: COM, the HTTP client (WinHTTP), process
+// inspection, and static .lib archives (those are COFF). A program that
+// needs one is told which calls it used rather than getting a link error.
+// Windows and drawing, sound, TCP sockets and sqlite all work here now.
 
 import (
 	"crypto/sha256"
@@ -54,6 +54,19 @@ var macWinSource string
 
 //go:embed linuxrt/font8x8.h
 var linuxFontHeader string
+
+// The db library's sqlite calls, linked only when a program uses them so
+// that other programs need no sqlite installed.
+//
+//go:embed linuxrt/veylsqlite.c
+var sqliteSource string
+
+// The macOS sqlite calls, which dlopen the system libsqlite3.dylib at run
+// time rather than linking it, because the cross toolchain has no macOS
+// SDK to link against. Linked only when a program uses db.
+//
+//go:embed linuxrt/veylmacsqlite.c
+var macSqliteSource string
 
 // linuxRuntimeSources is every runtime .c, by file name. The order does
 // not matter; they are linked together. The window layer differs by
@@ -210,7 +223,17 @@ func buildLinux(mod *Module, out string) {
 		linkArgs = append(linkArgs, wp)
 	}
 	linkArgs = append(linkArgs, linuxRuntimeObjects(cc)...)
+	if needsSqlite(externs) {
+		sp := filepath.Join(tmp, "veylsqlite.c")
+		if err := os.WriteFile(sp, []byte(sqliteSource), 0o644); err != nil {
+			fail("%v", err)
+		}
+		linkArgs = append(linkArgs, sp)
+	}
 	linkArgs = append(linkArgs, "-lm", "-lpthread", "-ldl")
+	if needsSqlite(externs) {
+		linkArgs = append(linkArgs, "-lsqlite3")
+	}
 	linkArgs = append(linkArgs, wrapperLibs...)
 	if outp, err := exec.Command(cc, linkArgs...).CombinedOutput(); err != nil {
 		fail("linking failed.\n%s\n%s", err, outp)

@@ -113,6 +113,15 @@ func buildMac(mod *Module, out string) {
 		}
 		args = append(args, wp)
 	}
+	if needsSqlite(externs) {
+		// libsqlite3.dylib is loaded at run time, not linked, so the build
+		// needs no sqlite present and no macOS SDK stub for it.
+		sp := filepath.Join(tmp, "veylmacsqlite.c")
+		if err := os.WriteFile(sp, []byte(macSqliteSource), 0o644); err != nil {
+			fail("%v", err)
+		}
+		args = append(args, sp)
+	}
 	args = append(args, wrapperLibs...)
 
 	if outp, err := exec.Command(cc[0], args...).CombinedOutput(); err != nil {

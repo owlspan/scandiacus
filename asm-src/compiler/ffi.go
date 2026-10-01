@@ -140,9 +140,24 @@ func unixLib(from string) string {
 // runtime already provides, the ones to wrap as C calls, and the ones that
 // are genuinely unavailable off Windows (a runtime builtin with no POSIX
 // implementation, named by a library the program did not declare).
+// isSqliteSym reports whether a symbol is part of sqlite, which the db
+// library calls and veylsqlite.c provides against the system libsqlite3.
+func isSqliteSym(s string) bool { return strings.HasPrefix(s, "sqlite3_") }
+
+// needsSqlite reports whether any of the externs is a sqlite call, so the
+// build links libsqlite3.
+func needsSqlite(externs []string) bool {
+	for _, e := range externs {
+		if isSqliteSym(e) {
+			return true
+		}
+	}
+	return false
+}
+
 func splitExterns(mod *Module, externs []string) (wrap []string, windowsOnly []string) {
 	for _, e := range externs {
-		if linuxProvided[e] {
+		if linuxProvided[e] || isSqliteSym(e) {
 			continue
 		}
 		if _, ok := mod.ExternSigs[e]; ok {
