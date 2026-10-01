@@ -8,8 +8,14 @@ name: backfill-releases
 # tab; it skips any version already released, so running it twice is safe.
 # Delete this file once the backfill is done.
 
+# Triggered by pushing a backfill-* tag, not workflow_dispatch: a run
+# dispatched through a GitHub App gets a read-only token and cannot
+# create releases, while a run from an ordinary git push gets the
+# contents: write token this needs, the same way release.yml does.
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - 'backfill-*'
 
 permissions:
   contents: write
