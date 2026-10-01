@@ -3,6 +3,26 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.45.0
+
+**Linux.** veyl builds Linux executables as well as Windows ones.
+`--linux` and `--windows` choose; the default is the system veyl runs
+on, so on Linux `veyl run app.vl` just runs.
+
+The program's code is the same on both systems. Every library call it
+makes is answered on Linux by a small runtime that does the same job on
+POSIX under the Windows calling convention: printing and formatting,
+files and directories, memory, threads, locks and condition variables,
+time, the environment and the command line, and the crash handler.
+Console programs behave the same on both; 59 of the 70 test programs
+print the same bytes on Linux as on Windows.
+
+The libraries that only exist on Windows - windows and drawing, sound,
+COM, `proc`, sockets and HTTP, sqlite, `mem.symbol`, static `.lib`
+archives and `--dll` builds - are reported by name when a Linux build
+uses them. For now a Linux build assembles and links with the system's
+`as`, `objcopy` and `cc`; a built-in ELF writer is the next step.
+
 ## 0.44.0
 
 **Static libraries can call into DLLs.** Object code pulled from a static
