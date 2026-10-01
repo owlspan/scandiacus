@@ -32,6 +32,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -92,9 +93,14 @@ func buildMac(mod *Module, out string) {
 	cc := macCC()
 	args := append([]string{}, cc[1:]...)
 	args = append(args, "-O2", "-o", out, asmPath)
-	for _, name := range runtimeSourceNames() {
+	names := make([]string, 0, len(macRuntimeSources))
+	for name := range macRuntimeSources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
 		p := filepath.Join(tmp, name)
-		if err := os.WriteFile(p, []byte(linuxRuntimeSources[name]), 0o644); err != nil {
+		if err := os.WriteFile(p, []byte(macRuntimeSources[name]), 0o644); err != nil {
 			fail("%v", err)
 		}
 		args = append(args, p)

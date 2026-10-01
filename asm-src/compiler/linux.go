@@ -49,15 +49,25 @@ var linuxGdiSource string
 //go:embed linuxrt/veylwin.c
 var linuxWinSource string
 
+//go:embed linuxrt/veylmac.c
+var macWinSource string
+
 //go:embed linuxrt/font8x8.h
 var linuxFontHeader string
 
 // linuxRuntimeSources is every runtime .c, by file name. The order does
-// not matter; they are linked together.
+// not matter; they are linked together. The window layer differs by
+// system - X11 on Linux, Cocoa on macOS - so each target picks its own.
 var linuxRuntimeSources = map[string]string{
 	"veylrt.c":  linuxRuntimeSource,
 	"veylgdi.c": linuxGdiSource,
 	"veylwin.c": linuxWinSource,
+}
+
+var macRuntimeSources = map[string]string{
+	"veylrt.c":  linuxRuntimeSource,
+	"veylgdi.c": linuxGdiSource,
+	"veylmac.c": macWinSource,
 }
 
 // Which operating system the output is for: "windows" or "linux".
