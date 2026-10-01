@@ -3,6 +3,22 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.46.0
+
+**Graphics, input and sound on Linux.** The `win` library now works on
+Linux, not just Windows: opening a window, the frame buffer, the keyboard
+and mouse, `win.rect`/`line`/`circle`/`text`, images, and the `sound`
+library. Drawing is done in software (`linuxrt/veylgdi.c`); the window
+and input go through X11 and sound through PulseAudio, both loaded at run
+time with dlopen (`linuxrt/veylwin.c`), so a program that opens no window
+needs neither installed. A graphical game built with `--linux` runs the
+same as on Windows.
+
+Of the test programs, 63 of 70 now pass byte-for-byte on Linux; the other
+seven test Windows-only facilities (COM, the PE image layout, raw native
+calls through `mem.call`/`mem.symbol`, the Windows process APIs, and COFF
+static libraries) and are skipped there. CI runs the Linux suite too.
+
 ## 0.45.0
 
 **Linux.** veyl builds Linux executables as well as Windows ones.
