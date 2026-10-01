@@ -35,8 +35,30 @@ import (
 	"strings"
 )
 
+// The Linux runtime: the C runtime shim, the software GDI, and the X11
+// window / audio layer. Each is embedded, compiled, and linked into the
+// program. veylgdi.c includes font8x8.h, so that is embedded too and
+// written beside the sources before they are compiled.
+//
 //go:embed linuxrt/veylrt.c
 var linuxRuntimeSource string
+
+//go:embed linuxrt/veylgdi.c
+var linuxGdiSource string
+
+//go:embed linuxrt/veylwin.c
+var linuxWinSource string
+
+//go:embed linuxrt/font8x8.h
+var linuxFontHeader string
+
+// linuxRuntimeSources is every runtime .c, by file name. The order does
+// not matter; they are linked together.
+var linuxRuntimeSources = map[string]string{
+	"veylrt.c":  linuxRuntimeSource,
+	"veylgdi.c": linuxGdiSource,
+	"veylwin.c": linuxWinSource,
+}
 
 // Which operating system the output is for: "windows" or "linux".
 // Chosen by --windows / --linux on the command line, else VEYL_TARGET,
@@ -71,8 +93,11 @@ func exeName(source string) string {
 // its source so the two cannot drift apart.
 var linuxProvided = func() map[string]bool {
 	m := map[string]bool{}
-	for _, match := range regexp.MustCompile(`VYW\((\w+)\)`).FindAllStringSubmatch(linuxRuntimeSource, -1) {
-		m[match[1]] = true
+	re := regexp.MustCompile(`(?:VYW\(|__vyw_)(\w+)`)
+	for _, src := range linuxRuntimeSources {
+		for _, match := range re.FindAllStringSubmatch(src, -1) {
+			m[match[1]] = true
+		}
 	}
 	return m
 }()
@@ -159,52 +184,93 @@ func buildLinux(mod *Module, out string) {
 		fail("objcopy failed.\n%s\n%s", err, outp)
 	}
 
-	rt := linuxRuntimeObject(cc)
-	if outp, err := exec.Command(cc, "-no-pie", "-o", out, objPath, rt,
-		"-lm", "-lpthread").CombinedOutput(); err != nil {
+	linkArgs := []string{"-no-pie", "-o", out, objPath}
+	linkArgs = append(linkArgs, linuxRuntimeObjects(cc)...)
+	linkArgs = append(linkArgs, "-lm", "-lpthread", "-ldl")
+	if outp, err := exec.Command(cc, linkArgs...).CombinedOutput(); err != nil {
 		fail("linking failed.\n%s\n%s", err, outp)
 	}
 }
 
-// linuxRuntimeObject compiles the runtime once per version of its source
-// and keeps the object in the user's cache directory.
-func linuxRuntimeObject(cc string) string {
-	sum := sha256.Sum256([]byte(linuxRuntimeSource))
-	name := "veylrt-" + fmt.Sprintf("%x", sum[:8]) + ".o"
+// linuxRuntimeObjects compiles every runtime .c once per version of its
+// source and keeps the objects in the user's cache directory, so a build
+// only pays for them the first time. The cache key covers every source
+// and the font header, so any change rebuilds.
+func linuxRuntimeObjects(cc string) []string {
+	var all string
+	for _, name := range runtimeSourceNames() {
+		all += name + "\x00" + linuxRuntimeSources[name] + "\x00"
+	}
+	all += linuxFontHeader
+	sum := sha256.Sum256([]byte(all))
+	tag := fmt.Sprintf("%x", sum[:8])
 
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		dir = os.TempDir()
 	}
 	dir = filepath.Join(dir, "veyl")
-	obj := filepath.Join(dir, name)
-	if _, err := os.Stat(obj); err == nil {
-		return obj
-	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		fail("%v", err)
 	}
 
-	// Built under a temporary name and renamed into place, so builds
-	// running at the same time never see half an object.
-	src, err := os.CreateTemp(dir, "veylrt-*.c")
+	names := runtimeSourceNames()
+	objs := make([]string, 0, len(names))
+	var toBuild []string
+	for _, name := range names {
+		obj := filepath.Join(dir, "veylrt-"+tag+"-"+strings.TrimSuffix(name, ".c")+".o")
+		objs = append(objs, obj)
+		if _, err := os.Stat(obj); err != nil {
+			toBuild = append(toBuild, name)
+		}
+	}
+	if len(toBuild) == 0 {
+		return objs
+	}
+
+	// Compile in a scratch directory with the sources and the header
+	// together, so the #include resolves and partial objects are never
+	// seen by a concurrent build.
+	work, err := os.MkdirTemp(dir, "build-*")
 	if err != nil {
 		fail("%v", err)
 	}
-	defer os.Remove(src.Name())
-	if _, err := src.WriteString(linuxRuntimeSource); err != nil {
+	defer os.RemoveAll(work)
+	if err := os.WriteFile(filepath.Join(work, "font8x8.h"), []byte(linuxFontHeader), 0o644); err != nil {
 		fail("%v", err)
 	}
-	src.Close()
-	part := strings.TrimSuffix(src.Name(), ".c") + ".o"
-	if outp, err := exec.Command(cc, "-c", "-O2", "-o", part, src.Name()).CombinedOutput(); err != nil {
-		os.Remove(part)
-		fail("the Linux runtime could not be compiled.\n%s\n%s", err, outp)
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(work, name), []byte(linuxRuntimeSources[name]), 0o644); err != nil {
+			fail("%v", err)
+		}
 	}
-	if err := os.Rename(part, obj); err != nil {
-		fail("%v", err)
+	for _, name := range toBuild {
+		part := filepath.Join(work, strings.TrimSuffix(name, ".c")+".o")
+		if outp, err := exec.Command(cc, "-c", "-O2", "-o", part, filepath.Join(work, name)).CombinedOutput(); err != nil {
+			fail("the Linux runtime could not be compiled.\n%s\n%s", err, outp)
+		}
+		final := filepath.Join(dir, "veylrt-"+tag+"-"+strings.TrimSuffix(name, ".c")+".o")
+		if err := os.Rename(part, final); err != nil {
+			// A rename across the same directory should not fail; copy as
+			// a fallback so a build still succeeds.
+			if data, rerr := os.ReadFile(part); rerr == nil {
+				os.WriteFile(final, data, 0o644)
+			} else {
+				fail("%v", err)
+			}
+		}
 	}
-	return obj
+	return objs
+}
+
+// runtimeSourceNames is the runtime .c file names in a stable order.
+func runtimeSourceNames() []string {
+	names := make([]string, 0, len(linuxRuntimeSources))
+	for name := range linuxRuntimeSources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // linuxTool finds the first of the named programs on PATH.

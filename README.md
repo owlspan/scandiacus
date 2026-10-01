@@ -29,14 +29,19 @@ hello.vl  ->  [veyl --linux]  ->  hello
 
 The Linux executable runs the same instructions as the Windows one. The
 generated code is left exactly as it is; every library call it makes is
-answered by a small runtime (`compiler/linuxrt/veylrt.c`) that does the
-same job on POSIX under the Windows calling convention. On Linux that is
-the default, and console programs - files, strings, maps, threads, the
-crash handler - behave the same on both. The libraries that only exist
-on Windows (windows and drawing, sound, COM, sockets, HTTP, sqlite,
-`proc`) are reported by name when a program uses them. For now the
-Linux build uses the system's `as` and `cc` to assemble and link; a
-built-in ELF writer, like the PE one, is the next step.
+answered by a small runtime that does the same job on POSIX under the
+Windows calling convention. `linuxrt/veylrt.c` is the C runtime and the
+process, file and thread calls; `linuxrt/veylgdi.c` is a software
+implementation of the drawing calls; `linuxrt/veylwin.c` puts a window on
+the screen and reads input through X11, and plays sound through
+PulseAudio, both loaded with dlopen. So a graphical game - the window,
+the frame buffer, the keyboard and mouse, the HUD text, images and sound
+- runs the same on Linux as on Windows. The libraries that stay
+Windows-only are COM, `proc`, sockets, HTTP, sqlite, raw native calls
+through `mem.call`/`mem.symbol`, static `.lib` archives and `--dll`
+builds; a Linux build that uses one is told which calls it used. For now
+the Linux build uses the system's `as`, `objcopy` and `cc`; a built-in
+ELF writer, like the PE one, is the next step.
 
 ## Status
 

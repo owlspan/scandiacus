@@ -45,6 +45,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/uio.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -778,7 +779,7 @@ i64 VYW(_mktime64)(int *wtm)
 /* ---- handles ----------------------------------------------------- */
 
 /* A Windows HANDLE here is a pointer to one of these. */
-enum { H_FILE = 1, H_THREAD, H_FIND };
+enum { H_FILE = 1, H_THREAD, H_FIND, H_PROC };
 
 struct handle {
 	int kind;
@@ -1231,6 +1232,96 @@ int VYW(FindNextFileA)(struct handle *h, unsigned char *data)
 }
 
 int VYW(FindClose)(struct handle *h) { return __vyw_CloseHandle(h); }
+
+/* ---- the clock and this process's own memory --------------------- */
+
+/* SYSTEMTIME: eight 16-bit fields - year, month, day-of-week, day, hour,
+ * minute, second, millisecond. */
+void VYW(GetSystemTime)(uint16_t *st)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	struct tm tm;
+	time_t t = ts.tv_sec;
+	gmtime_r(&t, &tm);
+	st[0] = (uint16_t)(tm.tm_year + 1900);
+	st[1] = (uint16_t)(tm.tm_mon + 1);
+	st[2] = (uint16_t)tm.tm_wday;
+	st[3] = (uint16_t)tm.tm_mday;
+	st[4] = (uint16_t)tm.tm_hour;
+	st[5] = (uint16_t)tm.tm_min;
+	st[6] = (uint16_t)tm.tm_sec;
+	st[7] = (uint16_t)(ts.tv_nsec / 1000000);
+}
+
+u32 VYW(GetTickCount)(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (u32)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+}
+
+/* A process handle. For the program's own process, reading its memory is
+ * a plain copy; for another, process_vm_readv does the same across the
+ * boundary where the system allows it. */
+void *VYW(OpenProcess)(u32 access, int inherit, u32 pid)
+{
+	(void)access; (void)inherit;
+	struct handle *h = calloc(1, sizeof *h);
+	h->kind = H_PROC;
+	h->fd = (int)pid;
+	return h;
+}
+
+int VYW(ReadProcessMemory)(struct handle *h, const void *addr, void *buf, size_t n, size_t *got)
+{
+	if (!h || h->kind != H_PROC) {
+		set_errno_error();
+		return 0;
+	}
+	size_t done = 0;
+	if (h->fd == (int)getpid()) {
+		memcpy(buf, addr, n);
+		done = n;
+	} else {
+		struct iovec local = {buf, n};
+		struct iovec remote = {(void *)addr, n};
+		ssize_t r = process_vm_readv(h->fd, &local, 1, &remote, 1, 0);
+		if (r < 0) {
+			set_errno_error();
+			return 0;
+		}
+		done = (size_t)r;
+	}
+	if (got)
+		*got = done;
+	return done == n;
+}
+
+int VYW(WriteProcessMemory)(struct handle *h, void *addr, const void *buf, size_t n, size_t *put)
+{
+	if (!h || h->kind != H_PROC) {
+		set_errno_error();
+		return 0;
+	}
+	size_t done = 0;
+	if (h->fd == (int)getpid()) {
+		memcpy(addr, buf, n);
+		done = n;
+	} else {
+		struct iovec local = {(void *)buf, n};
+		struct iovec remote = {addr, n};
+		ssize_t r = process_vm_writev(h->fd, &local, 1, &remote, 1, 0);
+		if (r < 0) {
+			set_errno_error();
+			return 0;
+		}
+		done = (size_t)r;
+	}
+	if (put)
+		*put = done;
+	return done == n;
+}
 
 /* ---- threads ----------------------------------------------------- */
 

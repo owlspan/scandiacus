@@ -43,6 +43,10 @@ func TestGolden(t *testing.T) {
 		name := filepath.Base(filepath.Dir(src)) + "/" + filepath.Base(src)
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+			if targetLinux() && windowsOnlyProgram(filepath.Base(src)) {
+				t.Skip("exercises a Windows-only facility (COM, the PE image, raw native calls, " +
+					"the Windows process APIs, or COFF static libraries)")
+			}
 			base := strings.TrimSuffix(src, ".vl")
 			want, err := os.ReadFile(base + ".out")
 			if err != nil {
@@ -76,6 +80,22 @@ func TestGolden(t *testing.T) {
 			}
 		})
 	}
+}
+
+// windowsOnlyProgram names the golden programs that test a Windows
+// facility with no meaning on Linux and so cannot match the same output:
+// COM objects, the PE layout of the running image, raw native calls made
+// with the Windows calling convention (mem.call / mem.symbol), the
+// Windows process APIs, and COFF static libraries. They run on the
+// Windows target; on Linux they are skipped rather than ported into
+// something that only pretends to be Windows.
+func windowsOnlyProgram(name string) bool {
+	switch name {
+	case "com.vl", "native.vl", "nativecall.vl", "proc.vl", "proc_list.vl",
+		"staticlib.vl", "staticdll.vl":
+		return true
+	}
+	return false
 }
 
 // windowsOnly reports whether a Linux build refused a program for using
