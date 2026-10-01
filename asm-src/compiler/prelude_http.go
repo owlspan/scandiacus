@@ -238,7 +238,137 @@ fn __vy_httpRequest(method: str, url: str, body: str) -> str! {
     if host == "" {
         return fail("cannot fetch \"{url}\": no host in the url")
     }
+    // On Windows this is WinHTTP, which does TLS, redirects and chunked
+    // bodies. On Linux and macOS the same builtin is lowered to a socket
+    // client, __vy_httpOverNet, so the http:// case works there too.
     return __winhttp(host, port, path, secure, method, body)
+}
+
+// __vy_httpOverNet is the http:// client for Linux and macOS, where
+// there is no WinHTTP. The __winhttp builtin is lowered to a call here
+// off Windows; it is never called on the Windows build. It speaks
+// HTTP/1.1 over one net connection with Connection: close, then reads to
+// the close and parses what came back. https:// fails with a reason
+// rather than a wrong answer, because TLS is not written by hand here.
+// Content-Length and chunked bodies are both handled; redirects are not
+// followed yet, where WinHTTP follows them.
+fn __vy_httpOverNet(host: str, port: int, path: str, secure: bool, method: str, body: str) -> str! {
+    if secure {
+        return fail("cannot fetch \"https://{host}{path}\": HTTPS needs TLS, which only the Windows build has so far - use an http:// url, or build this program with --windows")
+    }
+
+    let conn = net.connect(host, port)?
+
+    let req = "{method} {path} HTTP/1.1\r\n"
+    req = req + "Host: {host}\r\n"
+    req = req + "User-Agent: veyl\r\n"
+    req = req + "Accept: */*\r\n"
+    req = req + "Connection: close\r\n"
+    if len(body) > 0 {
+        req = req + "Content-Type: application/x-www-form-urlencoded\r\n"
+        req = req + "Content-Length: {len(body)}\r\n"
+    }
+    req = req + "\r\n" + body
+    net.send(conn, req)?
+
+    // The server was asked to close when done, so recv returns empty at
+    // the end. Chunks go onto a list and are joined once, because
+    // appending each onto the last would be quadratic.
+    let parts: []str = []
+    while true {
+        let chunk = net.recv(conn)?
+        if len(chunk) == 0 { break }
+        push(parts, chunk)
+    }
+    net.close(conn)
+    let raw = join(parts, "")
+
+    let sep = indexOf(raw, "\r\n\r\n")
+    if sep < 0 {
+        return fail("the server sent a reply with no header block")
+    }
+    let head = __substrB(raw, 0, sep)
+    let rest = __substrB(raw, sep + 4, len(raw))
+
+    let out = rest
+    if __vy_httpChunked(head) {
+        out = __vy_httpDechunk(rest)
+    }
+
+    let code = __vy_httpStatusCode(head)
+    if code >= 400 {
+        return fail("server replied {code}")
+    }
+    return out
+}
+
+// The status code off the first line, "HTTP/1.1 200 OK" -> 200.
+fn __vy_httpStatusCode(head: str) -> int {
+    let line = head
+    let nl = indexOf(head, "\r\n")
+    if nl >= 0 { line = __substrB(head, 0, nl) }
+    let sp = indexOf(line, " ")
+    if sp < 0 { return 0 }
+    let after = __substrB(line, sp + 1, len(line))
+    let codeStr = after
+    let sp2 = indexOf(after, " ")
+    if sp2 >= 0 { codeStr = __substrB(after, 0, sp2) }
+    if isInt(codeStr) { return toInt(codeStr) }
+    return 0
+}
+
+// Whether the response says its body is chunked.
+fn __vy_httpChunked(head: str) -> bool {
+    let rows = split(head, "\r\n")
+    let i = 0
+    while i < len(rows) {
+        let colon = indexOf(rows[i], ":")
+        if colon > 0 {
+            let name = lower(trim(__substrB(rows[i], 0, colon)))
+            if name == "transfer-encoding" {
+                let v = lower(trim(__substrB(rows[i], colon + 1, len(rows[i]))))
+                if contains(v, "chunked") { return true }
+            }
+        }
+        i = i + 1
+    }
+    return false
+}
+
+// Reassemble a chunked body: each chunk is a hex length, CRLF, that many
+// bytes, CRLF, and a zero-length chunk ends it.
+fn __vy_httpDechunk(body: str) -> str {
+    let parts: []str = []
+    let s = body
+    while true {
+        let nl = indexOf(s, "\r\n")
+        if nl < 0 { break }
+        let sizeLine = __substrB(s, 0, nl)
+        let semi = indexOf(sizeLine, ";")
+        if semi >= 0 { sizeLine = __substrB(sizeLine, 0, semi) }
+        let n = __vy_hexToInt(sizeLine)
+        if n <= 0 { break }
+        let start = nl + 2
+        push(parts, __substrB(s, start, start + n))
+        s = __substrB(s, start + n + 2, len(s))
+    }
+    return join(parts, "")
+}
+
+// A hex string to an int, by looking each digit up in order. No ord()
+// needed, and an unexpected character stops it where it is.
+fn __vy_hexToInt(s: str) -> int {
+    let digits = "0123456789abcdef"
+    let t = lower(trim(s))
+    let n = 0
+    let i = 0
+    while i < len(t) {
+        let d = indexOf(digits, __substrB(t, i, i + 1))
+        if d < 0 { return n }
+        n = n * 16 + d
+        i = i + 1
+    }
+    return n
 }
 
 fn __vy_httpGet(url: str) -> str! {

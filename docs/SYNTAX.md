@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.52.0** - the language as currently implemented.
+**Version 0.53.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -3800,7 +3800,7 @@ checker, so it is only reported once every type error is fixed.
 
 ## Known limitations
 
-Honest list of what v0.52.0 does not do yet.
+Honest list of what v0.53.0 does not do yet.
 
 **The language**
 
@@ -3841,9 +3841,13 @@ Honest list of what v0.52.0 does not do yet.
 
 **The library**
 
-- **`net` is plain TCP, with no TLS.** `http.get` and friends do speak
-  HTTPS - they go through WinHTTP, which handles the handshake - but a
-  socket opened with `net.connect` is unencrypted.
+- **HTTPS is Windows-only; `net` is plain TCP with no TLS.** On Windows
+  `http.get` and friends speak HTTPS through WinHTTP, which handles the
+  handshake, redirects and chunked bodies. On Linux and macOS the same
+  calls work over a socket for `http://` urls (Content-Length and chunked
+  bodies handled, redirects not followed yet); an `https://` url there
+  fails with a reason, because TLS is not written by hand. A socket
+  opened with `net.connect` is unencrypted on every platform.
 - **SQL is SQLite only**, through the `sqlite` package. No Postgres,
   MySQL or anything over a network.
 - **No `zip`.** It exists on the `veylgo` branch and has not been
@@ -3875,11 +3879,12 @@ Honest list of what v0.52.0 does not do yet.
 - **Windows and graphics both run on Linux.** The `win` library -
   windows, the frame buffer, keyboard and mouse, drawing, text, images
   and `sound` - works on Linux through X11 and PulseAudio, so a game
-  runs the same on both. Still Windows-only: `com`, `proc`, the `http`
-  client (WinHTTP), raw native calls through `mem.call` / `mem.symbol`
-  (they use the Windows calling convention), static `.lib` archives, and
-  `--dll` builds. TCP sockets (the `net` library) and `db` (SQLite) work
-  on all three - Linux and macOS use the system sqlite rather than the
+  runs the same on both. Still Windows-only: `com`, `proc`, raw native
+  calls through `mem.call` / `mem.symbol` (they use the Windows calling
+  convention), static `.lib` archives, `--dll` builds, and HTTPS (the
+  `http` client over TLS, through WinHTTP). TCP sockets (the `net`
+  library), the `http` client over `http://`, and `db` (SQLite) work on
+  all three - Linux and macOS use the system sqlite rather than the
   packaged DLL. A Linux build that uses a Windows-only call names it and
   stops. A plain `extern fn` on Linux reaches the C functions the Linux
   runtime provides.

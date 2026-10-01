@@ -17,10 +17,11 @@ package main
 // own PE writer. An ELF writer of the compiler's own is the obvious next
 // step and does not change anything above this file.
 //
-// What is not on Linux yet: COM, the HTTP client (WinHTTP), process
-// inspection, and static .lib archives (those are COFF). A program that
-// needs one is told which calls it used rather than getting a link error.
-// Windows and drawing, sound, TCP sockets and sqlite all work here now.
+// What is not on Linux yet: COM, HTTPS (the http client over TLS, which
+// is WinHTTP), process inspection, and static .lib archives (those are
+// COFF). A program that needs one is told which calls it used rather than
+// getting a link error. Windows and drawing, sound, TCP sockets, the http
+// client over http://, and sqlite all work here now.
 
 import (
 	"crypto/sha256"

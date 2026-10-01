@@ -1,0 +1,34 @@
+// The http client over net, on Linux and macOS. A Veyl http server runs
+// in a thread and the main program fetches from it over the loopback,
+// the same way sockets.vl exercises net. On Windows http.get goes
+// through WinHTTP instead, so this is skipped there.
+thread.spawn(fn() {
+    must(http.serve(18091, fn(req: Request) -> Response {
+        if req.path == "/json" {
+            return http.json(json.encode({"ok": true}))
+        }
+        if req.method == "POST" {
+            return http.ok("got:" + req.body)
+        }
+        if req.path == "/missing" {
+            return http.notFound()
+        }
+        return http.ok("hello " + req.path)
+    }))
+})
+sleep(200)
+print(must(http.get("http://localhost:18091/world")))
+print(must(http.get("http://localhost:18091/json")))
+print(must(http.post("http://localhost:18091/echo", "payload")))
+let r = http.get("http://localhost:18091/missing")
+if isOk(r) {
+    print("unexpected ok")
+} else {
+    print("error: " + errorOf(r))
+}
+let h = http.get("https://localhost:18091/x")
+if isOk(h) {
+    print("unexpected https ok")
+} else {
+    print("https blocked")
+}

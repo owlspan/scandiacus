@@ -165,6 +165,12 @@ func (l *lowerer) netBuiltin(c *Call, name string) (Reg, bool) {
 		for i := range a {
 			a[i] = l.expr(c.Args[i])
 		}
+		// WinHTTP on Windows; a plain socket client on Linux and macOS,
+		// written in Veyl and folded in from the prelude. The two share a
+		// signature so the caller cannot tell them apart.
+		if targetLinux() || targetMac() {
+			return l.callPrelude("__vy_httpOverNet", a), true
+		}
 		return l.winhttpFetch(a), true
 	}
 	return NoReg, false
@@ -216,6 +222,25 @@ func (l *lowerer) netAccept(sock Reg) Reg {
 		l.emit(Instr{Op: OpRet, A: l.resOk(c, ret), Dst: NoReg})
 	})
 	return l.callHelper(sym, []Reg{sock}, []vty{vInt}, ret)
+}
+
+// callPrelude emits a call to a prelude function the lowerer reaches by
+// name, using the signature the prelude declared it with. It is how a
+// builtin the lowerer handles itself can still delegate to Veyl code -
+// __winhttp routes here to __vy_httpOverNet off Windows.
+func (l *lowerer) callPrelude(fn string, args []Reg) Reg {
+	s, ok := l.sigs[fn]
+	if !ok {
+		fail("the prelude did not supply %s", fn)
+	}
+	if len(args) > l.fn.MaxCallArgs {
+		l.fn.MaxCallArgs = len(args)
+	}
+	d := l.newReg()
+	l.regTy[d] = s.ret
+	l.emit(Instr{Op: OpCall, Dst: d, A: NoReg, B: NoReg, Args: args,
+		ArgTypes: s.params, RetType: s.ret, Sym: fn, Comment: fn + "()"})
+	return d
 }
 
 // netRecv reads once and returns what arrived. One recv, not a loop to
