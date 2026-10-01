@@ -45,7 +45,7 @@ func TestExecutableStructure(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "dirs.exe")
-	if o, err := exec.Command(veyl, "build", src).CombinedOutput(); err != nil {
+	if o, err := exec.Command(veyl, "build", "--windows", src).CombinedOutput(); err != nil {
 		t.Fatalf("could not build: %v\n%s", err, o)
 	}
 

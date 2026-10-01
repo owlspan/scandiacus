@@ -34,3 +34,37 @@ jobs:
         env:
           VEYL_GC: eager
         run: go test -count=1 -run "TestGolden|TestDLL" ./compiler
+
+  # The Linux target: the same programs built as Linux executables and
+  # run directly. The ones that use a Windows-only library are skipped.
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: veyl
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: Test the front end
+        working-directory: veyl/frontend
+        run: go test ./...
+
+      - name: Test the compiler
+        working-directory: veyl/asm-src
+        run: go test ./...
+
+      - name: Test with eager collection
+        working-directory: veyl/asm-src
+        env:
+          VEYL_GC: eager
+        run: go test -count=1 -run "TestGolden|TestErrorLocations" ./compiler
+
+      - name: Test with the optimiser off
+        working-directory: veyl/asm-src
+        env:
+          VEYL_NOOPT: '1'
+        run: go test -count=1 -run "TestGolden|TestErrorLocations" ./compiler

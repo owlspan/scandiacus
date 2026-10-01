@@ -40,6 +40,9 @@ usage:
   veyl build <file.vl>    compile to an executable next to the source
   veyl build --dll <file.vl>
                           compile to a DLL; export fn marks what it exports
+  veyl run --linux <file.vl>, veyl build --windows <file.vl>
+                          pick the system the program is for; the default
+                          is the one veyl runs on (or VEYL_TARGET)
   veyl asm   <file.vl>    print the generated assembly
   veyl ir    <file.vl>    print the intermediate representation
   veyl version            print the version
@@ -68,6 +71,12 @@ This compiles Veyl straight to x86-64 and writes the .exe itself: it
 encodes the instructions, resolves the symbols and lays out the PE. No
 assembler, no linker, no C toolchain, nothing to install, and none of
 them in what comes out.
+
+On Linux, veyl builds a Linux executable from the same code, linked
+with the system's as and cc against a small runtime that stands in for
+the Windows libraries. Console programs work; the Windows-only libraries
+(windows and drawing, sound, COM, sockets, HTTP, sqlite, proc) say so
+when a program uses them.
 
 asm and ir are the debugging tools. When a program does something
 strange, read what it actually compiled to. ir is the readable one:
@@ -165,10 +174,22 @@ func main() {
 		cmd = "run"
 	}
 
-	// `veyl build --dll f.vl` makes a library instead of a program.
+	// Options between the command and the file. `--dll` makes a library
+	// instead of a program; `--linux` and `--windows` pick the system the
+	// output runs on (the default is the one veyl itself is running on,
+	// or VEYL_TARGET when set).
 	dll := false
-	if cmd == "build" && len(args) > 1 && args[1] == "--dll" {
-		dll = true
+	for len(args) > 1 && strings.HasPrefix(args[1], "--") {
+		switch opt := args[1]; {
+		case opt == "--dll" && cmd == "build":
+			dll = true
+		case opt == "--linux" || opt == "--target=linux":
+			target = "linux"
+		case opt == "--windows" || opt == "--target=windows":
+			target = "windows"
+		default:
+			fail("unknown option %q", opt)
+		}
 		args = append([]string{args[0]}, args[2:]...)
 	}
 
@@ -195,10 +216,15 @@ func main() {
 	case "asm":
 		fmt.Print(Emit(mod))
 	case "build":
-		out := strings.TrimSuffix(path, filepath.Ext(path)) + ".exe"
+		out := exeName(path)
 		if dll {
-			out = strings.TrimSuffix(out, ".exe") + ".dll"
+			out = strings.TrimSuffix(path, filepath.Ext(path)) + ".dll"
 			mod.DLL = true
+		}
+		if targetLinux() {
+			buildLinux(mod, out)
+			fmt.Printf("wrote %s\n", out)
+			break
 		}
 		if err := missingForeignDLLs(filepath.Dir(path), mod); err != nil {
 			fail("%v", err)
@@ -215,12 +241,16 @@ func main() {
 			fail("%v", err)
 		}
 		defer os.RemoveAll(tmp)
-		out := filepath.Join(tmp, "prog.exe")
-		if err := missingForeignDLLs(filepath.Dir(path), mod); err != nil {
-			fail("%v", err)
+		out := exeName(filepath.Join(tmp, "prog.vl"))
+		if targetLinux() {
+			buildLinux(mod, out)
+		} else {
+			if err := missingForeignDLLs(filepath.Dir(path), mod); err != nil {
+				fail("%v", err)
+			}
+			buildExe(mod, out, filepath.Dir(path))
+			copyDLLsBeside(out, packageDLLs(filepath.Dir(path)))
 		}
-		buildExe(mod, out, filepath.Dir(path))
-		copyDLLsBeside(out, packageDLLs(filepath.Dir(path)))
 		run := programCmd(out, args[2:])
 		run.Stdout, run.Stderr, run.Stdin = os.Stdout, os.Stderr, os.Stdin
 		if err := run.Run(); err != nil {
@@ -243,7 +273,7 @@ func main() {
 // run on a Linux machine; without wine it is attempted directly and the
 // failure names the file.
 func programCmd(exe string, args []string) *exec.Cmd {
-	if runtime.GOOS != "windows" {
+	if !targetLinux() && runtime.GOOS != "windows" {
 		if wine, err := exec.LookPath("wine"); err == nil {
 			return exec.Command(wine, append([]string{exe}, args...)...)
 		}

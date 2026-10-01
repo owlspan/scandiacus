@@ -21,6 +21,23 @@ Nothing in that arrow is another program. veyl encodes the
 instructions, links, and writes the PE itself, so a build needs nothing
 installed.
 
+It also builds for Linux:
+
+```
+hello.vl  ->  [veyl --linux]  ->  hello
+```
+
+The Linux executable runs the same instructions as the Windows one. The
+generated code is left exactly as it is; every library call it makes is
+answered by a small runtime (`compiler/linuxrt/veylrt.c`) that does the
+same job on POSIX under the Windows calling convention. On Linux that is
+the default, and console programs - files, strings, maps, threads, the
+crash handler - behave the same on both. The libraries that only exist
+on Windows (windows and drawing, sound, COM, sockets, HTTP, sqlite,
+`proc`) are reported by name when a program uses them. For now the
+Linux build uses the system's `as` and `cc` to assemble and link; a
+built-in ELF writer, like the PE one, is the next step.
+
 ## Status
 
 Every one of the 24 programs in the Go backend's own test suite
@@ -318,9 +335,10 @@ go test ./...
 
 Every program in `tests/` and the top level of `examples/` is run and
 its output compared byte for byte with the `.out` file beside it. On
-Linux the whole suite runs too: `veyl run` starts the executable
-through `wine` when the host is not Windows, and the encoder check uses
-`x86_64-w64-mingw32-as`.
+Linux the programs are built as Linux executables and run directly,
+against the same `.out` files; the few that need a Windows-only library
+are skipped. `VEYL_TARGET=windows` runs the Windows build instead,
+through `wine`.
 
 Until the Go backend was retired, the examples were compared against it
 directly, and their `.out` files are its output at that point. That
@@ -336,8 +354,9 @@ it does not understand is worse than one that refuses.
 
 ## Requirements
 
-To build a program: nothing. veyl encodes, links and writes the PE
-itself.
+To build a program: nothing on Windows. veyl encodes, links and writes
+the PE itself. On Linux: `as`, `objcopy` and a C compiler, which any
+machine that builds software has (`apt install build-essential`).
 
 To run the tests: Go, and MinGW's `as` and `gcc` (on Linux, `x86_64-w64-mingw32-as`
 and `wine`). `encode_test.go` checks every byte

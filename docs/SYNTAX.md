@@ -3851,10 +3851,19 @@ Honest list of what v0.44.0 does not do yet.
   seventeen significant digits, so a value needing sixteen can round
   the wrong way in the last place.
 
-**Windows**
+**Windows and Linux**
 
-- **Windows-only.** The whole `win` library, and the compiler's output,
-  target Windows on x86-64. There is no cross-compilation.
+- **Two systems, x86-64 only.** Programs build for Windows or for Linux
+  (`--windows`, `--linux`; the default is the system veyl runs on).
+  There is no macOS and no ARM yet.
+- **Some libraries are Windows-only.** `win`, sound, `com`, `proc`,
+  sockets, `http`, `db` (sqlite), `mem.symbol`, static `.lib` archives,
+  `--dll` builds and the native callbacks that need a Windows API are
+  not on Linux yet; a Linux build that uses one names the calls and
+  stops. A plain `extern fn` on Linux reaches only the C functions the
+  Linux runtime provides.
+- **A Linux build needs the system tools.** It assembles and links with
+  `as`, `objcopy` and `cc` for now, where a Windows build needs nothing.
 - **One window per program**, no images, no sound, one font at one
   size, and no way to measure text.
 

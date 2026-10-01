@@ -31,7 +31,7 @@ func TestDLL(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if out, err := exec.Command(veyl, "build", "--dll", filepath.Join(dir, "mathmod.vl")).CombinedOutput(); err != nil {
+	if out, err := exec.Command(veyl, "build", "--windows", "--dll", filepath.Join(dir, "mathmod.vl")).CombinedOutput(); err != nil {
 		t.Fatalf("building the DLL: %v\n%s", err, out)
 	}
 	lib, err := os.ReadFile(filepath.Join(dir, "mathmod.dll"))
@@ -41,7 +41,7 @@ func TestDLL(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "mathmod2.dll"), lib, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := exec.Command(veyl, "build", filepath.Join(dir, "host.vl")).CombinedOutput(); err != nil {
+	if out, err := exec.Command(veyl, "build", "--windows", filepath.Join(dir, "host.vl")).CombinedOutput(); err != nil {
 		t.Fatalf("building the host: %v\n%s", err, out)
 	}
 
@@ -49,6 +49,8 @@ func TestDLL(t *testing.T) {
 	cmd := exec.Command(host)
 	if runtime.GOOS != "windows" {
 		cmd = exec.Command("wine", host)
+		// wine's own diagnostics go to the same stream as the program's.
+		cmd.Env = append(os.Environ(), "WINEDEBUG=-all")
 	}
 	cmd.Dir = dir
 	got, err := cmd.CombinedOutput()

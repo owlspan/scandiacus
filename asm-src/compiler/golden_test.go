@@ -21,7 +21,9 @@ import (
 // veylgo branch instead. Their .out files are that backend's output,
 // frozen when it was retired.
 func TestGolden(t *testing.T) {
-	if runtime.GOOS != "windows" {
+	// On Linux the programs are built for Linux and run directly; the
+	// Windows target needs wine anywhere but Windows.
+	if !targetLinux() && runtime.GOOS != "windows" {
 		if _, err := exec.LookPath("wine"); err != nil {
 			t.Skip("the programs are Windows executables, and there is no wine to run them")
 		}
@@ -60,6 +62,9 @@ func TestGolden(t *testing.T) {
 			var out bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &out, &out
 			if err := cmd.Run(); err != nil {
+				if targetLinux() && windowsOnly(out.Bytes()) {
+					t.Skip("uses a library that is Windows-only so far")
+				}
 				if ctx.Err() == context.DeadlineExceeded {
 					t.Fatalf("did not finish within 2 minutes, which usually means "+
 						"a loop was miscompiled into one that never ends\n%s", out.Bytes())
@@ -71,4 +76,15 @@ func TestGolden(t *testing.T) {
 			}
 		})
 	}
+}
+
+// windowsOnly reports whether a Linux build refused a program for using
+// something that exists only on Windows so far - a skip, not a failure.
+func windowsOnly(out []byte) bool {
+	for _, s := range []string{"only exist on Windows so far", "Windows-only for now"} {
+		if bytes.Contains(out, []byte(s)) {
+			return true
+		}
+	}
+	return false
 }
