@@ -3,6 +3,19 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.51.0
+
+**TCP sockets on Linux and macOS.** The `net` library - listen, accept,
+connect, send, recv, close - now works off Windows, not just on it. The
+WinSock calls it makes are BSD sockets with a few Windows spellings, so
+the runtime answers them with POSIX sockets: no startup to do, close
+instead of closesocket, and a translation of the SOL_SOCKET /
+SO_REUSEADDR constants; sockaddr_in and struct hostent already have the
+layout the library builds by hand.
+
+Test: tests/sockets.vl runs a client and a server over the loopback;
+skipped on Windows, which reaches the same library through WinSock.
+
 ## 0.50.0
 
 **Calling C libraries on Linux and macOS.** An `extern fn ... from
