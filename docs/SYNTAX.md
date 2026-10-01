@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.48.0** - the language as currently implemented.
+**Version 0.49.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -3788,7 +3788,7 @@ checker, so it is only reported once every type error is fixed.
 
 ## Known limitations
 
-Honest list of what v0.48.0 does not do yet.
+Honest list of what v0.49.0 does not do yet.
 
 **The language**
 
@@ -3858,8 +3858,8 @@ Honest list of what v0.48.0 does not do yet.
   veyl runs on). macOS is x86-64, which runs natively on Intel and
   through Rosetta on Apple Silicon; there is no ARM code generator yet.
   On macOS the on-screen window and input use a Cocoa backend (new and
-  experimental - built without a Mac to test on); sound is not wired up
-  there yet. Console and off-screen drawing are solid.
+  experimental - built without a Mac to test on), and sound plays through
+  CoreAudio. Console and off-screen drawing are solid.
 - **Windows and graphics both run on Linux.** The `win` library -
   windows, the frame buffer, keyboard and mouse, drawing, text, images
   and `sound` - works on Linux through X11 and PulseAudio, so a game

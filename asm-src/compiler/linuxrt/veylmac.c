@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 #define MS __attribute__((ms_abi))
 typedef uint32_t u32;
@@ -546,7 +547,325 @@ MS void *__vyw_GetProcAddress(void *mod, const char *name)
 	return dlsym(mod, name);
 }
 
-/* ---- sound (not wired up yet; calls succeed silently) ------------ */
+/* ---- sound, through CoreAudio (AudioQueue) ----------------------- */
+/*
+ * The mixer is the same as the Linux one: a set of voices, each a loaded
+ * WAV, summed every frame. Only the output differs - an AudioQueue, from
+ * the AudioToolbox framework loaded with dlopen, pulls mixed samples
+ * through a callback rather than us pushing to PulseAudio.
+ */
 
-MS int __vyw_PlaySoundA(const char *path, void *mod, u32 flags) { (void)path; (void)mod; (void)flags; return 1; }
-MS int __vyw_mciSendStringA(const char *cmd, char *ret, int n, void *cb) { (void)cmd; (void)ret; (void)n; (void)cb; return 0; }
+#define MIX_RATE 11025
+#define VOICES 24
+
+typedef struct voice {
+	int16_t *data;
+	int len, pos;
+	int loop, active;
+	int volume; /* 0..256 */
+	char alias[32];
+} voice;
+
+static voice g_voices[VOICES];
+static pthread_mutex_t g_snd = PTHREAD_MUTEX_INITIALIZER;
+static int g_audioUp;
+
+/* AudioQueue, enough of its C ABI to open an output and feed it. */
+typedef struct {
+	double mSampleRate;
+	u32 mFormatID, mFormatFlags, mBytesPerPacket, mFramesPerPacket;
+	u32 mBytesPerFrame, mChannelsPerFrame, mBitsPerChannel, mReserved;
+} ASBD;
+
+typedef struct {
+	u32 mAudioDataBytesCapacity;
+	void *mAudioData;
+	u32 mAudioDataByteSize;
+	void *mUserData;
+	u32 mPacketDescriptionCapacity;
+	void *mPacketDescriptions;
+	u32 mPacketDescriptionCount;
+} AQBuffer;
+
+static struct aq {
+	int (*NewOutput)(const ASBD *, void *cb, void *user, void *rl, void *mode, u32 flags, void **out);
+	int (*AllocateBuffer)(void *aq, u32 size, AQBuffer **out);
+	int (*EnqueueBuffer)(void *aq, AQBuffer *buf, u32 nPackets, void *descs);
+	int (*Start)(void *aq, void *startTime);
+} AQ;
+
+static char *fix_sep(const char *path, char *out, size_t n)
+{
+	size_t k = 0;
+	for (const char *p = path; p && *p && k + 1 < n; p++)
+		out[k++] = *p == '\\' ? '/' : *p;
+	out[k] = 0;
+	return out;
+}
+
+static int16_t *load_wav(const char *path, int *outLen)
+{
+	char fixed[4096];
+	FILE *f = fopen(fix_sep(path, fixed, sizeof fixed), "rb");
+	if (!f)
+		return NULL;
+	unsigned char h[12];
+	if (fread(h, 1, 12, f) != 12 || memcmp(h, "RIFF", 4) || memcmp(h + 8, "WAVE", 4)) {
+		fclose(f);
+		return NULL;
+	}
+	int channels = 1, bits = 8, n = 0;
+	int16_t *out = NULL;
+	for (;;) {
+		unsigned char c[8];
+		if (fread(c, 1, 8, f) != 8)
+			break;
+		u32 sz = c[4] | c[5] << 8 | c[6] << 16 | (u32)c[7] << 24;
+		if (!memcmp(c, "fmt ", 4)) {
+			unsigned char fmt[16];
+			u32 take = sz < 16 ? sz : 16;
+			if (fread(fmt, 1, take, f) != take)
+				break;
+			channels = fmt[2] | fmt[3] << 8;
+			bits = fmt[14] | fmt[15] << 8;
+			if (sz > take)
+				fseek(f, (long)(sz - take), SEEK_CUR);
+		} else if (!memcmp(c, "data", 4)) {
+			int frameBytes = (bits / 8) * (channels < 1 ? 1 : channels);
+			if (frameBytes < 1)
+				frameBytes = 1;
+			int frames = (int)(sz / frameBytes);
+			out = malloc(sizeof(int16_t) * (frames > 0 ? frames : 1));
+			unsigned char fr[8];
+			for (int i = 0; i < frames; i++) {
+				if (fread(fr, 1, frameBytes, f) != (size_t)frameBytes)
+					break;
+				out[n++] = bits == 8 ? (int16_t)(((int)fr[0] - 128) << 8)
+						     : (int16_t)(fr[0] | fr[1] << 8);
+			}
+			break;
+		} else {
+			fseek(f, (long)sz, SEEK_CUR);
+		}
+	}
+	fclose(f);
+	if (outLen)
+		*outLen = n;
+	return out;
+}
+
+static void mix_into(int16_t *buf, int frames)
+{
+	pthread_mutex_lock(&g_snd);
+	for (int i = 0; i < frames; i++) {
+		int acc = 0;
+		for (int v = 0; v < VOICES; v++) {
+			voice *vo = &g_voices[v];
+			if (!vo->active || !vo->data)
+				continue;
+			acc += vo->data[vo->pos] * vo->volume / 256;
+			if (++vo->pos >= vo->len) {
+				if (vo->loop)
+					vo->pos = 0;
+				else
+					vo->active = 0;
+			}
+		}
+		if (acc > 32767) acc = 32767;
+		if (acc < -32768) acc = -32768;
+		buf[i] = (int16_t)acc;
+	}
+	pthread_mutex_unlock(&g_snd);
+}
+
+/* The AudioQueue calls this on its own thread, under the default (System
+ * V) convention, to refill an empty buffer. */
+static void aq_callback(void *user, void *aq, AQBuffer *buf)
+{
+	(void)user;
+	int frames = (int)(buf->mAudioDataBytesCapacity / 2);
+	mix_into((int16_t *)buf->mAudioData, frames);
+	buf->mAudioDataByteSize = (u32)(frames * 2);
+	AQ.EnqueueBuffer(aq, buf, 0, NULL);
+}
+
+static int audio_init(void)
+{
+	if (g_audioUp)
+		return 1;
+	void *tb = dlopen("/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox", RTLD_NOW | RTLD_GLOBAL);
+	if (!tb)
+		return 0;
+	AQ.NewOutput = dlsym(tb, "AudioQueueNewOutput");
+	AQ.AllocateBuffer = dlsym(tb, "AudioQueueAllocateBuffer");
+	AQ.EnqueueBuffer = dlsym(tb, "AudioQueueEnqueueBuffer");
+	AQ.Start = dlsym(tb, "AudioQueueStart");
+	if (!AQ.NewOutput || !AQ.AllocateBuffer || !AQ.EnqueueBuffer || !AQ.Start)
+		return 0;
+	ASBD fmt = {0};
+	fmt.mSampleRate = MIX_RATE;
+	fmt.mFormatID = 0x6C70636D;    /* 'lpcm' */
+	fmt.mFormatFlags = 4 | 8;      /* signed integer, packed */
+	fmt.mFramesPerPacket = 1;
+	fmt.mChannelsPerFrame = 1;
+	fmt.mBitsPerChannel = 16;
+	fmt.mBytesPerFrame = 2;
+	fmt.mBytesPerPacket = 2;
+	void *q = NULL;
+	if (AQ.NewOutput(&fmt, (void *)aq_callback, NULL, NULL, NULL, 0, &q) != 0 || !q)
+		return 0;
+	for (int i = 0; i < 3; i++) {
+		AQBuffer *b = NULL;
+		if (AQ.AllocateBuffer(q, 2048, &b) == 0 && b) {
+			b->mAudioDataByteSize = 2048;
+			memset(b->mAudioData, 0, 2048);
+			AQ.EnqueueBuffer(q, b, 0, NULL);
+		}
+	}
+	AQ.Start(q, NULL);
+	g_audioUp = 1;
+	return 1;
+}
+
+static void voice_start(const char *alias, int16_t *data, int len, int loop, int volume)
+{
+	pthread_mutex_lock(&g_snd);
+	int slot = -1;
+	for (int v = 0; v < VOICES; v++)
+		if (alias && g_voices[v].active && !strcmp(g_voices[v].alias, alias)) {
+			slot = v;
+			break;
+		}
+	if (slot < 0)
+		for (int v = 0; v < VOICES; v++)
+			if (!g_voices[v].active) {
+				slot = v;
+				break;
+			}
+	if (slot < 0)
+		slot = 0;
+	voice *vo = &g_voices[slot];
+	if (data) {
+		vo->data = data;
+		vo->len = len;
+	}
+	vo->pos = 0;
+	vo->loop = loop;
+	vo->volume = volume;
+	vo->active = data || vo->data ? 1 : vo->active;
+	if (alias)
+		snprintf(vo->alias, sizeof vo->alias, "%s", alias);
+	else
+		vo->alias[0] = 0;
+	pthread_mutex_unlock(&g_snd);
+}
+
+static voice *alias_voice(const char *name, int create)
+{
+	for (int v = 0; v < VOICES; v++)
+		if (g_voices[v].alias[0] && !strcmp(g_voices[v].alias, name))
+			return &g_voices[v];
+	if (!create)
+		return NULL;
+	for (int v = 0; v < VOICES; v++)
+		if (!g_voices[v].active && !g_voices[v].alias[0]) {
+			snprintf(g_voices[v].alias, sizeof g_voices[v].alias, "%s", name);
+			return &g_voices[v];
+		}
+	return NULL;
+}
+
+MS int __vyw_PlaySoundA(const char *path, void *mod, u32 flags)
+{
+	(void)mod;
+	if (!path) {
+		pthread_mutex_lock(&g_snd);
+		for (int v = 0; v < VOICES; v++)
+			if (!g_voices[v].alias[0])
+				g_voices[v].active = 0;
+		pthread_mutex_unlock(&g_snd);
+		return 1;
+	}
+	if (!audio_init())
+		return 1;
+	int len = 0;
+	int16_t *d = load_wav(path, &len);
+	if (!d)
+		return 0;
+	voice_start(NULL, d, len, (flags & 0x0008) != 0, 256);
+	return 1;
+}
+
+MS int __vyw_mciSendStringA(const char *cmd, char *ret, int retLen, void *cb)
+{
+	(void)ret; (void)retLen; (void)cb;
+	if (!cmd)
+		return 0;
+	char buf[1024];
+	snprintf(buf, sizeof buf, "%s", cmd);
+	char *tok = strtok(buf, " ");
+	if (!tok)
+		return 0;
+	if (!strcmp(tok, "open")) {
+		char *rest = strtok(NULL, "");
+		if (!rest)
+			return 0;
+		char path[768] = {0}, alias[64] = {0};
+		char *q = strchr(rest, '"');
+		if (q) {
+			char *q2 = strchr(q + 1, '"');
+			if (q2) {
+				int n = (int)(q2 - q - 1);
+				if (n > 767) n = 767;
+				memcpy(path, q + 1, n);
+			}
+		} else {
+			sscanf(rest, "%767s", path);
+		}
+		char *a = strstr(rest, "alias ");
+		if (a)
+			sscanf(a + 6, "%63s", alias);
+		if (!alias[0] || !audio_init())
+			return 0;
+		int len = 0;
+		int16_t *d = load_wav(path, &len);
+		if (!d)
+			return 0;
+		pthread_mutex_lock(&g_snd);
+		voice *vo = alias_voice(alias, 1);
+		if (vo) {
+			vo->data = d;
+			vo->len = len;
+			vo->pos = 0;
+			vo->active = 0;
+			vo->volume = 256;
+		}
+		pthread_mutex_unlock(&g_snd);
+		return 0;
+	}
+	char *name = strtok(NULL, " ");
+	if (!name)
+		return 0;
+	pthread_mutex_lock(&g_snd);
+	voice *vo = alias_voice(name, 0);
+	if (vo) {
+		if (!strcmp(tok, "play")) {
+			char *opt = strtok(NULL, " ");
+			vo->loop = opt && !strcmp(opt, "repeat");
+			vo->active = 1;
+		} else if (!strcmp(tok, "stop")) {
+			vo->active = 0;
+		} else if (!strcmp(tok, "seek")) {
+			vo->pos = 0;
+		} else if (!strcmp(tok, "close")) {
+			vo->active = 0;
+			vo->alias[0] = 0;
+		} else if (!strcmp(tok, "setaudio")) {
+			char *to = strstr(cmd, "volume to ");
+			if (to)
+				vo->volume = atoi(to + 10) * 256 / 1000;
+		}
+	}
+	pthread_mutex_unlock(&g_snd);
+	return 0;
+}
