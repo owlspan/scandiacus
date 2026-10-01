@@ -3,6 +3,22 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.53.0
+
+**The HTTP client on Linux and macOS.** `http.get`, `http.post` and
+`http.download` now work off Windows for `http://` urls. On Windows the
+calls still go through WinHTTP (which does TLS, redirects and chunked
+bodies); on Linux and macOS the same `__winhttp` builtin is lowered to a
+socket client written in Veyl over the `net` library, so the plain-HTTP
+case behaves the same - same return value, same "server replied 404" on
+a 4xx. Content-Length and chunked response bodies are both handled.
+Redirects are not followed yet, and an `https://` url fails with a clear
+message rather than a wrong answer, because TLS is not written by hand.
+
+Test: tests/httpclient.vl runs the Veyl http server in a thread and
+fetches from it over the loopback; skipped on Windows, which reaches the
+same library through WinHTTP.
+
 ## 0.52.0
 
 **SQLite on Linux and macOS.** The `db` library - open, exec, query,

@@ -17,13 +17,13 @@ directory and restart VS Code:
 **Windows**
 
 ```
-xcopy /E /I "editors\vscode" "%USERPROFILE%\.vscode\extensions\veyl.veyl-lang-0.52.0"
+xcopy /E /I "editors\vscode" "%USERPROFILE%\.vscode\extensions\veyl.veyl-lang-0.53.0"
 ```
 
 **macOS and Linux**
 
 ```
-cp -r editors/vscode ~/.vscode/extensions/veyl.veyl-lang-0.52.0
+cp -r editors/vscode ~/.vscode/extensions/veyl.veyl-lang-0.53.0
 ```
 
 The folder name matters: VS Code expects `publisher.name-version`
