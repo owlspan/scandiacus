@@ -88,7 +88,7 @@ func TestGolden(t *testing.T) {
 // unixOnlyProgram names programs that call C libraries by their Unix
 // names (libm.so, libc.so), which only resolve on Linux and macOS.
 func unixOnlyProgram(name string) bool {
-	return name == "ffi.vl"
+	return name == "ffi.vl" || name == "sockets.vl"
 }
 
 // windowsOnlyProgram names the golden programs that test a Windows

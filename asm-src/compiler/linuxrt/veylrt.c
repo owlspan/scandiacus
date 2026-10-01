@@ -49,6 +49,9 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/uio.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -1560,3 +1563,53 @@ void * VYW(AddVectoredExceptionHandler)(u32 first, ms_handler h)
 	sigaction(SIGILL, &sa, NULL);
 	return (void *)h;
 }
+
+/* ---- TCP sockets, POSIX behind the WinSock names ------------------ */
+/*
+ * The net library calls the WinSock API (socket, bind, recv, ...). Those
+ * are BSD sockets with a few Windows spellings: there is no startup to do,
+ * a socket is closed with close, and the SOL_SOCKET / SO_REUSEADDR
+ * constants differ, so setsockopt translates them. sockaddr_in and struct
+ * hostent have the same layout the library builds and reads by hand.
+ */
+
+int VYW(WSAStartup)(u32 version, void *data)
+{
+	(void)version;
+	(void)data;
+	return 0; /* nothing to start on POSIX */
+}
+int VYW(WSACleanup)(void) { return 0; }
+int VYW(WSAGetLastError)(void) { return errno; }
+
+int VYW(socket)(int af, int type, int proto) { return socket(af, type, proto); }
+int VYW(bind)(int s, const void *addr, int len) { return bind(s, addr, (socklen_t)len); }
+int VYW(listen)(int s, int backlog)
+{
+	if (backlog > 128 || backlog < 0)
+		backlog = 128; /* a huge WinSock backlog, clamped */
+	return listen(s, backlog);
+}
+int VYW(accept)(int s, void *addr, void *addrlen) { return accept(s, addr, addrlen); }
+int VYW(connect)(int s, const void *addr, int len) { return connect(s, addr, (socklen_t)len); }
+int VYW(recv)(int s, void *buf, int len, int flags) { return (int)recv(s, buf, (size_t)len, flags); }
+int VYW(send)(int s, const void *buf, int len, int flags)
+{
+	/* Don't let a closed peer kill the process with SIGPIPE. */
+#ifdef MSG_NOSIGNAL
+	flags |= MSG_NOSIGNAL;
+#endif
+	return (int)send(s, buf, (size_t)len, flags);
+}
+int VYW(closesocket)(int s) { return close(s); }
+
+int VYW(setsockopt)(int s, int level, int opt, const void *val, int len)
+{
+	if (level == (int)0xffff)
+		level = SOL_SOCKET; /* WinSock SOL_SOCKET */
+	if (opt == 4)
+		opt = SO_REUSEADDR; /* WinSock SO_REUSEADDR */
+	return setsockopt(s, level, opt, val, (socklen_t)len);
+}
+
+void *VYW(gethostbyname)(const char *name) { return gethostbyname(name); }

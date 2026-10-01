@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.50.0** - the language as currently implemented.
+**Version 0.51.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -3794,7 +3794,7 @@ checker, so it is only reported once every type error is fixed.
 
 ## Known limitations
 
-Honest list of what v0.50.0 does not do yet.
+Honest list of what v0.51.0 does not do yet.
 
 **The language**
 
@@ -3869,10 +3869,10 @@ Honest list of what v0.50.0 does not do yet.
 - **Windows and graphics both run on Linux.** The `win` library -
   windows, the frame buffer, keyboard and mouse, drawing, text, images
   and `sound` - works on Linux through X11 and PulseAudio, so a game
-  runs the same on both. Still Windows-only: `com`, `proc`, sockets,
-  `http`, `db` (sqlite), raw native calls through `mem.call` /
-  `mem.symbol` (they use the Windows calling convention), static `.lib`
-  archives, and `--dll` builds. A Linux build that uses one names the
+  runs the same on both. Still Windows-only: `com`, `proc`, the `http` client (WinHTTP), `db`
+  (sqlite), raw native calls through `mem.call` / `mem.symbol` (they use
+  the Windows calling convention), static `.lib` archives, and `--dll`
+  builds. TCP sockets (the `net` library) work on all three. A Linux build that uses one names the
   calls and stops. A plain `extern fn` on Linux reaches the C functions
   the Linux runtime provides.
 - **A Linux build needs the system tools.** It assembles and links with
