@@ -1,0 +1,112 @@
+name: backfill-releases
+
+# A one-time job that publishes the releases for the versions that were
+# developed but never released (0.43.0 through 0.52.0). Each one is built
+# from its own commit so its installer and binaries carry that version's
+# code. The current version releases through release.yml on the push to
+# veyl, so it is not in the list here. Run it by hand from the Actions
+# tab; it skips any version already released, so running it twice is safe.
+# Delete this file once the backfill is done.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: veyl
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: Install Inno Setup
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+
+      - name: Build and publish each unreleased version
+        working-directory: veyl
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = "${{ github.repository }}"
+
+          # Each version pinned to the commit that set it, so the build
+          # carries exactly that version's code.
+          $map = [ordered]@{
+            '0.43.0' = 'd747f33'
+            '0.44.0' = '6387da3'
+            '0.45.0' = '3ba3a36'
+            '0.46.0' = 'ec4b24a'
+            '0.47.0' = '8c4a0ed'
+            '0.48.0' = '46fea07'
+            '0.49.0' = 'c5d9e72'
+            '0.50.0' = '7c50021'
+            '0.51.0' = '1711c37'
+            '0.52.0' = '8572c56'
+          }
+
+          foreach ($v in $map.Keys) {
+            gh release view "v$v" --repo $repo 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "v$v is already released, skipping" -ForegroundColor Yellow
+              continue
+            }
+            $sha = $map[$v]
+            Write-Host "==> building v$v from $sha" -ForegroundColor Cyan
+
+            # The build runs from the version's own tree. The workflow
+            # itself is read from the dispatched ref, so checking out an
+            # older tree does not change what runs.
+            Remove-Item -Recurse -Force asm-src\dist -ErrorAction SilentlyContinue
+            Remove-Item Env:GOOS -ErrorAction SilentlyContinue
+            Remove-Item Env:GOARCH -ErrorAction SilentlyContinue
+            git checkout --force --detach $sha
+            if ($LASTEXITCODE -ne 0) { throw "checkout $sha failed" }
+
+            powershell -NoProfile -ExecutionPolicy Bypass -File asm-src\installer\build.ps1
+            if ($LASTEXITCODE -ne 0) { throw "installer build failed for v$v" }
+
+            Push-Location asm-src
+            try {
+              $env:CGO_ENABLED = '0'
+              $env:GOOS = 'linux';  $env:GOARCH = 'amd64'
+              go build -trimpath -o "dist\veyl-$v-linux-x86_64" ./compiler
+              if ($LASTEXITCODE -ne 0) { throw "linux build failed for v$v" }
+              $env:GOOS = 'darwin'; $env:GOARCH = 'amd64'
+              go build -trimpath -o "dist\veyl-$v-macos-x86_64" ./compiler
+              if ($LASTEXITCODE -ne 0) { throw "macos build failed for v$v" }
+            } finally {
+              Pop-Location
+              Remove-Item Env:GOOS -ErrorAction SilentlyContinue
+              Remove-Item Env:GOARCH -ErrorAction SilentlyContinue
+            }
+
+            $text = Get-Content CHANGELOG.md -Raw
+            $m = [regex]::Match($text, "(?ms)^## $([regex]::Escape($v))\b[^\n]*\n(.*?)(?=^## |\z)")
+            if (-not $m.Success) { throw "CHANGELOG.md has no section for $v" }
+            Set-Content -Path notes.md -Value $m.Groups[1].Value.Trim() -Encoding utf8
+
+            gh release create "v$v" `
+              "asm-src\dist\veyl-$v-setup.exe" `
+              "asm-src\dist\veyl-$v-linux-x86_64" `
+              "asm-src\dist\veyl-$v-macos-x86_64" `
+              --repo $repo --target $sha --title "Veyl $v" --notes-file notes.md
+            if ($LASTEXITCODE -ne 0) { throw "release create failed for v$v" }
+            Write-Host "==> published v$v" -ForegroundColor Green
+          }

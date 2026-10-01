@@ -67,6 +67,20 @@ jobs:
         working-directory: veyl/asm-src
         run: powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1
 
+      - name: Build the Linux and macOS binaries
+        if: steps.version.outputs.new == 'true'
+        working-directory: veyl/asm-src
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          $env:GOOS = 'linux';  $env:GOARCH = 'amd64'
+          go build -trimpath -o "dist\veyl-$v-linux-x86_64" ./compiler
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $env:GOOS = 'darwin'; $env:GOARCH = 'amd64'
+          go build -trimpath -o "dist\veyl-$v-macos-x86_64" ./compiler
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
       - name: Release notes
         if: steps.version.outputs.new == 'true'
         working-directory: veyl
@@ -84,5 +98,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $v = "${{ steps.version.outputs.version }}"
-          gh release create "v$v" "asm-src\dist\veyl-$v-setup.exe" `
+          gh release create "v$v" `
+            "asm-src\dist\veyl-$v-setup.exe" `
+            "asm-src\dist\veyl-$v-linux-x86_64" `
+            "asm-src\dist\veyl-$v-macos-x86_64" `
             --target "${{ github.sha }}" --title "Veyl $v" --notes-file notes.md
