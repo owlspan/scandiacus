@@ -3,6 +3,24 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.48.0
+
+**macOS windows and input (Cocoa).** A windowed program now builds for
+macOS with a Cocoa backend (compiler/linuxrt/veylmac.c), the counterpart
+to the X11 one on Linux. It is plain C: the Objective-C runtime and the
+AppKit and CoreGraphics frameworks are loaded with dlopen and called
+through objc_msgSend, so it needs no Objective-C compiler, no linked
+framework and no macOS SDK to build - a Mac has all of them at run time.
+A window's pixels (drawn by the shared software GDI, veylgdi.c) are shown
+by handing them to a CoreGraphics image set as the view's layer contents;
+mouse and keyboard come from the Cocoa event queue, mapped to the same
+WM_* messages win.poll reads.
+
+This is new and was built without a Mac to test on, so it is marked
+experimental; sound on macOS is not wired up yet (CoreAudio is next) and
+its calls succeed silently. Console and off-screen programs are
+unaffected.
+
 ## 0.47.0
 
 **macOS target.** `veyl build --macos` produces an x86-64 Mach-O
