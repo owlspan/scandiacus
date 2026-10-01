@@ -3,6 +3,25 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.47.0
+
+**macOS target.** `veyl build --macos` produces an x86-64 Mach-O
+executable, which runs natively on Intel Macs and through Rosetta on
+Apple Silicon. It works the same way as the Linux target: the generated
+code is unchanged and the same runtime answers its calls under the
+Windows calling convention. A new file, compiler/macos.go, rewrites the
+assembly for the Mach-O assembler - its section names, byte alignment,
+and the leading underscore on the symbols that cross into the runtime -
+and the runtime (veylrt.c) grew the handful of macOS spellings it needed
+(thread id, stack bounds, the crash context). The build runs the system
+`cc` on a Mac, or a cross compiler named in VEYL_MACCC elsewhere (zig
+cross-compiles it from Linux).
+
+Console and off-screen-drawing programs work on macOS. The on-screen
+window layer is X11, which macOS does not ship, so windowed programs wait
+on a native Cocoa backend. The same seven Windows-only programs skipped
+on Linux are Windows-only on macOS too.
+
 ## 0.46.0
 
 **Graphics, input and sound on Linux.** The `win` library now works on
