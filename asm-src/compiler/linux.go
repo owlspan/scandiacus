@@ -146,16 +146,17 @@ func buildLinux(mod *Module, out string) {
 	}
 
 	externs := asmExterns(asmText)
-	var missing []string
-	for _, e := range externs {
-		if !linuxProvided[e] {
-			missing = append(missing, e)
-		}
-	}
-	if len(missing) > 0 {
+	wrap, windowsOnly := splitExterns(mod, externs)
+	if len(windowsOnly) > 0 {
 		fail("this program uses functions that only exist on Windows so far: %s\n"+
 			"        Build it with --windows, or leave out the library that needs them.",
-			strings.Join(missing, ", "))
+			strings.Join(windowsOnly, ", "))
+	}
+	wrapperC, wrapperLibs, variadic := externWrappers(mod, wrap)
+	if len(variadic) > 0 {
+		fail("a variadic extern function cannot be called on Linux yet: %s\n"+
+			"        Build it with --windows, or wrap it in a non-variadic C function.",
+			strings.Join(variadic, ", "))
 	}
 
 	asTool := linuxTool("as")
@@ -200,8 +201,17 @@ func buildLinux(mod *Module, out string) {
 	}
 
 	linkArgs := []string{"-no-pie", "-o", out, objPath}
+	// Wrappers for the C functions the program declared with `extern fn`.
+	if wrapperC != "" {
+		wp := filepath.Join(tmp, "wrappers.c")
+		if err := os.WriteFile(wp, []byte(wrapperC), 0o644); err != nil {
+			fail("%v", err)
+		}
+		linkArgs = append(linkArgs, wp)
+	}
 	linkArgs = append(linkArgs, linuxRuntimeObjects(cc)...)
 	linkArgs = append(linkArgs, "-lm", "-lpthread", "-ldl")
+	linkArgs = append(linkArgs, wrapperLibs...)
 	if outp, err := exec.Command(cc, linkArgs...).CombinedOutput(); err != nil {
 		fail("linking failed.\n%s\n%s", err, outp)
 	}

@@ -62,16 +62,17 @@ func buildMac(mod *Module, out string) {
 	}
 
 	externs := asmExterns(asmText)
-	var missing []string
-	for _, e := range externs {
-		if !linuxProvided[e] {
-			missing = append(missing, e)
-		}
-	}
-	if len(missing) > 0 {
+	wrap, windowsOnly := splitExterns(mod, externs)
+	if len(windowsOnly) > 0 {
 		fail("this program uses functions that only exist on Windows so far: %s\n"+
 			"        Build it with --windows, or leave out the library that needs them.",
-			strings.Join(missing, ", "))
+			strings.Join(windowsOnly, ", "))
+	}
+	wrapperC, wrapperLibs, variadic := externWrappers(mod, wrap)
+	if len(variadic) > 0 {
+		fail("a variadic extern function cannot be called on macOS yet: %s\n"+
+			"        Build it with --windows, or wrap it in a non-variadic C function.",
+			strings.Join(variadic, ", "))
 	}
 
 	tmp, err := os.MkdirTemp("", "veyl-mac-*")
@@ -105,6 +106,14 @@ func buildMac(mod *Module, out string) {
 		}
 		args = append(args, p)
 	}
+	if wrapperC != "" {
+		wp := filepath.Join(tmp, "wrappers.c")
+		if err := os.WriteFile(wp, []byte(wrapperC), 0o644); err != nil {
+			fail("%v", err)
+		}
+		args = append(args, wp)
+	}
+	args = append(args, wrapperLibs...)
 
 	if outp, err := exec.Command(cc[0], args...).CombinedOutput(); err != nil {
 		fail("the macOS build failed. If this is not a Mac, set VEYL_MACCC to a cross "+

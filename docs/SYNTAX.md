@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.49.0** - the language as currently implemented.
+**Version 0.50.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -2770,6 +2770,12 @@ extern fn mz_extract(zip: str, dest: str) -> int from "miniz"
 The `.dll` suffix is optional. `from` is only a keyword in that spot,
 so an ordinary variable or function called `from` still works.
 
+On Linux and macOS a `from` naming a shared library - `"libm.so"`,
+`"libSDL2.so"` - calls that library's function directly: the build
+generates a small wrapper so the C compiler bridges the calling
+convention, and links the library. Variadic C functions cannot be called
+this way yet (printf-style), only on Windows.
+
 ### Static libraries
 
 A `from` string ending in `.lib`, `.a`, `.obj` or `.o` names a static
@@ -3788,7 +3794,7 @@ checker, so it is only reported once every type error is fixed.
 
 ## Known limitations
 
-Honest list of what v0.49.0 does not do yet.
+Honest list of what v0.50.0 does not do yet.
 
 **The language**
 

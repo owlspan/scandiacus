@@ -673,7 +673,14 @@ type Module struct {
 	DLL     bool
 	Externs map[string]bool // foreign symbols called directly, declared
 	// as .extern at the top of the .s file
-	NGlobals int // words of static storage the program needs
+
+	// ExternSigs is the declared signature of each `extern fn`, so the
+	// Linux and macOS builds can generate a correctly-typed wrapper for a
+	// symbol the runtime does not provide and the C compiler can bridge
+	// the calling convention. Builtins the runtime implements are not in
+	// here; only what the program declared with `extern fn ... `.
+	ExternSigs map[string]externSig
+	NGlobals   int // words of static storage the program needs
 }
 
 func (m *Module) needs(h string) { m.Helpers[h] = true }
@@ -1082,6 +1089,7 @@ func Lower(p *Program, file string) (*Module, []string) {
 	l.stripCollector()
 	l.buildCrashHandler()
 	l.checkLabels()
+	l.mod.ExternSigs = l.externFns
 	return l.mod, l.errs
 }
 

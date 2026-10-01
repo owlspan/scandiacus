@@ -47,6 +47,9 @@ func TestGolden(t *testing.T) {
 				t.Skip("exercises a Windows-only facility (COM, the PE image, raw native calls, " +
 					"the Windows process APIs, or COFF static libraries)")
 			}
+			if !targetLinux() && !targetMac() && unixOnlyProgram(filepath.Base(src)) {
+				t.Skip("calls C libraries by their Linux/macOS names, which Windows does not have")
+			}
 			base := strings.TrimSuffix(src, ".vl")
 			want, err := os.ReadFile(base + ".out")
 			if err != nil {
@@ -80,6 +83,12 @@ func TestGolden(t *testing.T) {
 			}
 		})
 	}
+}
+
+// unixOnlyProgram names programs that call C libraries by their Unix
+// names (libm.so, libc.so), which only resolve on Linux and macOS.
+func unixOnlyProgram(name string) bool {
+	return name == "ffi.vl"
 }
 
 // windowsOnlyProgram names the golden programs that test a Windows
