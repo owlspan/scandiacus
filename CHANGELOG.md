@@ -3,6 +3,17 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.50.0
+
+**Calling C libraries on Linux and macOS.** An `extern fn ... from
+"libfoo.so"` now reaches that library's function directly, not just the
+names the runtime happens to wrap. For each such symbol the build
+generates a tiny ms_abi wrapper and lets the C compiler bridge the
+calling convention (correct for any mix of integer, pointer and float
+arguments), then links the named library. So `extern fn sqrt(x: float)
+-> float from "libm.so"` just works, the same way DLL externs work on
+Windows. Variadic C functions still need the Windows target.
+
 ## 0.49.0
 
 **macOS sound (CoreAudio).** The `sound` library and the MCI music calls
