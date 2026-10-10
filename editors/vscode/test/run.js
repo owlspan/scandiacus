@@ -69,6 +69,11 @@ function wait(cond) {
     const syms = await p.symbols.provideDocumentSymbols(d);
     assert.deepStrictEqual(syms.map((s) => s.name), ['twice']);
 
+    // Formatting: the file is laid out badly on purpose at its last line.
+    const edits = await p.format.provideDocumentFormattingEdits(d);
+    assert.strictEqual(edits.length, 1, 'one formatting edit');
+    assert.match(edits[0].newText, /\nprint\(1 \+ 2\)\n$/);
+
     // An edit that fixes the error clears it.
     fake._change(doc(text.replace('let bad: int = "x"', 'let bad: int = 1'), 2));
     await wait(() => [...fake._reported.values()][0].length === 0);

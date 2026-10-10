@@ -45,6 +45,8 @@ usage:
                           is the one veyl runs on (or VEYL_TARGET)
   veyl asm   <file.vl>    print the generated assembly
   veyl ir    <file.vl>    print the intermediate representation
+  veyl fmt   <file.vl>... rewrite files in the standard layout
+                          (--check lists the ones that are not, and fails)
   veyl lsp                a language server on stdin and stdout, for editors
   veyl vscode             install the Veyl extension into VS Code
                           (--vsix FILE only writes the package,
@@ -108,6 +110,10 @@ func main() {
 		return
 	}
 
+	if cmd == "fmt" {
+		fmtCommand(args[1:])
+		return
+	}
 	if cmd == "lsp" {
 		lspCommand()
 		return

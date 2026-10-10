@@ -3741,6 +3741,7 @@ defer own unsafe
 | `veyl build --dll f.vl` | write `f.dll`; see [Building a DLL](#building-a-dll) |
 | `veyl asm f.vl` | print the generated assembly |
 | `veyl ir f.vl` | print the intermediate representation |
+| `veyl fmt f.vl` | lay a file out the standard way: 4-space indents, one space around operators, one blank line at most (a folder formats every `.vl` in it; `--check` changes nothing and fails if anything would) |
 | `veyl lsp` | the language server an editor starts, on stdin and stdout |
 | `veyl vscode` | install the VS Code extension: highlighting, errors as you type, completion, go to definition, hover |
 | `veyl version` | print the version |

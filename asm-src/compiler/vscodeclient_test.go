@@ -19,7 +19,7 @@ func TestVSCodeClient(t *testing.T) {
 	veyl := asmBackend(t)
 	dir := t.TempDir()
 	src := filepath.Join(dir, "client.vl")
-	prog := "fn twice(n: int) -> int {\n    return n * 2\n}\n\nprint(twice(4))\nlet bad: int = \"x\"\n"
+	prog := "fn twice(n: int) -> int {\n    return n * 2\n}\n\nprint(twice(4))\nlet bad: int = \"x\"\nprint(1+2)\n"
 	if err := os.WriteFile(src, []byte(prog), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,8 @@ package main
 //   - go to definition, for functions, methods, structs, enums,
 //     interfaces, fields, globals and locals, across imported files;
 //   - hover, the type of a variable or the signature of a function;
-//   - the outline of a file.
+//   - the outline of a file;
+//   - formatting, the same as veyl fmt.
 //
 // Each change runs the compiler's front half - parse, imports, prelude,
 // type check - over the text in the editor, never the copy on disk, and
@@ -179,11 +180,12 @@ func (s *lspServer) handle(m *rpcMsg) {
 	case "initialize":
 		s.reply(m.ID, map[string]any{
 			"capabilities": map[string]any{
-				"textDocumentSync":       1, // the whole text on every change
-				"completionProvider":     map[string]any{"triggerCharacters": []string{"."}},
-				"definitionProvider":     true,
-				"hoverProvider":          true,
-				"documentSymbolProvider": true,
+				"textDocumentSync":           1, // the whole text on every change
+				"completionProvider":         map[string]any{"triggerCharacters": []string{"."}},
+				"definitionProvider":         true,
+				"hoverProvider":              true,
+				"documentSymbolProvider":     true,
+				"documentFormattingProvider": true,
 			},
 			"serverInfo": map[string]any{"name": "veyl", "version": Version},
 		})
@@ -232,6 +234,24 @@ func (s *lspServer) handle(m *rpcMsg) {
 		} else {
 			s.reply(m.ID, nil)
 		}
+	case "textDocument/formatting":
+		d := s.docs[p.TextDocument.URI]
+		if d == nil {
+			s.reply(m.ID, []any{})
+			return
+		}
+		out, ok := Format(d.path, d.text)
+		if !ok || out == d.text {
+			s.reply(m.ID, []any{})
+			return
+		}
+		// One edit replacing everything: the end is past the last line,
+		// which a client clamps to the end of the document.
+		lines := strings.Count(d.text, "\n") + 1
+		s.reply(m.ID, []map[string]any{{
+			"range":   lspRange{Start: lspPos{}, End: lspPos{Line: lines, Character: 0}},
+			"newText": out,
+		}})
 	case "textDocument/documentSymbol":
 		d := s.docs[p.TextDocument.URI]
 		if d == nil {
