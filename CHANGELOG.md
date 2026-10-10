@@ -3,6 +3,27 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.55.0
+
+**HTTPS on Linux and macOS.** `http.get`, `http.post` and
+`http.download` now fetch `https://` urls off Windows. The socket
+client puts TLS on its connection with the system's OpenSSL, loaded
+when the first https url is fetched, so a program that never uses https
+needs no OpenSSL where it runs. The certificate is checked against the
+system's trust store and must name the host; a failure says which check
+failed, as in `the certificate of localhost was not accepted: hostname
+mismatch`. A redirect from `https://` down to `http://` is refused.
+On macOS this needs `brew install openssl@3`, and is untested so far.
+
+**Socket errors name the real reason on Linux and macOS.** A refused
+connection said "A device attached to the system is not functioning";
+it now says "No connection could be made because the target machine
+actively refused it.", the sentence Windows prints.
+
+Test: TestHTTPS runs TLS servers with a CA the test makes and checks a
+name, an address, POST, chunked and large bodies, a redirect, a refused
+downgrade, a wrong name and an unknown CA.
+
 ## 0.54.0
 
 **Redirects in the HTTP client on Linux and macOS.** `http.get`,
