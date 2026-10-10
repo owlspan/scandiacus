@@ -1,7 +1,9 @@
 name: backfill-releases
 
 # A one-time job that publishes the releases for the versions that were
-# developed but never released (0.43.0 through 0.52.0). Each one is built
+# developed but never released (0.43.0 through 0.52.0, and 0.63.0 and
+# 0.64.0, whose release runs were lost: one to a test that hung on the
+# runner, the other cancelled behind it). Each one is built
 # from its own commit so its installer and binaries carry that version's
 # code. The current version releases through release.yml on the push to
 # veyl, so it is not in the list here. Run it by hand from the Actions
@@ -65,6 +67,8 @@ jobs:
             '0.50.0' = '7c50021032b1221711574be6d44f08407d92935e'
             '0.51.0' = '1711c3727aa90886b9e4dc278cea50ccc8f15821'
             '0.52.0' = '8572c56cf905765d76e44cc3cff4ba17478d9b34'
+            '0.63.0' = '1624985011f147c593f6a91746711af3a809210b'
+            '0.64.0' = '79a70eeade23fac25b59f4ab9675fc2c2de65a34'
           }
 
           foreach ($v in $map.Keys) {
