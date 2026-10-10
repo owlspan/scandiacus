@@ -88,7 +88,7 @@ with `codesign -s -`) and reports which fail, so you can isolate them.
 - Pushing to `veyl` auto-publishes a release when `veyl.go`'s version has
   none yet (see Releases below), so every push to `veyl` must be green.
 - Leave a usable, green, pushed checkpoint each time. Current HEAD is
-  `Version 0.55.0`.
+  `Version 0.57.0`.
 
 ## Releases and CI (read before bumping a version)
 
@@ -142,6 +142,21 @@ Golden tests live in `asm-src/tests/*.vl` with a matching `.out`.
 db, httpclient) and `windowsOnlyProgram()` (skip off Windows: com, native,
 nativecall, proc, proc_list, staticlib, staticdll). Loopback client/server
 tests are marked unix-only to dodge wine flakiness.
+
+## Also done since 0.53.0
+
+- 0.56.0: the checker reports undefined variables, functions and structs
+  itself (`frontend/resolve.go`), beside the type errors, with a "did
+  you mean" from names in scope and the backend's builtins
+  (`asmLibrary.Names`). TestUndefinedNames.
+- 0.57.0: maps keyed by a plain enum. A map vty carries `keyName` so a
+  loaded key prints by variant. tests/enummaps.vl.
+- Linux/macOS socket calls now set the last error, so net failures read
+  "No connection could be made..." instead of a stale message.
+
+Under wine, tests/com.vl differs in one line (a COM call wine answers
+differently); it was already so before these changes, and CI runs on
+real Windows where it passes.
 
 ## Suggested next steps, ranked
 
