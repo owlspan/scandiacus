@@ -3,6 +3,26 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.57.0
+
+**Maps keyed by an enum.** `{Color: int}` works: index, assign, `has`,
+`remove`, `keys`, equality and `for k, v in m`, with the keys printing
+by name in the order the enum declares them.
+
+```veyl
+let seen: {Dir: int} = {}
+seen[Dir.West] += 1
+seen[Dir.North] += 2
+print(seen)                   // {North: 2, West: 1}
+```
+
+A struct, a float or an enum whose variants carry values is still
+refused as a key, now with "a map key must be str, int or a plain enum".
+An annotation that is wrong is reported once, not again as an untyped
+`{}` or `[]`.
+
+Test: tests/enummaps.vl.
+
 ## 0.56.0
 
 **Undefined names are reported with the type errors.** A misspelled
