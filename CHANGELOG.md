@@ -3,6 +3,23 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.58.0
+
+**VS Code highlighting works again.** The installer used to copy the
+extension into `.vscode\extensions`, and current VS Code ignores a
+folder there unless it is listed in its `extensions.json` registry -
+which exists as soon as any other extension is installed - so `.vl`
+files stopped being colored, with no error. The installer now installs
+the extension through VS Code itself, with the new `veyl vscode`
+command: it packs the extension as a `.vsix` and runs
+`code --install-extension`, then removes the old copies that were never
+loaded. Reload VS Code after installing.
+
+If VS Code's `code` command is not found, `veyl vscode` leaves the
+`.vsix` in the temp folder and says how to install it with
+**Extensions: Install from VSIX...**. `veyl vscode --vsix FILE` writes
+the package anywhere, and `veyl vscode --uninstall` removes it.
+
 ## 0.57.0
 
 **Maps keyed by an enum.** `{Color: int}` works: index, assign, `has`,
