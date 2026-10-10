@@ -165,10 +165,8 @@ pipeline:
   `padRight`, and the constants `INF` and `NAN`, with comparisons that
   treat a NaN the way Go does
 
-Missing against the Go backend: `zip`. There is also no resolver on
-this side, so a name that is neither a local, a function nor a builtin
-is caught by the lowerer rather than the checker. Everything absent is
-a compile error naming it, never wrong output.
+Missing against the Go backend: `zip`. Everything absent is a compile
+error naming it, never wrong output.
 
 What the Go backend does not have: `extern fn` and callbacks, raw
 memory and `extern struct`, DLLs, `var` globals, enums, generics, interfaces, and the `\xHH`
@@ -228,11 +226,6 @@ statement, to hold it to that. It does not run while `task` threads are
 working, since it scans only its own stack, and it does not run in a
 DLL, whose exports the host may call on threads of its own.
 `VEYL_GC=off` turns it off.
-
-**No resolver.** A name that is neither a local, a function nor a
-builtin is caught by the lowerer rather than the checker, so it is
-missed when the checker has already failed on something else. Sharing
-`resolve.go` the way `check.go` is now shared is the obvious fix.
 
 **A string is NUL-terminated bytes**, with no length beside it. So a
 file holding a zero byte reads back short where the Go backend reads it
@@ -314,8 +307,9 @@ lacks comes back as a clean "not on the assembly backend yet" error
 rather than a checker crash.
 
 So a wrong program is now caught here, with the same message the Go
-backend would give. The remaining gap is the **resolver**, described
-above, which only the Go backend has.
+backend would give. Undefined names are the checker's too
+(`frontend/resolve.go`), reported beside the type errors with the
+closest real name offered.
 
 ## Commands
 
@@ -594,8 +588,6 @@ bounds-checked on every access, and the C array is not.
 
 ## What comes next
 
-- **A resolver**, so a misspelled name is reported alongside type
-  errors rather than after them.
 - **Collection across threads**, so it can run while threads work and
   inside a DLL - which needs every thread's stack, not only the
   collector's own.

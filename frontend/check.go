@@ -1119,7 +1119,8 @@ func (c *Checker) expr(e Expr) *Type {
 			}
 			return signatureOf(f)
 		}
-		return Unknown // the resolver reported the undefined name
+		c.undefinedName(x, x.Name, "variable")
+		return Unknown
 
 	case *Unary:
 		switch x.Op {
@@ -1273,7 +1274,10 @@ func (c *Checker) structLit(x *StructLit) *Type {
 			c.expr(x.Vals[i])
 		}
 		x.T = Unknown
-		return Unknown // the resolver already reported it
+		if hint := c.genericHint(x.Name); hint == "" {
+			c.undefinedName(x, x.Name, "struct")
+		}
+		return Unknown
 	}
 	if d.Enum != nil {
 		for i := range x.Vals {
@@ -1954,7 +1958,8 @@ func (c *Checker) call(x *Call) *Type {
 	if !isUser {
 		g, generic := c.genericCall(x, name, args)
 		if !generic {
-			return Unknown // the resolver reported it
+			c.undefinedName(x.Callee, name, "function")
+			return Unknown
 		}
 		if g == nil {
 			x.T = Unknown
