@@ -47,8 +47,25 @@ scope should start with `source.veyl`.
 auto-closing, 4-space indentation, and it strips trailing whitespace and
 adds a final newline on save.
 
-**Does not:** completion, go-to-definition or inline errors. Those need
-a language server, which does not exist yet.
+Through `veyl lsp`, the language server built into veyl:
+
+- **errors as you type**, the same ones `veyl build` reports;
+- **completion** of names in scope and the library, and after a dot a
+  struct's fields and methods, a library's functions or an enum's
+  variants;
+- **go to definition** (F12) for functions, methods, structs, enums,
+  fields, globals and locals, into imported files too;
+- **hover** for the type of a variable or the signature of a function;
+- **the outline** of a file (Ctrl+Shift+O).
+
+The extension starts the veyl that installed it. To use another, set
+**Veyl: Path** (`veyl.path`) in the settings. If veyl cannot be started
+the highlighting still works, and a message says so.
+
+The client is `extension.js`, plain JavaScript with no npm packages;
+`test/` drives it against a real `veyl lsp` (TestVSCodeClient).
+
+**Does not yet:** rename, find references, or signature help.
 
 Reserved-but-unimplemented words - `own` and `unsafe` - are
 highlighted as errors on purpose. The compiler will refuse them, and
