@@ -1,0 +1,16 @@
+// The stack walk Windows does from the unwind tables. RtlCaptureStackBackTrace
+// unwinds frame by frame using .pdata; with no entry for a Veyl function the
+// walk went wrong at the first one. Ten more calls deep must be exactly ten
+// more frames, however many frames the system adds below main.
+extern fn RtlCaptureStackBackTrace(skip: u32, count: u32, frames: int, hash: int) -> u16 from "kernel32.dll"
+
+fn deep(n: int) -> int {
+    if n == 0 {
+        let buf = mem.alloc(8 * 128)
+        return int(RtlCaptureStackBackTrace(0, 128, buf, 0))
+    }
+    return deep(n - 1) + 0
+}
+let shallow = deep(5)
+let deeper = deep(15)
+print(deeper - shallow)

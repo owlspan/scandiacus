@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -28,10 +29,18 @@ func TestErrorLocations(t *testing.T) {
 		{"crash",
 			"fn poke(p: int) -> int {\n    return mem.readI64(p)\n}\nprint(\"before\")\nprint(poke(16))\n",
 			"before\ncrash: access violation - an address that is not valid was read or written\n    in poke\n"},
+		{"overflow",
+			"fn down(n: int) -> int {\n    return down(n + 1) + 1\n}\nprint(\"start\")\nprint(down(0))\n",
+			"start\ncrash: stack overflow - probably a function that calls itself without end\n    in down\n"},
 	}
 	for _, c := range cases {
 		c := c
 		t.Run(c.name, func(t *testing.T) {
+			// wine ends a program whose stack overflows without running
+			// its exception handlers; Windows and Linux both report it.
+			if c.name == "overflow" && !targetLinux() && !targetMac() && runtime.GOOS != "windows" {
+				t.Skip("a stack overflow under wine is not reported the way Windows reports it")
+			}
 			t.Parallel()
 			p := filepath.Join(dir, c.name+".vl")
 			if err := os.WriteFile(p, []byte(c.src), 0o644); err != nil {

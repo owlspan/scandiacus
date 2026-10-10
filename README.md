@@ -591,9 +591,8 @@ bounds-checked on every access, and the C array is not.
 ## What comes next
 
 - **Collection inside a DLL**, whose exports run on the host's threads.
-- **Unwind tables** (`.pdata`), so native debuggers and Windows' own
-  stack walking understand Veyl frames - which would also let a stack
-  overflow be reported reliably.
+- **Debug symbols** (a `.pdb`), so a debugger can show source lines and
+  variables; the unwind tables (`unwind.go`) already give it the stack.
 - **A language server**, for completion and go-to-definition in
   editors.
 - **Closures as callbacks.**
