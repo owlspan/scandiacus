@@ -56,7 +56,8 @@ Through `veyl lsp`, the language server built into veyl:
   variants;
 - **go to definition** (F12) for functions, methods, structs, enums,
   fields, globals and locals, into imported files too;
-- **hover** for the type of a variable or the signature of a function;
+- **hover** for the type of a variable or the signature of a function,
+  with the comment above its declaration;
 - **the outline** of a file (Ctrl+Shift+O);
 - **Format Document** (Shift+Alt+F), the same layout as `veyl fmt`.
 

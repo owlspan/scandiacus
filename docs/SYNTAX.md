@@ -67,6 +67,21 @@ its own around those statements.
 Nesting matters in practice: you can comment out a region that already
 contains a block comment without the inner `*/` ending it early.
 
+**Doc comments.** The `//` lines directly above a declaration, with no
+blank line between, document it: `veyl doc` puts them in the file's
+reference, and the editor shows them when you hover the name.
+
+```veyl
+// The area of a w by h rectangle.
+pub fn area(w: int, h: int) -> int {
+    return w * h
+}
+```
+
+```
+veyl doc shapes.vl -o shapes.html
+```
+
 ---
 
 ## Statements and lines
@@ -3813,6 +3828,7 @@ defer own unsafe
 | `veyl build --dll f.vl` | write `f.dll`; see [Building a DLL](#building-a-dll) |
 | `veyl asm f.vl` | print the generated assembly |
 | `veyl ir f.vl` | print the intermediate representation |
+| `veyl doc f.vl` | a reference of the file's declarations with the comments above them, as Markdown; `-o api.md` writes it to a file, `-o api.html` as a web page (a file that marks anything `pub` documents only that) |
 | `veyl check f.vl` | the errors and warnings `veyl build` would print, without building; fails only on errors |
 | `veyl test f.vl` | run the file's `test` blocks (a folder runs every file with tests; `--run text` only matching names; `--bench` the `bench` blocks); see [Testing](#testing) |
 | `veyl fmt f.vl` | lay a file out the standard way: 4-space indents, one space around operators, one blank line at most (a folder formats every `.vl` in it; `--check` changes nothing and fails if anything would) |

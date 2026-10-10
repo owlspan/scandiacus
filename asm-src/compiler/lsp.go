@@ -229,8 +229,12 @@ func (s *lspServer) handle(m *rpcMsg) {
 			s.reply(m.ID, nil)
 			return
 		}
-		if h := d.hover(p.Position); h != "" {
-			s.reply(m.ID, map[string]any{"contents": map[string]any{"kind": "markdown", "value": "```veyl\n" + h + "\n```"}})
+		if h, doc := d.hover(p.Position); h != "" {
+			value := "```veyl\n" + h + "\n```"
+			if doc != "" {
+				value += "\n\n" + doc
+			}
+			s.reply(m.ID, map[string]any{"contents": map[string]any{"kind": "markdown", "value": value}})
 		} else {
 			s.reply(m.ID, nil)
 		}
@@ -286,8 +290,33 @@ type lspIndex struct {
 	ifaces  map[string]*front.InterfaceDecl
 	globals []*front.LetStmt
 	locals  []lspLocal
-	lines   []string // the main file's text, for columns
-	checked bool     // the checker ran over it, so the types are filled in
+	lines   []string                  // the main file's text, for columns
+	checked bool                      // the checker ran over it, so the types are filled in
+	docs    map[string]map[int]string // per file, the comment above each line
+}
+
+// docFor is the comment above a declaration, read from its file.
+func (idx *lspIndex) docFor(file string, line int) string {
+	if file == "" {
+		return ""
+	}
+	if idx.docs == nil {
+		idx.docs = map[string]map[int]string{}
+	}
+	m, ok := idx.docs[file]
+	if !ok {
+		text := strings.Join(idx.lines, "\n")
+		if !samePath(file, idx.path) {
+			b, err := os.ReadFile(file)
+			if err != nil {
+				return ""
+			}
+			text = string(b)
+		}
+		m = docComments(file, text)
+		idx.docs[file] = m
+	}
+	return m[line]
 }
 
 var errPos = regexp.MustCompile(`^(.*):(\d+):(\d+): (.*)$`)
@@ -937,26 +966,26 @@ func (d *lspDoc) definition(pos lspPos) *lspLocation {
 	return nil
 }
 
-func (d *lspDoc) hover(pos lspPos) string {
+func (d *lspDoc) hover(pos lspPos) (string, string) {
 	idx := d.index
 	if idx == nil {
-		return ""
+		return "", ""
 	}
 	qual, word := d.wordAt(pos, true)
 	if word == "" {
-		return ""
+		return "", ""
 	}
 	line := pos.Line + 1
 	if qual != "" {
 		if sig := builtinSig(qual + "." + word); sig != "" {
-			return sig
+			return sig, ""
 		}
 		if e, ok := idx.enums[qual]; ok {
-			return qual + "." + word + "  // a " + e.Name
+			return qual + "." + word + "  // a " + e.Name, ""
 		}
 		if sname := idx.resolveQual(qual, line); sname != "" {
 			if f := idx.fn(word, sname); f != nil {
-				return fnSig(f)
+				return fnSig(f), idx.docFor(f.File, f.Line)
 			}
 			if sd := idx.structs[sname]; sd != nil {
 				for _, fl := range sd.Fields {
@@ -965,46 +994,47 @@ func (d *lspDoc) hover(pos lspPos) string {
 						if fl.T != nil {
 							t = fl.T.String()
 						}
-						return sname + "." + word + ": " + t
+						return sname + "." + word + ": " + t, idx.docFor(sd.File, fl.Line)
 					}
 				}
 			}
 		}
-		return ""
+		return "", ""
 	}
 	if l := idx.localAt(word, line); l != nil {
 		if t := idx.typeOf(word, line); t != nil {
-			return word + ": " + t.String()
+			return word + ": " + t.String(), ""
 		}
-		return word
+		return word, ""
 	}
 	if g := idx.global(word); g != nil {
 		kind := "var"
 		if g.Const {
 			kind = "const"
 		}
+		doc := idx.docFor(g.File, g.Line)
 		if t := idx.typeOf(word, line); t != nil {
-			return kind + " " + word + ": " + t.String()
+			return kind + " " + word + ": " + t.String(), doc
 		}
-		return kind + " " + word
+		return kind + " " + word, doc
 	}
 	if f := idx.fn(word, ""); f != nil {
-		return fnSig(f)
+		return fnSig(f), idx.docFor(f.File, f.Line)
 	}
 	if sd, ok := idx.structs[word]; ok && sd.Enum == nil {
 		var fs []string
 		for _, fl := range sd.Fields {
 			fs = append(fs, "    "+fl.Name+": "+fl.Type)
 		}
-		return "struct " + word + " {\n" + strings.Join(fs, "\n") + "\n}"
+		return "struct " + word + " {\n" + strings.Join(fs, "\n") + "\n}", idx.docFor(sd.File, sd.Line)
 	}
 	if e, ok := idx.enums[word]; ok {
-		return "enum " + word + " { " + strings.Join(e.Variants, ", ") + " }"
+		return "enum " + word + " { " + strings.Join(e.Variants, ", ") + " }", idx.docFor(e.File, e.Line)
 	}
 	if sig := builtinSig(word); sig != "" {
-		return sig
+		return sig, ""
 	}
-	return ""
+	return "", ""
 }
 
 // Completion item kinds, from the protocol.
