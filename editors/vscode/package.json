@@ -2,7 +2,7 @@
   "name": "veyl-lang",
   "displayName": "Veyl",
   "description": "Highlighting, errors as you type, completion and go to definition for the Veyl programming language",
-  "version": "0.64.0",
+  "version": "0.65.0",
   "publisher": "veyl",
   "license": "MIT",
   "engines": {

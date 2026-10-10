@@ -3,6 +3,34 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.65.0
+
+**`veyl doc`.** Writes a reference for a file from its declarations and
+the comments directly above them:
+
+```veyl
+// The area of a w by h rectangle.
+pub fn area(w: int, h: int) -> int {
+    return w * h
+}
+```
+
+```
+veyl doc shapes.vl                  Markdown on the console
+veyl doc shapes.vl -o shapes.md     into a file
+veyl doc shapes.vl -o shapes.html   a web page
+```
+
+Functions, structs with their methods, enums, interfaces, consts and
+vars each get their signature and comment; the file's opening comment
+introduces the page. A file that marks anything `pub` documents only
+what it exports.
+
+**Doc comments on hover.** In VS Code, hovering a name shows the comment
+above its declaration under its signature.
+
+Test: TestDoc.
+
 ## 0.64.0
 
 **Warnings, and `veyl check`.** The compiler now warns about things that
