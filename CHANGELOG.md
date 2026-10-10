@@ -3,6 +3,27 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.59.0
+
+**The collector runs while threads do.** Before, nothing was collected
+while any thread besides main was alive, so a long-running thread that
+allocated grew the heap until it finished. Now a collection stops every
+thread, reads every thread's stack, and lets them all go. A thread
+stops at the next statement it starts, or at once if it is waiting in
+`thread.join`, `thread.lock`, `thread.wait`, a channel, `sleep`, a
+socket, `input`, an HTTP request or a database query - so a thread
+blocked on another never holds a collection up. In a program that
+starts a thread every loop checks once a time round, so even
+`while atomic.get(flag) == 0 {}` stops. `mem.collect()` works with
+threads running too, where it used to do nothing.
+
+A program without threads pays nothing for any of this.
+
+Test: tests/gcthreads.vl runs four workers making garbage while each
+keeps a list alive, a thread blocked on a channel and one spinning on
+an atomic, with main collecting, and checks every kept value survived,
+collections ran while the threads did, and the heap stayed bounded.
+
 ## 0.58.0
 
 **VS Code highlighting works again.** The installer used to copy the
