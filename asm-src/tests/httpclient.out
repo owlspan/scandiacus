@@ -2,11 +2,11 @@ hello /world
 {"ok":true}
 got:payload
 error: server replied 404
-https blocked
+https to a closed port: connect: No connection could be made because the target machine actively refused it.
 hello /new
 hello /a/there
 hello /landed
 after GET []
 kept POST y=2
 error: stopped after 10 redirects, the last to "/loop"
-redirect to https blocked
+redirect to https followed: connect: No connection could be made because the target machine actively refused it.

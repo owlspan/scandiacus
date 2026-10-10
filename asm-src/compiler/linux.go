@@ -17,11 +17,11 @@ package main
 // own PE writer. An ELF writer of the compiler's own is the obvious next
 // step and does not change anything above this file.
 //
-// What is not on Linux yet: COM, HTTPS (the http client over TLS, which
-// is WinHTTP), process inspection, and static .lib archives (those are
-// COFF). A program that needs one is told which calls it used rather than
-// getting a link error. Windows and drawing, sound, TCP sockets, the http
-// client over http://, and sqlite all work here now.
+// What is not on Linux yet: COM, process inspection, and static .lib
+// archives (those are COFF). A program that needs one is told which calls
+// it used rather than getting a link error. Windows and drawing, sound,
+// TCP sockets, the http client over http:// and https:// (TLS through the
+// system OpenSSL, loaded at run time), and sqlite all work here now.
 
 import (
 	"crypto/sha256"
@@ -53,6 +53,9 @@ var linuxWinSource string
 //go:embed linuxrt/veylmac.c
 var macWinSource string
 
+//go:embed linuxrt/veyltls.c
+var tlsSource string
+
 //go:embed linuxrt/font8x8.h
 var linuxFontHeader string
 
@@ -76,12 +79,14 @@ var linuxRuntimeSources = map[string]string{
 	"veylrt.c":  linuxRuntimeSource,
 	"veylgdi.c": linuxGdiSource,
 	"veylwin.c": linuxWinSource,
+	"veyltls.c": tlsSource,
 }
 
 var macRuntimeSources = map[string]string{
 	"veylrt.c":  linuxRuntimeSource,
 	"veylgdi.c": linuxGdiSource,
 	"veylmac.c": macWinSource,
+	"veyltls.c": tlsSource,
 }
 
 // Which operating system the output is for: "windows" or "linux".

@@ -32,7 +32,7 @@ thread.spawn(fn() {
             return http.redirect("/loop")
         }
         if req.path == "/tls" {
-            return http.redirect("https://localhost:18091/x")
+            return http.redirect("https://localhost:1/x")
         }
         if req.path == "/form" {
             return Response{status: 303, contentType: "text/plain", body: "", location: "/after"}
@@ -53,11 +53,11 @@ if isOk(r) {
 } else {
     print("error: " + errorOf(r))
 }
-let h = http.get("https://localhost:18091/x")
+let h = http.get("https://localhost:1/x")
 if isOk(h) {
     print("unexpected https ok")
 } else {
-    print("https blocked")
+    print("https to a closed port: " + errorOf(h))
 }
 print(must(http.get("http://localhost:18091/old")))
 print(must(http.get("http://localhost:18091/a/rel")))
@@ -70,5 +70,5 @@ if !isOk(lp) {
 }
 let tl = http.get("http://localhost:18091/tls")
 if !isOk(tl) {
-    print("redirect to https blocked")
+    print("redirect to https followed: " + errorOf(tl))
 }
