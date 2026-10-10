@@ -24,7 +24,7 @@ the temp folder; or write it somewhere yourself and install it from VS
 Code with **Extensions: Install from VSIX...**:
 
 ```
-veyl vscode --vsix veyl-lang-0.62.0.vsix editors/vscode
+veyl vscode --vsix veyl-lang-0.63.0.vsix editors/vscode
 ```
 
 Copying the folder into `~/.vscode/extensions` no longer works. VS Code

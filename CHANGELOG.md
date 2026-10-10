@@ -3,6 +3,38 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.63.0
+
+**`veyl test`.** Tests are written in Veyl, in `test` blocks beside the
+code:
+
+```veyl
+test "adds" {
+    expect(add(1, 2) == 3)
+    expectEq(add(2, 2), 4)
+}
+```
+
+```
+veyl test calc.vl
+PASS  calc.vl: adds (0.00s)
+1 passed, 0 failed
+```
+
+`expect(cond)` checks a condition and `expectEq(got, want)` two values,
+by contents for lists, maps and structs. A failure is reported with its
+line - `expectEq` says what both sides were - and the test carries on, so
+one run shows everything wrong. Each test runs in its own process, so a
+crash fails that test alone. `veyl test` exits 1 when anything failed;
+`--run text` picks tests by name, and a folder runs every file with
+tests. `veyl run` and `veyl build` leave test blocks out.
+
+**Benchmarks.** `bench "name" { ... }` blocks are timed by
+`veyl test --bench`, which repeats each until a round takes half a
+second and reports the time per run.
+
+Test: TestVeylTest.
+
 ## 0.62.0
 
 **`veyl fmt`.** Lays a file out the standard way: four-space indents,
