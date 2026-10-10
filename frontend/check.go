@@ -337,6 +337,10 @@ func (c *Checker) resolveAnnotation(text string, n Node) *Type {
 		return Unknown
 	}
 	t = c.enumTypes(t)
+	if bad := badMapKey(t); bad != nil {
+		c.ErrorAt(n, "a map key must be str, int or a plain enum, got %s", bad)
+		return Unknown
+	}
 	if bad := c.undeclaredStruct(t, n); bad != "" {
 		if hint := c.genericHint(bad); hint != "" {
 			c.ErrorAt(n, "%s", hint)
@@ -982,6 +986,18 @@ func (c *Checker) checkCompound(st *AssignStmt, want, got *Type) {
 // empty collection literals, which carry no element type of their own:
 // `let xs: []int = []` is the whole reason this exists.
 func (c *Checker) exprWant(e Expr, want *Type) *Type {
+	if want != nil && want.IsUnknown() {
+		// The annotation was already reported as wrong. An empty [] or
+		// {} would add that it cannot be typed, the same error twice.
+		if m, ok := e.(*MapLit); ok && len(m.Keys) == 0 {
+			m.T = Unknown
+			return Unknown
+		}
+		if l, ok := e.(*ListLit); ok && len(l.Elems) == 0 {
+			l.T = Unknown
+			return Unknown
+		}
+	}
 	if want == nil || want.IsUnknown() {
 		return c.expr(e)
 	}
@@ -1523,8 +1539,8 @@ func (c *Checker) mapLit(x *MapLit) *Type {
 	}
 
 	keyT := c.expr(x.Keys[0])
-	if keyT.Kind != KStr && keyT.Kind != KInt && !keyT.IsUnknown() {
-		c.ErrorAt(x.Keys[0], "a map key must be str or int, got %s", keyT)
+	if keyT.Kind != KStr && keyT.Kind != KInt && keyT.Kind != KEnum && !keyT.IsUnknown() {
+		c.ErrorAt(x.Keys[0], "a map key must be str, int or a plain enum, got %s", keyT)
 		keyT = Unknown
 	}
 	valT := c.expr(x.Vals[0])
@@ -2475,6 +2491,31 @@ func (c *Checker) enumNamed(e Expr) *EnumDecl {
 // enumTypes turns a name ParseType read as a struct into the enum it
 // is, anywhere inside a type: ParseType has no table of declarations,
 // so it cannot tell the two apart itself.
+// badMapKey finds a map anywhere in t keyed by something other than a
+// str, an int or an enum, and returns that key type.
+func badMapKey(t *Type) *Type {
+	if t == nil {
+		return nil
+	}
+	switch t.Kind {
+	case KMap:
+		if t.Key.Kind != KStr && t.Key.Kind != KInt && t.Key.Kind != KEnum && !t.Key.IsUnknown() {
+			return t.Key
+		}
+		return badMapKey(t.Elem)
+	case KList, KNullable, KResult:
+		return badMapKey(t.Elem)
+	case KFunc:
+		for _, p := range t.Params {
+			if b := badMapKey(p); b != nil {
+				return b
+			}
+		}
+		return badMapKey(t.Elem)
+	}
+	return nil
+}
+
 func (c *Checker) enumTypes(t *Type) *Type {
 	if t == nil {
 		return nil

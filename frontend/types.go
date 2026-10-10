@@ -554,9 +554,11 @@ func ParseType(s string) *Type {
 				if key == nil || val == nil {
 					return nil
 				}
-				// Go map keys must be comparable, and Veyl restricts
-				// them further to keep error messages simple.
-				if key.Kind != KStr && key.Kind != KInt {
+				// A key is a str, an int, or an enum. An enum is spelled
+				// like a struct here and only the checker knows which a
+				// name is, so a named key is let through and the checker
+				// refuses one that turns out to be a struct.
+				if key.Kind != KStr && key.Kind != KInt && key.Kind != KStruct {
 					return nil
 				}
 				return MapOf(key, val)

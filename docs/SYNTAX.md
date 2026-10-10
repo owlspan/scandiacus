@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.56.0** - the language as currently implemented.
+**Version 0.57.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -668,6 +668,17 @@ mixed with an `int` or with another enum. They print by name:
 print(state)                  // Idle
 print("now {Dir.West}")       // now West
 print([Dir.North, Dir.East])  // [North, East]
+```
+
+An enum can key a map, which is the natural way to count or label its
+values. The keys print and iterate by name, in the order the enum
+declares them:
+
+```veyl
+let seen: {Dir: int} = {}
+seen[Dir.West] += 1
+seen[Dir.North] += 2
+print(seen)                   // {North: 2, West: 1}
 ```
 
 A `match` on an enum with no `else` has to handle every value. Adding a
@@ -3824,7 +3835,7 @@ hello.vl:6:7: undefined function "lenn" - did you mean "len"?
 
 ## Known limitations
 
-Honest list of what v0.56.0 does not do yet.
+Honest list of what v0.57.0 does not do yet.
 
 **The language**
 
@@ -3858,7 +3869,8 @@ Honest list of what v0.56.0 does not do yet.
 - **No namespacing on imports.** Everything `pub` in an imported file
   lands in one flat namespace, so two files exporting the same name
   collide. The error names both files.
-- **A map cannot be keyed by an enum.** Keys are still `int` or `str`.
+- **A map key is a `str`, an `int` or an enum.** Not a struct, a float
+  or an enum whose variants carry values.
 - **Garbage collected**, with raw memory beside it: `mem.alloc` and
   extern structs give manual memory and pointers, but nothing checks an
   address, and `unsafe` is still reserved.
