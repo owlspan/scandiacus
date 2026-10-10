@@ -7,11 +7,38 @@ thread.spawn(fn() {
         if req.path == "/json" {
             return http.json(json.encode({"ok": true}))
         }
-        if req.method == "POST" {
+        if req.path == "/kept" {
+            return http.ok("kept " + req.method + " " + req.body)
+        }
+        if req.method == "POST" && req.path != "/form" && req.path != "/keep" {
             return http.ok("got:" + req.body)
+        }
+        if req.path == "/after" {
+            return http.ok("after " + req.method + " [" + req.body + "]")
         }
         if req.path == "/missing" {
             return http.notFound()
+        }
+        if req.path == "/old" {
+            return http.redirect("/new")
+        }
+        if req.path == "/a/rel" {
+            return http.redirect("there")
+        }
+        if req.path == "/full" {
+            return http.redirect("http://localhost:18091/landed")
+        }
+        if req.path == "/loop" {
+            return http.redirect("/loop")
+        }
+        if req.path == "/tls" {
+            return http.redirect("https://localhost:18091/x")
+        }
+        if req.path == "/form" {
+            return Response{status: 303, contentType: "text/plain", body: "", location: "/after"}
+        }
+        if req.path == "/keep" {
+            return Response{status: 307, contentType: "text/plain", body: "", location: "/kept"}
         }
         return http.ok("hello " + req.path)
     }))
@@ -31,4 +58,17 @@ if isOk(h) {
     print("unexpected https ok")
 } else {
     print("https blocked")
+}
+print(must(http.get("http://localhost:18091/old")))
+print(must(http.get("http://localhost:18091/a/rel")))
+print(must(http.get("http://localhost:18091/full")))
+print(must(http.post("http://localhost:18091/form", "x=1")))
+print(must(http.post("http://localhost:18091/keep", "y=2")))
+let lp = http.get("http://localhost:18091/loop")
+if !isOk(lp) {
+    print("error: " + errorOf(lp))
+}
+let tl = http.get("http://localhost:18091/tls")
+if !isOk(tl) {
+    print("redirect to https blocked")
 }

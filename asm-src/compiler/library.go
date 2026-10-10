@@ -301,6 +301,7 @@ var sigs = map[string]front.Signature{
 	"http.json":     {Params: []*Type{Str}, Ret: StructOf("Response")},
 	"http.status":   {Params: []*Type{Int, Str}, Ret: StructOf("Response")},
 	"http.notFound": {Ret: StructOf("Response")},
+	"http.redirect": {Params: []*Type{Str}, Ret: StructOf("Response")},
 	"http.header":   {Params: []*Type{StructOf("Request"), Str}, Ret: Str},
 
 	// Sockets. A socket is the int handle Windows hands back, which is
