@@ -1773,7 +1773,16 @@ crash: access violation - an address that is not valid was read or written
     in poke
 ```
 
+A function that calls itself without end is reported the same way, as
+`crash: stack overflow`.
+
 Neither costs anything while the program runs normally.
+
+A Windows executable also carries unwind tables (`.pdata`), so a native
+debugger such as Visual Studio or WinDbg, a crash dump, or a call to
+`RtlCaptureStackBackTrace` walks the stack through Veyl functions to
+the real callers. The debugger shows the call stack; it does not show
+Veyl variables or source lines, since no debug symbols are written.
 
 ### How failure is reported
 

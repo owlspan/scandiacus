@@ -40,11 +40,11 @@ func (l *lowerer) installCrashHandler() {
 	}
 	l.mod.needs("crash")
 	// A vectored handler, called before Windows looks for a handler up
-	// the stack. An unhandled-exception filter is only reached once the
-	// stack has been unwound through each function's unwind table, and
-	// this compiler writes none, so on Windows the process died before
-	// one was ever called. First in line, so a crash is reported even
-	// with other handlers installed.
+	// the stack. It went in when this compiler wrote no unwind tables
+	// and so an unhandled-exception filter, reached only after unwinding
+	// through every frame, was never called; there are tables now (see
+	// unwind.go), and first in line is still the right place, so a crash
+	// is reported even with other handlers installed.
 	l.ccall("AddVectoredExceptionHandler", []Reg{l.constant(1), l.symAddr(fnSym(crashSym))},
 		[]vty{vInt, vInt}, vInt, false, false)
 	// A stack overflow runs the handler on what is left of the stack

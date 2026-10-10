@@ -183,18 +183,33 @@ func writePE(obj *object, out string, opt peOptions) error {
 		text = append(text, obj.rdata...)
 	}
 
+	for len(text)%4 != 0 {
+		text = append(text, 0)
+	}
+	infoAt := len(text)
+	text = append(text, unwindInfo()...)
+
 	textRVA := sectionAlignment
 	rdataRVA := alignUp(textRVA+len(text), sectionAlignment)
 	if rdataAt >= 0 {
 		rdataRVA = textRVA + rdataAt
 	}
-	idataRVA := alignUp(rdataRVA+len(obj.rdata), sectionAlignment)
+	idataRVA := alignUp(max(rdataRVA+len(obj.rdata), textRVA+len(text)), sectionAlignment)
 
 	idata, slots, iatRVA, iatSize := buildImports(obj.externs, idataRVA)
 
+	// The unwind tables, so Windows can walk the stack; see unwind.go.
+	// The one UNWIND_INFO they share is read-only data at the end of the
+	// text, and .pdata holds nothing but the table.
+	next := alignUp(idataRVA+len(idata), sectionAlignment)
+	pdataRVA := next
+	pdata := buildPdata(obj, text, textRVA, textRVA+infoAt)
+	if len(pdata) > 0 {
+		next = alignUp(pdataRVA+len(pdata), sectionAlignment)
+	}
+
 	// A DLL's export table and its relocation block come next, each in
 	// a section of its own.
-	next := alignUp(idataRVA+len(idata), sectionAlignment)
 	var edata, reloc []byte
 	edataRVA, relocRVA := 0, 0
 	if opt.dll {
@@ -306,6 +321,11 @@ func writePE(obj *object, out string, opt peOptions) error {
 		peSection{".idata", idataRVA, len(idata), idata, scnData | scnRead | scnWrite})
 	img := imageInfo{entry: entry, importRVA: idataRVA, importSize: len(idata),
 		iatRVA: iatRVA, iatSize: iatSize, dll: opt.dll}
+	if len(pdata) > 0 {
+		sections = append(sections,
+			peSection{".pdata", pdataRVA, len(pdata), pdata, scnData | scnRead})
+		img.exceptionRVA, img.exceptionSize = pdataRVA, len(pdata)
+	}
 	if opt.dll {
 		sections = append(sections,
 			peSection{".edata", edataRVA, len(edata), edata, scnData | scnRead},
@@ -332,6 +352,8 @@ type imageInfo struct {
 	iatRVA, iatSize       int
 	exportRVA, exportSize int
 	relocRVA, relocSize   int
+	exceptionRVA          int // the RUNTIME_FUNCTION table in .pdata
+	exceptionSize         int
 	dll                   bool
 }
 
@@ -518,6 +540,8 @@ func writeImage(out string, sections []peSection, img imageInfo) error {
 	binary.LittleEndian.PutUint32(buf[dirs+0*8+4:], uint32(img.exportSize))
 	binary.LittleEndian.PutUint32(buf[dirs+1*8+0:], uint32(img.importRVA))
 	binary.LittleEndian.PutUint32(buf[dirs+1*8+4:], uint32(img.importSize))
+	binary.LittleEndian.PutUint32(buf[dirs+3*8+0:], uint32(img.exceptionRVA))
+	binary.LittleEndian.PutUint32(buf[dirs+3*8+4:], uint32(img.exceptionSize))
 	binary.LittleEndian.PutUint32(buf[dirs+5*8+0:], uint32(img.relocRVA))
 	binary.LittleEndian.PutUint32(buf[dirs+5*8+4:], uint32(img.relocSize))
 	binary.LittleEndian.PutUint32(buf[dirs+12*8+0:], uint32(img.iatRVA))
