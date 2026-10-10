@@ -45,6 +45,9 @@ usage:
                           is the one veyl runs on (or VEYL_TARGET)
   veyl asm   <file.vl>    print the generated assembly
   veyl ir    <file.vl>    print the intermediate representation
+  veyl test  <file.vl>... run the test "name" { } blocks in files or folders
+                          (--run TEXT only the tests whose names contain it,
+                          --bench runs the bench "name" { } blocks instead)
   veyl fmt   <file.vl>... rewrite files in the standard layout
                           (--check lists the ones that are not, and fails)
   veyl lsp                a language server on stdin and stdout, for editors
@@ -110,6 +113,10 @@ func main() {
 		return
 	}
 
+	if cmd == "test" {
+		testCommand(args[1:])
+		return
+	}
 	if cmd == "fmt" {
 		fmtCommand(args[1:])
 		return
@@ -242,24 +249,7 @@ func main() {
 			out = strings.TrimSuffix(path, filepath.Ext(path)) + ".dll"
 			mod.DLL = true
 		}
-		if targetMac() {
-			buildMac(mod, out)
-			fmt.Printf("wrote %s\n", out)
-			break
-		}
-		if targetLinux() {
-			buildLinux(mod, out)
-			fmt.Printf("wrote %s\n", out)
-			break
-		}
-		if err := missingForeignDLLs(filepath.Dir(path), mod); err != nil {
-			fail("%v", err)
-		}
-		buildExe(mod, out, filepath.Dir(path))
-		// A package may carry a native library. Put it beside the
-		// executable, or the program will not start on a machine that
-		// does not happen to have it.
-		copyDLLsBeside(out, packageDLLs(filepath.Dir(path)))
+		writeExecutable(mod, out, filepath.Dir(path))
 		fmt.Printf("wrote %s\n", out)
 	case "run":
 		tmp, err := os.MkdirTemp("", "veyl-*")
@@ -327,8 +317,23 @@ func compile(source, path string) *Module {
 	// Imported files are folded in before anything is checked, so from
 	// here down there is one program and nothing else has to know that
 	// more than one file was involved.
+	// A test build compiles the test blocks as functions and swaps the
+	// program body for the harness that runs one of them; see testing.go.
+	harness := ""
+	testNames, testBenches = nil, nil
+	if testMode {
+		for _, t := range prog.Tests {
+			prog.Funcs = append(prog.Funcs, t)
+			testNames = append(testNames, t.TestName)
+			testBenches = append(testBenches, t.Bench)
+		}
+		harness = testHarness(prog.Tests)
+		prog.Main = NewParser(path, NewLexer(path, harness).Scan()).ParseProgram().Main
+	}
+
 	stampImportedFile(prog, path)
 	importErrs, imported := loadImports(prog, path)
+	imported = append(imported, harness)
 	if len(importErrs) > 0 {
 		report(importErrs)
 	}
@@ -392,6 +397,26 @@ func report(errs []string) {
 // It is kept because it is the reference the byte encoder is checked
 // against, and because a program that runs one way and not the other
 // localises a bug to the half that changed.
+// writeExecutable writes a compiled module for the target system.
+func writeExecutable(mod *Module, out, root string) {
+	if targetMac() {
+		buildMac(mod, out)
+		return
+	}
+	if targetLinux() {
+		buildLinux(mod, out)
+		return
+	}
+	if err := missingForeignDLLs(root, mod); err != nil {
+		fail("%v", err)
+	}
+	buildExe(mod, out, root)
+	// A package may carry a native library. Put it beside the
+	// executable, or the program will not start on a machine that does
+	// not happen to have it.
+	copyDLLsBeside(out, packageDLLs(root))
+}
+
 func buildExe(mod *Module, out, root string) {
 	asmText := Emit(mod)
 	if !envOff("VEYL_NOPEEP") && !envOff("VEYL_NOOPT") {

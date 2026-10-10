@@ -50,8 +50,9 @@ const (
 	gcLockSlot   = 8  // the allocation lock, taken while other threads run
 	gcWhereSlot  = 9  // where a runtime error happened, as a string; see where.go
 	gcStackSlot  = 10 // the in/out word SetThreadStackGuarantee takes; see crash.go
-	// 11 to 13 are the stop-the-world words in gcthreads.go.
-	gcReserved = 14
+	// 11 to 13 are the stop-the-world words in gcthreads.go, and 14 the
+	// failed-expectation flag in testing.go.
+	gcReserved = 15
 )
 
 // rtSlot is the address of one of the runtime's own global words.

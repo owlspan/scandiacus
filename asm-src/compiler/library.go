@@ -72,7 +72,11 @@ var sigs = map[string]front.Signature{
 	"sign":  {Params: []*Type{Numeric}, Ret: Int},
 	"isNan": {Params: []*Type{Numeric}, Ret: Bool},
 	"exit":  {Params: []*Type{Int}, Ret: Void},
-	"sleep": {Params: []*Type{Int}, Ret: Void},
+
+	// Tests; see testing.go.
+	"expect":       {Params: []*Type{Bool}, Ret: Void},
+	"__testFailed": {Ret: Int},
+	"sleep":        {Params: []*Type{Int}, Ret: Void},
 
 	// Private to the prelude. These reinterpret a float as its IEEE 754
 	// bit pattern and back, which Frexp, Ldexp and the special-case
@@ -605,6 +609,8 @@ func (asmLibrary) Signature(name string) (front.Signature, bool) {
 	// The error type. These mirror the Go backend's declarations exactly,
 	// because a program that type-checks on one backend and not on the
 	// other would be a language with two definitions.
+	case "expectEq":
+		return front.Signature{Check: checkExpectEq}, true
 	case "fail":
 		return front.Signature{Params: []*Type{Str}, Ret: ErrLitT}, true
 	case "ok":
@@ -627,7 +633,7 @@ func (asmLibrary) Signature(name string) (front.Signature, bool) {
 // checkedBuiltins are the builtins Signature answers in its switch
 // rather than from sigs, listed so Names can offer them too.
 var checkedBuiltins = []string{
-	"len", "push", "contains", "indexOf", "has", "find", "min", "max",
+	"expectEq", "len", "push", "contains", "indexOf", "has", "find", "min", "max",
 	"map", "filter", "reduce", "sortBy", "any", "all", "each", "task.map",
 	"task.mapLimit", "task.each", "task.all", "http.serve", "stats.mean",
 	"stats.median", "stats.var", "stats.stdev", "stats.percentile",
@@ -659,6 +665,20 @@ func (asmLibrary) ConstType(name string) (*Type, bool) {
 		return Float, true
 	}
 	return nil, false
+}
+
+// checkExpectEq takes two values of one type, the second converted to
+// the first's where it can be (expectEq(f, 2) with f a float).
+func checkExpectEq(c *Checker, x *Call, args []*Type) *Type {
+	if len(args) != 2 {
+		c.ErrorAt(x, "expectEq takes 2 arguments, got %d", len(args))
+		return Unknown
+	}
+	if !c.Coerce(&x.Args[1], args[0], args[1]) {
+		c.ErrorAt(x.Args[1], "expectEq compares two values of one type, got %s and %s", args[0], args[1])
+		return Unknown
+	}
+	return Void
 }
 
 func checkLen(c *Checker, x *Call, args []*Type) *Type {

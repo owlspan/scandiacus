@@ -30,9 +30,10 @@ runtime to install, and building one needs nothing but `veyl.exe`.
 15. [`proc` - process memory](#proc---process-memory)
 16. [`com` - COM interfaces](#com---com-interfaces)
 17. [`win` - windows, drawing and input](#win---windows-drawing-and-input)
-18. [Reserved words](#reserved-words)
-19. [Compiler commands](#compiler-commands)
-20. [Known limitations](#known-limitations)
+18. [Testing](#testing)
+19. [Reserved words](#reserved-words)
+20. [Compiler commands](#compiler-commands)
+21. [Known limitations](#known-limitations)
 
 ---
 
@@ -3710,6 +3711,77 @@ Working examples are in `examples/gui/`: `pong.vl` is a playable game
 in about 130 lines, `widgets.vl` exercises the widget set, and
 `sprites.vl` draws images and centres text.
 
+## Testing
+
+Tests live beside the code they test, in the same file or another, as
+`test` blocks:
+
+```veyl
+fn add(a: int, b: int) -> int {
+    return a + b
+}
+
+test "adds small numbers" {
+    expect(add(1, 2) == 3)
+    expectEq(add(2, 2), 4)
+}
+```
+
+`veyl test` builds and runs them; `veyl run` and `veyl build` leave them
+out. In a test build the program body does not run, only the tests, so
+a test file can also be the program.
+
+```
+veyl test calc.vl
+PASS  calc.vl: adds small numbers (0.00s)
+1 passed, 0 failed
+```
+
+| Call | Checks |
+| --- | --- |
+| `expect(cond)` | that `cond` is true |
+| `expectEq(got, want)` | that two values of one type are equal, by contents for lists, maps and structs |
+
+A failed expectation does not stop the test: each is reported with its
+line, and `expectEq` says what both sides were, so one run shows
+everything that is wrong:
+
+```
+FAIL  calc.vl: adds small numbers (0.00s)
+    calc.vl:7: got 4, want 5
+```
+
+Every test runs in a process of its own, so one that crashes or stops on
+a runtime error fails alone and the rest still run. `veyl test` exits 1
+if any failed, for a CI step.
+
+`veyl test folder` runs every `.vl` under it that has tests, skipping
+`veyl_modules`. `veyl test --run text` runs only the tests whose names
+contain `text`.
+
+**Benchmarks** are `bench` blocks. `veyl test --bench` runs each body
+1, 2, 4... times until a round takes half a second, and says how long
+one run took:
+
+```veyl
+bench "joining 100 strings" {
+    let parts: []str = []
+    for i in 0..100 {
+        push(parts, "x")
+    }
+    let s = join(parts, "")
+}
+```
+
+```
+BENCH calc.vl: joining 100 strings  262144 runs, 2.5 us each
+```
+
+`test` and `bench` are keywords only at the top of a file before a
+string and a brace, so either still works as a name.
+
+---
+
 ## Reserved words
 
 In use:
@@ -3741,6 +3813,7 @@ defer own unsafe
 | `veyl build --dll f.vl` | write `f.dll`; see [Building a DLL](#building-a-dll) |
 | `veyl asm f.vl` | print the generated assembly |
 | `veyl ir f.vl` | print the intermediate representation |
+| `veyl test f.vl` | run the file's `test` blocks (a folder runs every file with tests; `--run text` only matching names; `--bench` the `bench` blocks); see [Testing](#testing) |
 | `veyl fmt f.vl` | lay a file out the standard way: 4-space indents, one space around operators, one blank line at most (a folder formats every `.vl` in it; `--check` changes nothing and fails if anything would) |
 | `veyl lsp` | the language server an editor starts, on stdin and stdout |
 | `veyl vscode` | install the VS Code extension: highlighting, errors as you type, completion, go to definition, hover |
