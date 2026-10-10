@@ -343,6 +343,9 @@ func analyzeSource(text, path string) (idx *lspIndex, errs []string) {
 	errs = append(errs, p.Errors...)
 	parsed := len(lex.Errors) == 0 && len(p.Errors) == 0
 
+	// Test and bench blocks are checked like functions, as veyl test
+	// would build them.
+	prog.Funcs = append(prog.Funcs, prog.Tests...)
 	stampImportedFile(prog, path)
 	importErrs, imported := loadImports(prog, path)
 	errs = append(errs, importErrs...)
@@ -1142,6 +1145,14 @@ func (d *lspDoc) symbols() []map[string]any {
 	mine := func(file string) bool { return file != "" && samePath(file, idx.path) }
 	for _, f := range idx.funcs {
 		if mine(f.File) && !f.Instance {
+			if f.TestName != "" {
+				kind := "test"
+				if f.Bench {
+					kind = "bench"
+				}
+				add(kind+" "+strconv.Quote(f.TestName), skFunction, f.Line, f.Col)
+				continue
+			}
 			if f.Recv != "" {
 				add(f.Recv+"."+f.Name, skMethod, f.Line, f.Col)
 			} else {

@@ -233,6 +233,18 @@ func (p *Parser) ParseProgram() *Program {
 				d.Pub, d.File = pub, p.file
 				prog.Ifaces = append(prog.Ifaces, d)
 			}
+		case p.check(IDENT) && (p.cur().Lex == "test" || p.cur().Lex == "bench") &&
+			p.peekKind(1) == STRING && p.peekKind(2) == LBRACE:
+			// test "name" { ... } and bench "name" { ... }. Only keywords
+			// in exactly this shape, so both stay usable as names.
+			kw := p.advance()
+			name := p.advance()
+			body := p.parseBlock()
+			if body != nil {
+				prog.Tests = append(prog.Tests, &FnDecl{Span: at(kw), Name: fmt.Sprintf("__test_%d", len(prog.Tests)),
+					TestName: name.Lex, Bench: kw.Lex == "bench", Body: body, File: p.file})
+			}
+			p.endStmt()
 		case p.check(IDENT) && p.cur().Lex == "gc" && p.peekKind(1) == IDENT &&
 			(p.peekKind(2) == NEWLINE || p.peekKind(2) == EOF):
 			// `gc off` or `gc on`, for the whole program. Only a keyword

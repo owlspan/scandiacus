@@ -42,6 +42,10 @@ type Program struct {
 	Enums   []*EnumDecl
 	Ifaces  []*InterfaceDecl
 	Main    []Stmt // top-level statements of the main file only
+
+	// Tests are the file's `test "name" { ... }` blocks, each a function
+	// with no parameters and TestName set. Only veyl test compiles them.
+	Tests []*FnDecl
 	Imports []*ImportDecl
 
 	// MainFile is the absolute path of the file the compiler was invoked
@@ -459,6 +463,11 @@ type FnDecl struct {
 	// more arguments than there are named parameters, and tells the
 	// emitter to set AL per the Windows x64 variadic rule.
 	Variadic bool
+
+	// TestName is set on a `test "name" { ... }` block, which the parser
+	// turns into a function with no parameters; see Program.Tests.
+	TestName string
+	Bench    bool // `bench "name" { ... }`: timed by veyl test --bench
 
 	// Export marks `export fn`: in a DLL build the function is in the
 	// export table under its own name, callable from native code.

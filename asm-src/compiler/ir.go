@@ -1150,6 +1150,13 @@ func (l *lowerer) function(fd *FnDecl) {
 
 	l.fn = &Func{Name: name, NParams: len(fd.Params), ParamTypes: s.params, Ret: s.ret}
 	l.curFile, l.fnDisplay = fd.File, name
+	if fd.TestName != "" {
+		kind := "test"
+		if fd.Bench {
+			kind = "bench"
+		}
+		l.fnDisplay = kind + " " + strconv.Quote(fd.TestName)
+	}
 	l.slotTy = map[int64]vty{}
 	l.regTy = map[Reg]vty{}
 	l.boxed = map[int64]bool{}
@@ -2378,6 +2385,10 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 	}
 
 	if r, handled := l.netBuiltin(c, name); handled {
+		return r
+	}
+
+	if r, handled := l.testBuiltin(c, name); handled {
 		return r
 	}
 
