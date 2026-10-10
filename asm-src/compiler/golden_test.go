@@ -62,6 +62,10 @@ func TestGolden(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 			cmd := exec.CommandContext(ctx, veyl, "run", src)
+			// Killing veyl at the deadline leaves the program it started
+			// running and holding the output pipe, and Wait would block
+			// on that forever: a release run sat ten minutes on one.
+			cmd.WaitDelay = 10 * time.Second
 			if in, err := os.Open(base + ".in"); err == nil {
 				defer in.Close()
 				cmd.Stdin = in

@@ -14,9 +14,16 @@ print(mem.scan(b, 64, "") - b)
 print(mem.scan(b + 60, 4, "BA BD") - b)
 print(mem.scan(b + 60, 4, "BD C0"))
 
-// Make the block read-only, then writable again.
-print(mem.protect(b, 64, "r"))
-print(mem.protect(b, 64, "rw"))
-mem.write8(b, 7)
-print(mem.readU8(b))
-print(mem.protect(b, 64, "nonsense"))
+// Make a page read-only, then writable again. Protection is per page, so
+// the page has to be one this program owns outright: a small block from
+// mem.alloc shares its page with the C runtime's own heap data, and a
+// read-only page under that made print fault, now and then, depending on
+// where the heap happened to put things. Three pages always hold a whole
+// one.
+let big = mem.alloc(3 * 4096)
+let page = (big + 4095) / 4096 * 4096
+print(mem.protect(page, 4096, "r"))
+print(mem.protect(page, 4096, "rw"))
+mem.write8(page, 7)
+print(mem.readU8(page))
+print(mem.protect(page, 4096, "nonsense"))
