@@ -144,6 +144,7 @@ impl Point {
 
 enum Color { Red, Green }
 
+// Doubles a number.
 fn twice(n: int) -> int {
     let doubled = n * 2
     return doubled
@@ -164,9 +165,9 @@ let bad: int = "no"
 	diags := c.diagnostics()
 	sort.Strings(diags)
 	want := []string{
-		`22:1 warning "c" is declared but never used`,
-		`25:1 error "bad" is declared as int but the value is str`,
-		`25:1 warning "bad" is declared but never used`,
+		`23:1 warning "c" is declared but never used`,
+		`26:1 error "bad" is declared as int but the value is str`,
+		`26:1 warning "bad" is declared but never used`,
 	}
 	if strings.Join(diags, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("diagnostics:\n%s\nwant:\n%s", strings.Join(diags, "\n"), strings.Join(want, "\n"))
@@ -197,13 +198,13 @@ let bad: int = "no"
 		file  string
 		want  int
 	}{
-		{23, "print(tw", "main.vl", 16},
-		{23, "p.su", "main.vl", 9},
-		{21, "Poi", "main.vl", 3},
-		{18, "return doub", "main.vl", 17},
+		{24, "print(tw", "main.vl", 17},
+		{24, "p.su", "main.vl", 9},
+		{22, "Poi", "main.vl", 3},
+		{19, "return doub", "main.vl", 18},
 		{10, "self.x", "main.vl", 4},
-		{24, "print(ar", "shapes.vl", 1},
-		{22, "Col", "main.vl", 14},
+		{25, "print(ar", "shapes.vl", 1},
+		{23, "Col", "main.vl", 14},
 	} {
 		f, l := defLine(c.call("textDocument/definition", pos(tc.line, tc.after)))
 		if f != tc.file || l != tc.want {
@@ -221,13 +222,13 @@ let bad: int = "no"
 		json.Unmarshal(c.call("textDocument/hover", pos(line, after)), &h)
 		return h.Contents.Value
 	}
-	if h := hover(18, "return doub"); !strings.Contains(h, "doubled: int") {
+	if h := hover(19, "return doub"); !strings.Contains(h, "doubled: int") {
 		t.Errorf("hover on doubled: %q", h)
 	}
-	if h := hover(23, "print(tw"); !strings.Contains(h, "fn twice(n: int) -> int") {
+	if h := hover(24, "print(tw"); !strings.Contains(h, "fn twice(n: int) -> int") || !strings.Contains(h, "Doubles a number.") {
 		t.Errorf("hover on twice: %q", h)
 	}
-	if h := hover(21, "let "); !strings.Contains(h, "p: Point") {
+	if h := hover(22, "let "); !strings.Contains(h, "p: Point") {
 		t.Errorf("hover on p: %q", h)
 	}
 
@@ -252,16 +253,16 @@ let bad: int = "no"
 		return map[string]any{"textDocument": map[string]any{"uri": uri},
 			"position": map[string]any{"line": line - 1, "character": char}}
 	}
-	if got := labels(c.call("textDocument/completion", at(24, 2))); !got["x"] || !got["y"] || !got["sum"] {
+	if got := labels(c.call("textDocument/completion", at(25, 2))); !got["x"] || !got["y"] || !got["sum"] {
 		t.Errorf("after p.: %v", got)
 	}
-	if got := labels(c.call("textDocument/completion", at(25, 3))); !got["file"] || !got["args"] {
+	if got := labels(c.call("textDocument/completion", at(26, 3))); !got["file"] || !got["args"] {
 		t.Errorf("after os.: %v", got)
 	}
-	if got := labels(c.call("textDocument/completion", at(26, 6))); !got["Red"] || !got["Green"] {
+	if got := labels(c.call("textDocument/completion", at(27, 6))); !got["Red"] || !got["Green"] {
 		t.Errorf("after Color.: %v", got)
 	}
-	if got := labels(c.call("textDocument/completion", at(27, 2))); !got["twice"] || !got["print"] || !got["p"] || !got["while"] {
+	if got := labels(c.call("textDocument/completion", at(28, 2))); !got["twice"] || !got["print"] || !got["p"] || !got["while"] {
 		t.Errorf("plain completion lacks twice, print, p or while")
 	}
 
@@ -272,7 +273,7 @@ let bad: int = "no"
 		"textDocument":   map[string]any{"uri": uri, "version": 3},
 		"contentChanges": []map[string]any{{"text": edit2}}}})
 	c.diagnostics()
-	if got := labels(c.call("textDocument/completion", at(25, 2))); !got["x"] || !got["sum"] {
+	if got := labels(c.call("textDocument/completion", at(26, 2))); !got["x"] || !got["sum"] {
 		t.Errorf("after q.: %v", got)
 	}
 

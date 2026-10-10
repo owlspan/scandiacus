@@ -46,6 +46,8 @@ usage:
   veyl asm   <file.vl>    print the generated assembly
   veyl ir    <file.vl>    print the intermediate representation
   veyl check <file.vl>... report errors and warnings without building
+  veyl doc   <file.vl>    a reference from its declarations and comments
+                          (-o FILE writes it there; a .html name, a web page)
   veyl test  <file.vl>... run the test "name" { } blocks in files or folders
                           (--run TEXT only the tests whose names contain it,
                           --bench runs the bench "name" { } blocks instead)
@@ -114,6 +116,10 @@ func main() {
 		return
 	}
 
+	if cmd == "doc" {
+		docCommand(args[1:])
+		return
+	}
 	if cmd == "check" {
 		checkCommand(args[1:])
 		return

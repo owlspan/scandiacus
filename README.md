@@ -323,6 +323,7 @@ veyl asm   f.vl    print the generated assembly
 veyl ir    f.vl    print the intermediate representation
 veyl vscode        install the VS Code extension (the installer runs it)
 veyl check f.vl    errors and warnings, without building
+veyl doc   f.vl    a reference from the declarations and their comments
 veyl test  f.vl    run the file's test "name" { } blocks, each in its own process
 veyl fmt   f.vl    lay the file out the standard way (--check to only ask)
 veyl lsp           the language server editors start, on stdin and stdout
