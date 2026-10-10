@@ -3,6 +3,28 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.62.0
+
+**`veyl fmt`.** Lays a file out the standard way: four-space indents,
+one space around operators and after commas, at most one blank line in
+a row, no trailing whitespace. Comments are kept, nothing is reordered
+or reflowed, and a file that does not lex is left alone. Give it files
+or folders; `veyl fmt --check` changes nothing, lists what would change
+and fails if anything would, for a CI step.
+
+```
+veyl fmt game.vl
+veyl fmt .
+veyl fmt --check src
+```
+
+In VS Code, **Format Document** (Shift+Alt+F) does the same through the
+language server.
+
+Tests: every golden program and example is formatted and run again
+against its expected output, and formatted twice to check the layout is
+stable.
+
 ## 0.61.0
 
 **A language server, and VS Code uses it.** `veyl lsp` speaks the
