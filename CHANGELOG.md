@@ -3,6 +3,22 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.54.0
+
+**Redirects in the HTTP client on Linux and macOS.** `http.get`,
+`http.post` and `http.download` now follow a 3xx off Windows the way
+WinHTTP does on it, up to ten deep. A 301, 302 or 303 turns a POST into
+a GET with no body, as browsers do; a 307 or 308 repeats the request
+unchanged. The Location can be a full url, a path on the same host, or
+a path relative to the current one. A redirect to `https://` fails with
+the same reason a direct `https://` url does off Windows.
+
+**`http.redirect(url)`** builds a 302 for a Veyl server, and `Response`
+has a `location` field, sent as the `Location` header when it is set.
+
+Test: tests/httpclient.vl covers each redirect kind, the loop limit and
+a redirect to https.
+
 ## 0.53.0
 
 **The HTTP client on Linux and macOS.** `http.get`, `http.post` and
