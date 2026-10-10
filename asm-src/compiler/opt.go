@@ -44,7 +44,7 @@ func Optimize(m *Module) {
 			}
 		}
 		if !envOff("VEYL_NOPOLLS") {
-			dropPolls(fn)
+			dropPolls(fn, m.Threaded)
 		}
 		if !envOff("VEYL_NOSLOTPACK") {
 			packSlots(fn)
@@ -787,7 +787,13 @@ func packSlots(fn *Func) {
 // all of those can allocate; a check clears it. Where paths join, a
 // block's bit is set if any way in has it set, so a loop's back edge
 // carries an allocation in its body round to the check at its top.
-func dropPolls(fn *Func) {
+//
+// With threads, a check is also where a thread stops for a collection
+// another thread wants, so a loop must keep one however little it does:
+// a thread spinning on an atomic flag would otherwise never stop, and
+// the collector would wait for it forever. A label a later jump comes
+// back to counts as an allocation, which keeps the first check after it.
+func dropPolls(fn *Func, threaded bool) {
 	code := fn.Code
 	n := len(code)
 	if n == 0 {
@@ -853,10 +859,23 @@ func dropPolls(fn *Func) {
 		_ = s
 	}
 
+	backTarget := map[int64]bool{}
+	if threaded {
+		for i, in := range code {
+			if in.Op == OpJump || in.Op == OpJumpIf || in.Op == OpJumpNot {
+				if at, ok := labelAt[in.Imm]; ok && at <= i {
+					backTarget[in.Imm] = true
+				}
+			}
+		}
+	}
+
 	transfer := func(b int, dirty bool, drop map[int]bool) bool {
 		for i := order[b]; i < ends[b]; i++ {
 			in := &code[i]
 			switch {
+			case in.Op == OpLabel && backTarget[in.Imm]:
+				dirty = true
 			case in.Op == OpGCPoll:
 				if !dirty && drop != nil {
 					drop[i] = true

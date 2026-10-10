@@ -119,16 +119,16 @@ func (l *lowerer) winhttpFetch(args []Reg) Reg {
 			headers := l.pick(hasBody, ct, l.constant(0), vInt)
 			headerLen := l.pick(hasBody, l.constant(-1), l.constant(0), vInt)
 
-			sent := l.ccall("WinHttpSendRequest",
+			sent := l.blockingCall("WinHttpSendRequest",
 				[]Reg{req, headers, headerLen, body, bodyLen, bodyLen, l.constant(0)},
-				[]vty{vInt, vInt, vInt, vStr, vInt, vInt, vInt}, vInt, true, false)
+				[]vty{vInt, vInt, vInt, vStr, vInt, vInt, vInt}, vInt, true)
 			okSent := l.newLabel()
 			l.emit(Instr{Op: OpJumpIf, A: l.asBool(sent), Dst: NoReg, Imm: okSent})
 			fail("cannot send the request")
 			l.mark(okSent)
 
-			got := l.ccall("WinHttpReceiveResponse", []Reg{req, l.constant(0)},
-				[]vty{vInt, vInt}, vInt, true, false)
+			got := l.blockingCall("WinHttpReceiveResponse", []Reg{req, l.constant(0)},
+				[]vty{vInt, vInt}, vInt, true)
 			okGot := l.newLabel()
 			l.emit(Instr{Op: OpJumpIf, A: l.asBool(got), Dst: NoReg, Imm: okGot})
 			fail("no response")
@@ -192,8 +192,8 @@ func (l *lowerer) winhttpRead(req Reg) Reg {
 	l.mark(top)
 
 	l.putInt32(avail, 0, l.constant(0))
-	q := l.ccall("WinHttpQueryDataAvailable", []Reg{req, avail},
-		[]vty{vInt, vInt}, vInt, true, false)
+	q := l.blockingCall("WinHttpQueryDataAvailable", []Reg{req, avail},
+		[]vty{vInt, vInt}, vInt, true)
 	l.emit(Instr{Op: OpJumpNot, A: l.asBool(q), Dst: NoReg, Imm: done})
 	n := l.getInt32(avail, 0)
 	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpGt, n, l.constant(0)),
@@ -216,8 +216,8 @@ func (l *lowerer) winhttpRead(req Reg) Reg {
 	l.mark(fits)
 
 	at := l.arith(OpAdd, l.load(bufSlot, vInt), l.load(lenSlot, vInt))
-	l.ccall("WinHttpReadData", []Reg{req, at, n, read},
-		[]vty{vInt, vInt, vInt, vInt}, vInt, true, false)
+	l.blockingCall("WinHttpReadData", []Reg{req, at, n, read},
+		[]vty{vInt, vInt, vInt, vInt}, vInt, true)
 	l.emit(Instr{Op: OpStore,
 		A:   l.arith(OpAdd, l.load(lenSlot, vInt), l.getInt32(read, 0)),
 		Dst: NoReg, Imm: lenSlot})

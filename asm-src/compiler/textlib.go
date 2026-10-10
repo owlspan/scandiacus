@@ -57,9 +57,9 @@ func (l *lowerer) textBuiltin(c *Call, name string) (Reg, bool) {
 
 		l.emit(Instr{Op: OpStoreMem, A: buf, B: l.constant(0), Imm: 8})
 		h := l.ccall("GetStdHandle", []Reg{l.constant(stdInputHandle)}, []vty{vInt}, vInt, false, false)
-		ok := l.ccall("ReadFile",
+		ok := l.blockingCall("ReadFile",
 			[]Reg{h, buf, l.constant(1), l.arith(OpAdd, buf, l.constant(8)), l.constant(0)},
-			[]vty{vInt, vBytes, vInt, vInt, vInt}, vInt, true, false)
+			[]vty{vInt, vBytes, vInt, vInt, vInt}, vInt, true)
 		got := l.newReg()
 		l.regTy[got] = vInt
 		l.emit(Instr{Op: OpLoadMem, Dst: got, A: buf, B: NoReg, Imm: 8})

@@ -45,12 +45,13 @@ const (
 	gcTotalSlot  = 3  // bytes ever allocated
 	gcCyclesSlot = 4  // how many times collect has run
 	gcNGlobSlot  = 5  // how many words the globals block has, for the scan
-	gcTasksSlot  = 6  // threads running besides main, during which nothing collects
+	gcTasksSlot  = 6  // threads running besides main; see gcthreads.go
 	gcNextSlot   = 7  // live bytes at which the next automatic collection runs
 	gcLockSlot   = 8  // the allocation lock, taken while other threads run
 	gcWhereSlot  = 9  // where a runtime error happened, as a string; see where.go
 	gcStackSlot  = 10 // the in/out word SetThreadStackGuarantee takes; see crash.go
-	gcReserved   = 11
+	// 11 to 13 are the stop-the-world words in gcthreads.go.
+	gcReserved = 14
 )
 
 // rtSlot is the address of one of the runtime's own global words.
@@ -122,27 +123,40 @@ var gcFirst = func() int64 {
 // relies on.
 func (l *lowerer) maybeCollect() {
 	name := l.helperFunc("gcmaybe", nil, vVoid, func([]Reg) {
-		// Not while tasks run: the collector reads only the stack it
-		// runs on, and a pointer on another thread's would be missed.
-		// The threshold moves on either way, so this is not asked again
-		// on every statement until the tasks finish.
-		busy := l.newLabel()
-		idle := l.compare(OpEq, l.rtLoad(gcTasksSlot), l.constant(0))
-		l.emit(Instr{Op: OpJumpNot, A: idle, Dst: NoReg, Imm: busy})
+		// A check that fires because another thread is collecting - it
+		// set the threshold to -1 - parks for it rather than collecting
+		// again. See gcthreads.go.
+		own := l.newLabel()
+		l.emit(Instr{Op: OpJumpIf, A: l.compare(OpEq, l.rtLoad(gcStopSlot), l.constant(0)), Dst: NoReg, Imm: own})
+		l.gcPark()
+		l.emit(Instr{Op: OpRet, A: NoReg, Dst: NoReg})
+		l.mark(own)
 		l.collect()
-		l.mark(busy)
-		twice := l.arith(OpMul, l.rtLoad(gcBytesSlot), l.constant(2))
-		if gcFirst == 0 {
-			twice = l.constant(0)
-		}
-		floor := l.constant(gcFirst)
-		l.rtStore(gcNextSlot, l.pick(l.compare(OpGt, twice, floor), twice, floor, vInt))
 		l.emit(Instr{Op: OpRet, A: NoReg, Dst: NoReg})
 	})
 	// One instruction here, expanded by the emitter into the compare and
 	// the call, so the optimiser can see it whole and drop the ones no
 	// allocation can have made necessary: see dropPolls in opt.go.
 	l.emit(Instr{Op: OpGCPoll, Dst: NoReg, A: NoReg, B: NoReg, Sym: name})
+}
+
+// setThreshold puts the next automatic collection at twice what is live
+// now, or the floor. It is the collector's last act, so the -1 a stop
+// left in the threshold never outlives the stop.
+//
+// Under VEYL_GC=eager the threshold stays at zero, so every check
+// collects - except while other threads run, when it is 256 KB past what
+// is live. Stopping every thread at every statement of every thread made
+// the threaded tests take minutes; a stop per 256 KB of allocation is
+// still hundreds of them per test.
+func (l *lowerer) setThreshold() {
+	twice := l.arith(OpMul, l.rtLoad(gcBytesSlot), l.constant(2))
+	if gcFirst == 0 {
+		alone := l.compare(OpEq, l.rtLoad(gcTasksSlot), l.constant(0))
+		twice = l.pick(alone, l.constant(0), l.arith(OpAdd, l.rtLoad(gcBytesSlot), l.constant(256<<10)), vInt)
+	}
+	floor := l.constant(gcFirst)
+	l.rtStore(gcNextSlot, l.pick(l.compare(OpGt, twice, floor), twice, floor, vInt))
 }
 
 // memBuiltin lowers the mem library.

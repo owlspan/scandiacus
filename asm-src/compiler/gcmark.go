@@ -27,13 +27,23 @@ func (l *lowerer) emitCollector() {
 		return
 	}
 	l.helperFunc(collectSym, nil, vVoid, func([]Reg) {
-		// Never while another thread runs: its stack is not scanned, so
-		// what only it holds would look dead. See threads.go.
-		busy := l.newLabel()
-		l.emit(Instr{Op: OpJumpNot, A: l.compare(OpEq, l.rtLoad(gcTasksSlot), l.constant(0)),
-			Dst: NoReg, Imm: busy})
+		// With other threads running, they are stopped first and their
+		// stacks read too; see gcthreads.go. A thread that finds another
+		// already collecting waits for it and returns.
+		stopped := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: stopped})
+		alone := l.newLabel()
+		l.emit(Instr{Op: OpJumpIf, A: l.compare(OpEq, l.rtLoad(gcTasksSlot), l.constant(0)),
+			Dst: NoReg, Imm: alone})
+		if !l.gcOff && !lowerForDLL {
+			l.stopWorld(stopped)
+		}
+		l.mark(alone)
 		l.collectBody()
-		l.mark(busy)
+		if !l.gcOff && !lowerForDLL {
+			l.startWorld(stopped)
+		}
+		l.setThreshold()
 		l.emit(Instr{Op: OpRet, A: NoReg, Dst: NoReg})
 	})
 }
@@ -138,6 +148,9 @@ func (l *lowerer) collectBody() {
 	l.regTy[sp] = vInt
 	l.emit(Instr{Op: OpStackPtr, Dst: sp, A: NoReg, B: NoReg})
 	l.scanRange(sp, l.loadPtr(highOut), table, mask, work, workLen)
+
+	// Every other thread's, when the world is stopped for this.
+	l.scanThreadStacks(table, mask, work, workLen)
 
 	// Then the globals, the other place a live pointer can be without
 	// being on the stack.

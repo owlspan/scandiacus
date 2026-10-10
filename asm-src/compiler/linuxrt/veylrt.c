@@ -38,6 +38,7 @@
 #include <limits.h>
 #include <math.h>
 #include <pthread.h>
+#include <sched.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -1475,6 +1476,19 @@ int VYW(SleepConditionVariableCS)(void **cv, void **cs, u32 ms)
 
 void VYW(WakeAllConditionVariable)(void **cv) { pthread_cond_broadcast(cond_of(cv)); }
 void VYW(WakeConditionVariable)(void **cv) { pthread_cond_signal(cond_of(cv)); }
+
+/* Thread-local slots and yielding, for the collector's thread records
+ * (gcthreads.go). A TLS index is a pthread key. */
+u32 VYW(TlsAlloc)(void)
+{
+	pthread_key_t k;
+	if (pthread_key_create(&k, NULL) != 0)
+		return 0xFFFFFFFFu; /* TLS_OUT_OF_INDEXES */
+	return (u32)k;
+}
+void *VYW(TlsGetValue)(u32 index) { return pthread_getspecific((pthread_key_t)index); }
+int VYW(TlsSetValue)(u32 index, void *value) { return pthread_setspecific((pthread_key_t)index, value) == 0; }
+int VYW(SwitchToThread)(void) { sched_yield(); return 1; }
 
 /* The bounds of the calling thread's stack, for the collector's scan. */
 void VYW(GetCurrentThreadStackLimits)(uintptr_t *low, uintptr_t *high)
