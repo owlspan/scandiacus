@@ -183,6 +183,7 @@ var preludeOf = map[string]string{
 	"http.json":        "__vy_httpJSON",
 	"http.status":      "__vy_httpStatus",
 	"http.notFound":    "__vy_httpNotFound",
+	"http.redirect":    "__vy_httpRedirect",
 	"http.header":      "__vy_httpHeader",
 	"win.button":       "__vy_winButton",
 	"win.bar":          "__vy_winBar",

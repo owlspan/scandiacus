@@ -23,6 +23,7 @@ struct Response {
     status: int
     contentType: str
     body: str
+    location: str
 }
 
 // The reason phrase for the codes a small server actually sends. Go
@@ -34,7 +35,10 @@ fn __vy_httpReason(code: int) -> str {
     if code == 204 { return "No Content" }
     if code == 301 { return "Moved Permanently" }
     if code == 302 { return "Found" }
+    if code == 303 { return "See Other" }
     if code == 304 { return "Not Modified" }
+    if code == 307 { return "Temporary Redirect" }
+    if code == 308 { return "Permanent Redirect" }
     if code == 400 { return "Bad Request" }
     if code == 401 { return "Unauthorized" }
     if code == 403 { return "Forbidden" }
@@ -64,6 +68,11 @@ fn __vy_httpNotFound() -> Response {
     return __vy_httpStatus(404, "<h1>404 Not Found</h1>")
 }
 
+// A 302 to another url, which a browser and http.get both follow.
+fn __vy_httpRedirect(url: str) -> Response {
+    return Response{status: 302, contentType: "text/plain; charset=utf-8", body: "", location: url}
+}
+
 // The status line, the headers a browser needs, then the body. Content
 // Length is counted rather than guessed, because a client that reads
 // fewer bytes than were sent hangs waiting for the rest.
@@ -71,7 +80,9 @@ fn __vy_httpFormat(r: Response) -> str {
     let head = "HTTP/1.1 {r.status} {__vy_httpReason(r.status)}"
     let ct = "Content-Type: {r.contentType}"
     let cl = "Content-Length: {len(r.body)}"
-    return head + "\r\n" + ct + "\r\n" + cl + "\r\n" + "Connection: close" + "\r\n\r\n" + r.body
+    let loc = ""
+    if r.location != "" { loc = "Location: {r.location}\r\n" }
+    return head + "\r\n" + ct + "\r\n" + cl + "\r\n" + loc + "Connection: close" + "\r\n\r\n" + r.body
 }
 
 // Split "/path?a=1" into its two halves.
@@ -199,20 +210,32 @@ fn __vy_httpServe(port: int, handler: fn(Request) -> Response) -> void! {
 }
 
 // A one-shot client. Enough to fetch a page, not a general HTTP client:
-// no redirects, no TLS, no keep-alive.
-// Both http:// and https:// go through WinHTTP, which does TLS, the
-// certificate chain, redirects and chunked bodies. Doing the plain case
-// over a raw socket instead would mean two sets of behaviour for one
-// function, and the differences would surface far from here.
+// no keep-alive, one request per connection.
 fn __vy_httpRequest(method: str, url: str, body: str) -> str! {
+    let u = __vy_httpSplitURL(url)?
+    // On Windows this is WinHTTP, which does TLS, redirects and chunked
+    // bodies. On Linux and macOS the same builtin is lowered to a socket
+    // client, __vy_httpOverNet, so the http:// case works there too.
+    return __winhttp(u.host, u.port, u.path, u.secure, method, body)
+}
+
+struct __vy_URL {
+    host: str
+    port: int
+    path: str
+    secure: bool
+}
+
+// "https://host:8443/a?b" -> host, port, path and whether it is TLS. No
+// scheme means http://.
+fn __vy_httpSplitURL(url: str) -> __vy_URL! {
     let rest = url
-    let secure = false
-    let port = 80
+    let u = __vy_URL{host: "", port: 80, path: "/", secure: false}
 
     if startsWith(rest, "https://") {
         rest = __substrB(rest, 8, len(rest))
-        secure = true
-        port = 443
+        u.secure = true
+        u.port = 443
     } else {
         if startsWith(rest, "http://") {
             rest = __substrB(rest, 7, len(rest))
@@ -221,46 +244,85 @@ fn __vy_httpRequest(method: str, url: str, body: str) -> str! {
 
     let slash = indexOf(rest, "/")
     let hostport = rest
-    let path = "/"
     if slash >= 0 {
         hostport = __substrB(rest, 0, slash)
-        path = __substrB(rest, slash, len(rest))
+        u.path = __substrB(rest, slash, len(rest))
     }
 
-    let host = hostport
+    u.host = hostport
     let colon = indexOf(hostport, ":")
     if colon >= 0 {
-        host = __substrB(hostport, 0, colon)
+        u.host = __substrB(hostport, 0, colon)
         let p = __substrB(hostport, colon + 1, len(hostport))
-        if isInt(p) { port = toInt(p) }
+        if isInt(p) { u.port = toInt(p) }
     }
 
-    if host == "" {
+    if u.host == "" {
         return fail("cannot fetch \"{url}\": no host in the url")
     }
-    // On Windows this is WinHTTP, which does TLS, redirects and chunked
-    // bodies. On Linux and macOS the same builtin is lowered to a socket
-    // client, __vy_httpOverNet, so the http:// case works there too.
-    return __winhttp(host, port, path, secure, method, body)
+    return u
 }
 
 // __vy_httpOverNet is the http:// client for Linux and macOS, where
 // there is no WinHTTP. The __winhttp builtin is lowered to a call here
-// off Windows; it is never called on the Windows build. It speaks
-// HTTP/1.1 over one net connection with Connection: close, then reads to
-// the close and parses what came back. https:// fails with a reason
-// rather than a wrong answer, because TLS is not written by hand here.
-// Content-Length and chunked bodies are both handled; redirects are not
-// followed yet, where WinHTTP follows them.
+// off Windows; it is never called on the Windows build. Each request is
+// HTTP/1.1 over one net connection with Connection: close, read to the
+// close and parsed. Content-Length and chunked bodies are both handled.
+//
+// Redirects are followed the way WinHTTP and browsers follow them, up to
+// ten: 301, 302 and 303 turn a POST into a GET with no body, 307 and 308
+// repeat the request as it was. https:// fails with a reason rather than
+// a wrong answer, because TLS is not written by hand here; that includes
+// an http:// url that redirects to one.
 fn __vy_httpOverNet(host: str, port: int, path: str, secure: bool, method: str, body: str) -> str! {
-    if secure {
-        return fail("cannot fetch \"https://{host}{path}\": HTTPS needs TLS, which only the Windows build has so far - use an http:// url, or build this program with --windows")
+    let u = __vy_URL{host: host, port: port, path: path, secure: secure}
+    let hops = 0
+    while true {
+        if u.secure {
+            return fail("cannot fetch \"https://{u.host}{u.path}\": HTTPS needs TLS, which only the Windows build has so far - use an http:// url, or build this program with --windows")
+        }
+        let raw = __vy_httpOnce(u, method, body)?
+
+        let sep = indexOf(raw, "\r\n\r\n")
+        if sep < 0 {
+            return fail("the server sent a reply with no header block")
+        }
+        let head = __substrB(raw, 0, sep)
+        let rest = __substrB(raw, sep + 4, len(raw))
+        let code = __vy_httpStatusCode(head)
+
+        let to = __vy_httpHeaderOf(head, "location")
+        if code >= 300 && code < 400 && code != 304 && to != "" {
+            hops = hops + 1
+            if hops > 10 {
+                return fail("stopped after 10 redirects, the last to \"{to}\"")
+            }
+            if code != 307 && code != 308 {
+                if method != "GET" && method != "HEAD" { method = "GET" }
+                body = ""
+            }
+            u = __vy_httpResolve(u, to)?
+            continue
+        }
+
+        let out = rest
+        if __vy_httpChunked(head) {
+            out = __vy_httpDechunk(rest)
+        }
+        if code >= 400 {
+            return fail("server replied {code}")
+        }
+        return out
     }
+    return fail("unreachable")
+}
 
-    let conn = net.connect(host, port)?
+// One request, and the whole reply as it came off the wire.
+fn __vy_httpOnce(u: __vy_URL, method: str, body: str) -> str! {
+    let conn = net.connect(u.host, u.port)?
 
-    let req = "{method} {path} HTTP/1.1\r\n"
-    req = req + "Host: {host}\r\n"
+    let req = "{method} {u.path} HTTP/1.1\r\n"
+    req = req + "Host: {u.host}\r\n"
     req = req + "User-Agent: veyl\r\n"
     req = req + "Accept: */*\r\n"
     req = req + "Connection: close\r\n"
@@ -281,25 +343,52 @@ fn __vy_httpOverNet(host: str, port: int, path: str, secure: bool, method: str, 
         push(parts, chunk)
     }
     net.close(conn)
-    let raw = join(parts, "")
+    return join(parts, "")
+}
 
-    let sep = indexOf(raw, "\r\n\r\n")
-    if sep < 0 {
-        return fail("the server sent a reply with no header block")
+// Where a Location header points, from the url that sent it: a full
+// url, one starting with // (same scheme), an absolute path on the same
+// host, or a path relative to the current one's directory.
+fn __vy_httpResolve(from: __vy_URL, to: str) -> __vy_URL! {
+    if startsWith(to, "http://") || startsWith(to, "https://") {
+        return __vy_httpSplitURL(to)
     }
-    let head = __substrB(raw, 0, sep)
-    let rest = __substrB(raw, sep + 4, len(raw))
+    if startsWith(to, "//") {
+        let scheme = "http:"
+        if from.secure { scheme = "https:" }
+        return __vy_httpSplitURL(scheme + to)
+    }
+    let u = __vy_URL{host: from.host, port: from.port, path: to, secure: from.secure}
+    if !startsWith(to, "/") {
+        let dir = from.path
+        let q = indexOf(dir, "?")
+        if q >= 0 { dir = __substrB(dir, 0, q) }
+        let cut = 0
+        let i = 0
+        while i < len(dir) {
+            if __substrB(dir, i, i + 1) == "/" { cut = i + 1 }
+            i = i + 1
+        }
+        u.path = __substrB(dir, 0, cut) + to
+        if cut == 0 { u.path = "/" + to }
+    }
+    return u
+}
 
-    let out = rest
-    if __vy_httpChunked(head) {
-        out = __vy_httpDechunk(rest)
+// One header's value off a reply's header block, or "".
+fn __vy_httpHeaderOf(head: str, name: str) -> str {
+    let rows = split(head, "\r\n")
+    let i = 1
+    while i < len(rows) {
+        let colon = indexOf(rows[i], ":")
+        if colon > 0 {
+            if lower(trim(__substrB(rows[i], 0, colon))) == name {
+                return trim(__substrB(rows[i], colon + 1, len(rows[i])))
+            }
+        }
+        i = i + 1
     }
-
-    let code = __vy_httpStatusCode(head)
-    if code >= 400 {
-        return fail("server replied {code}")
-    }
-    return out
+    return ""
 }
 
 // The status code off the first line, "HTTP/1.1 200 OK" -> 200.

@@ -3,3 +3,10 @@ hello /world
 got:payload
 error: server replied 404
 https blocked
+hello /new
+hello /a/there
+hello /landed
+after GET []
+kept POST y=2
+error: stopped after 10 redirects, the last to "/loop"
+redirect to https blocked

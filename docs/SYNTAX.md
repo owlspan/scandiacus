@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.53.0** - the language as currently implemented.
+**Version 0.54.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -1932,9 +1932,11 @@ it is absent, which saves checking the map first.
 | `http.json(body)` | 200, `application/json` |
 | `http.status(code, body)` | any code, `text/plain` |
 | `http.notFound()` | 404 |
+| `http.redirect(url)` | 302 to `url` |
 
-You can also build one yourself: `Response{status: 302, contentType:
-"text/plain", body: ""}`.
+You can also build one yourself: `Response{status: 307, contentType:
+"text/plain", body: "", location: "/elsewhere"}`. `location`, when it
+is not empty, is sent as the `Location` header.
 
 **Fetching.** `http.get(url)` returns the body as `str!`.
 
@@ -1942,9 +1944,16 @@ You can also build one yourself: `Response{status: 302, contentType:
 let page = http.get("http://example.com")?
 ```
 
-Both `http://` and `https://` work: requests go through WinHTTP, which
-does TLS, the certificate chain, redirects and chunked bodies. A 4xx
-or 5xx is a failure carrying the code.
+On Windows both `http://` and `https://` work: requests go through
+WinHTTP, which does TLS, the certificate chain, redirects and chunked
+bodies. On Linux and macOS `http://` works over a socket, with chunked
+bodies and redirects handled the same way. A 4xx or 5xx is a failure
+carrying the code.
+
+Redirects are followed up to ten deep. A 301, 302 or 303 turns a POST
+into a GET with no body, as browsers do; a 307 or 308 repeats the
+request unchanged. The `Location` can be a full url, a path on the same
+host, or a path relative to the current one.
 
 `http.post(url, body)` and `http.download(url, path)` are there too.
 
@@ -3800,7 +3809,7 @@ checker, so it is only reported once every type error is fixed.
 
 ## Known limitations
 
-Honest list of what v0.53.0 does not do yet.
+Honest list of what v0.54.0 does not do yet.
 
 **The language**
 
@@ -3845,7 +3854,7 @@ Honest list of what v0.53.0 does not do yet.
   `http.get` and friends speak HTTPS through WinHTTP, which handles the
   handshake, redirects and chunked bodies. On Linux and macOS the same
   calls work over a socket for `http://` urls (Content-Length and chunked
-  bodies handled, redirects not followed yet); an `https://` url there
+  bodies and redirects handled); an `https://` url there
   fails with a reason, because TLS is not written by hand. A socket
   opened with `net.connect` is unencrypted on every platform.
 - **SQL is SQLite only**, through the `sqlite` package. No Postgres,
