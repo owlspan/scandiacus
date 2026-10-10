@@ -111,6 +111,16 @@ static u32 win_error(int e)
 	case ENOSPC: return 112;        /* ERROR_DISK_FULL */
 	case ENAMETOOLONG: return 206;  /* ERROR_FILENAME_EXCED_RANGE */
 	case EXDEV: return 17;          /* ERROR_NOT_SAME_DEVICE */
+	/* The WinSock codes, for the socket calls below. */
+	case EADDRINUSE: return 10048;
+	case EADDRNOTAVAIL: return 10049;
+	case ENETUNREACH: return 10051;
+	case ECONNABORTED: return 10053;
+	case ECONNRESET: case EPIPE: return 10054;
+	case ENOTCONN: return 10057;
+	case ETIMEDOUT: return 10060;
+	case ECONNREFUSED: return 10061;
+	case EHOSTUNREACH: return 10065;
 	}
 	return 31; /* ERROR_GEN_FAILURE */
 }
@@ -139,6 +149,15 @@ static const char *win_message(u32 code)
 	case 183: return "Cannot create a file when that file already exists.";
 	case 206: return "The filename or extension is too long.";
 	case 267: return "The directory name is invalid.";
+	case 10048: return "Only one usage of each socket address (protocol/network address/port) is normally permitted.";
+	case 10049: return "The requested address is not valid in its context.";
+	case 10051: return "A socket operation was attempted to an unreachable network.";
+	case 10053: return "An established connection was aborted by the software in your host machine.";
+	case 10054: return "An existing connection was forcibly closed by the remote host.";
+	case 10057: return "A request to send or receive data was disallowed because the socket is not connected and (when sending on a datagram socket using a sendto call) no address was supplied.";
+	case 10060: return "A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.";
+	case 10061: return "No connection could be made because the target machine actively refused it.";
+	case 10065: return "A socket operation was attempted to an unreachable host.";
 	}
 	return "A device attached to the system is not functioning.";
 }
@@ -1580,26 +1599,36 @@ int VYW(WSAStartup)(u32 version, void *data)
 	return 0; /* nothing to start on POSIX */
 }
 int VYW(WSACleanup)(void) { return 0; }
-int VYW(WSAGetLastError)(void) { return errno; }
+int VYW(WSAGetLastError)(void) { return (int)g_last_error; }
 
-int VYW(socket)(int af, int type, int proto) { return socket(af, type, proto); }
-int VYW(bind)(int s, const void *addr, int len) { return bind(s, addr, (socklen_t)len); }
+/* Each call records why it failed where GetLastError reads it, as
+ * WinSock does, so net's failures carry the reason rather than whatever
+ * the last file call left there. */
+static int sock_rc(int rc)
+{
+	if (rc < 0)
+		set_errno_error();
+	return rc;
+}
+
+int VYW(socket)(int af, int type, int proto) { return sock_rc(socket(af, type, proto)); }
+int VYW(bind)(int s, const void *addr, int len) { return sock_rc(bind(s, addr, (socklen_t)len)); }
 int VYW(listen)(int s, int backlog)
 {
 	if (backlog > 128 || backlog < 0)
 		backlog = 128; /* a huge WinSock backlog, clamped */
-	return listen(s, backlog);
+	return sock_rc(listen(s, backlog));
 }
-int VYW(accept)(int s, void *addr, void *addrlen) { return accept(s, addr, addrlen); }
-int VYW(connect)(int s, const void *addr, int len) { return connect(s, addr, (socklen_t)len); }
-int VYW(recv)(int s, void *buf, int len, int flags) { return (int)recv(s, buf, (size_t)len, flags); }
+int VYW(accept)(int s, void *addr, void *addrlen) { return sock_rc(accept(s, addr, addrlen)); }
+int VYW(connect)(int s, const void *addr, int len) { return sock_rc(connect(s, addr, (socklen_t)len)); }
+int VYW(recv)(int s, void *buf, int len, int flags) { return sock_rc((int)recv(s, buf, (size_t)len, flags)); }
 int VYW(send)(int s, const void *buf, int len, int flags)
 {
 	/* Don't let a closed peer kill the process with SIGPIPE. */
 #ifdef MSG_NOSIGNAL
 	flags |= MSG_NOSIGNAL;
 #endif
-	return (int)send(s, buf, (size_t)len, flags);
+	return sock_rc((int)send(s, buf, (size_t)len, flags));
 }
 int VYW(closesocket)(int s) { return close(s); }
 
