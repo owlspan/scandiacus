@@ -118,7 +118,7 @@ func (l *lowerer) mapScan(m, key Reg, t vty, idxSlot, hitSlot int64) {
 }
 
 // mapKeyReg is the vty a loaded key should carry.
-func (l *lowerer) mapKeyReg(t vty) vty { return vty{k: t.key} }
+func (l *lowerer) mapKeyReg(t vty) vty { return t.keyType() }
 
 // mapGet returns the value for a key, or the zero value when the key is
 // absent. That is the Go backend's behaviour and so it is the
@@ -231,6 +231,8 @@ func (l *lowerer) writeMap(n Node, m Reg, t vty) {
 		l.writeLit("\"")
 		l.emitStr(k)
 		l.writeLit("\"")
+	} else if t.keyName != "" {
+		l.writeValue(n, k, t.keyType()) // an enum key, by its variant
 	} else {
 		l.emitInt(k)
 	}

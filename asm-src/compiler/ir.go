@@ -72,12 +72,15 @@ const (
 // result's layout does not depend on what it carries, so int! and str!
 // differ only in how the value word is read back out.
 type vty struct {
-	k    vkind
-	el   *vty  // list: the element type. map: the value type.
-	key  vkind // map only: the key kind, still only int or str
-	res  bool  // T!: the value is boxed alongside a failure reason
-	null bool  // ?T: one word, zero for nil, else a pointer to the value
-	name string
+	k   vkind
+	el  *vty  // list: the element type. map: the value type.
+	key vkind // map only: the key kind, int or str
+	// keyName is a map's key enum, when it is keyed by one: the key is
+	// an int, and the name is what prints it as a variant.
+	keyName string
+	res     bool // T!: the value is boxed alongside a failure reason
+	null    bool // ?T: one word, zero for nil, else a pointer to the value
+	name    string
 
 	// fn carries a function value's signature. A pointer for the same
 	// reason el is one: a type cannot contain itself by value, and
@@ -112,6 +115,15 @@ var (
 
 func vListOf(e vty) vty          { return vty{k: kList, el: &e} }
 func vMapOf(kk vkind, v vty) vty { return vty{k: kMap, el: &v, key: kk} }
+
+// vMapKeyed is a map keyed by kt, which keeps the enum when kt is one.
+func vMapKeyed(kt, v vty) vty {
+	m := vMapOf(kt.k, v)
+	if isEnum(kt) {
+		m.keyName = kt.name
+	}
+	return m
+}
 
 func vStructOf(name string) vty { return vty{k: kStruct, name: name} }
 
@@ -183,7 +195,7 @@ func (t vty) eq(o vty) bool {
 }
 
 // keyType is the type of a map's keys.
-func (t vty) keyType() vty { return vty{k: t.key} }
+func (t vty) keyType() vty { return vty{k: t.key, name: t.keyName} }
 
 // holdsPointer reports whether a value of this type is a pointer into
 // the heap, which is what a collector needs to know about any word it
@@ -355,7 +367,7 @@ func vtyOf(t *Type) (vty, bool) {
 		if vt.res || vt.k == kVoid {
 			return vVoid, false
 		}
-		return vMapOf(kt.k, vt), true
+		return vMapKeyed(kt, vt), true
 	}
 	return vVoid, false
 }
@@ -3461,7 +3473,7 @@ func (l *lowerer) mapLit(x *MapLit) Reg {
 		}
 	}
 
-	t := vMapOf(kk.k, vk)
+	t := vMapKeyed(kk, vk)
 	m := l.newMap(t, int64(len(keys)))
 	for i := range keys {
 		l.mapSet(m, keys[i], vals[i], t)
