@@ -49,7 +49,8 @@ adds a final newline on save.
 
 Through `veyl lsp`, the language server built into veyl:
 
-- **errors as you type**, the same ones `veyl build` reports;
+- **errors and warnings as you type**, the same ones `veyl build`
+  reports;
 - **completion** of names in scope and the library, and after a dot a
   struct's fields and methods, a library's functions or an enum's
   variants;

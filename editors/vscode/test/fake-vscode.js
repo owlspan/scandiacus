@@ -37,7 +37,7 @@ const docs = [];
 
 module.exports = {
     Uri, Position, Range, Location, TextEdit, Diagnostic, MarkdownString, Hover, CompletionItem, DocumentSymbol,
-    DiagnosticSeverity: { Error: 0 },
+    DiagnosticSeverity: { Error: 0, Warning: 1 },
     window: { showWarningMessage(msg) { module.exports._warnings.push(msg); } },
     workspace: {
         textDocuments: docs,

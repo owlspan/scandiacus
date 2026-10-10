@@ -51,9 +51,13 @@ function wait(cond) {
 
     await wait(() => fake._reported.size > 0);
     const diags = [...fake._reported.values()][0];
-    assert.strictEqual(diags.length, 1, 'one error');
-    assert.match(diags[0].message, /declared as int but the value is str/);
-    assert.strictEqual(diags[0].range.start.line, 5);
+    const errors = diags.filter((x) => x.severity === fake.DiagnosticSeverity.Error);
+    const warnings = diags.filter((x) => x.severity === fake.DiagnosticSeverity.Warning);
+    assert.strictEqual(errors.length, 1, 'one error');
+    assert.match(errors[0].message, /declared as int but the value is str/);
+    assert.strictEqual(errors[0].range.start.line, 5);
+    assert.strictEqual(warnings.length, 1, 'one warning');
+    assert.match(warnings[0].message, /"bad" is declared but never used/);
 
     const p = fake._providers;
     const items = await p.completion.provideCompletionItems(d, new fake.Position(4, 8));
@@ -76,7 +80,7 @@ function wait(cond) {
 
     // An edit that fixes the error clears it.
     fake._change(doc(text.replace('let bad: int = "x"', 'let bad: int = 1'), 2));
-    await wait(() => [...fake._reported.values()][0].length === 0);
+    await wait(() => [...fake._reported.values()][0].every((x) => x.severity !== fake.DiagnosticSeverity.Error));
 
     assert.deepStrictEqual(fake._warnings, []);
     context.subscriptions.forEach((s) => s.dispose && s.dispose());

@@ -293,7 +293,7 @@ type lspIndex struct {
 var errPos = regexp.MustCompile(`^(.*):(\d+):(\d+): (.*)$`)
 
 func (s *lspServer) analyze(d *lspDoc) {
-	idx, errs := analyzeSource(d.text, d.path)
+	idx, errs, warns := analyzeWithWarnings(d.text, d.path)
 	d.broken = idx == nil || !idx.checked
 	if idx != nil && (idx.checked || d.index == nil) {
 		d.index = idx
@@ -301,11 +301,24 @@ func (s *lspServer) analyze(d *lspDoc) {
 	lines := strings.Split(d.text, "\n")
 	diags := []map[string]any{}
 	seen := map[string]bool{}
-	for _, e := range errs {
+	severity := map[string]int{}
+	all := append([]string(nil), errs...)
+	for _, w := range warns {
+		if m := errPos.FindStringSubmatch(w); m != nil && !samePath(m[1], d.path) {
+			continue // a warning in an imported file belongs to that file
+		}
+		severity[w] = 2
+		all = append(all, w)
+	}
+	for _, e := range all {
 		if seen[e] {
 			continue
 		}
 		seen[e] = true
+		sev := severity[e]
+		if sev == 0 {
+			sev = 1
+		}
 		line, col, msg := 1, 1, e
 		if m := errPos.FindStringSubmatch(e); m != nil {
 			line, _ = strconv.Atoi(m[2])
@@ -321,7 +334,7 @@ func (s *lspServer) analyze(d *lspDoc) {
 		start := lspPos{Line: line - 1, Character: utf16Col(lines, line, col)}
 		end := lspPos{Line: line - 1, Character: start.Character + wordLenAt(lines, line, col)}
 		diags = append(diags, map[string]any{
-			"range": lspRange{Start: start, End: end}, "severity": 1, "source": "veyl", "message": msg,
+			"range": lspRange{Start: start, End: end}, "severity": sev, "source": "veyl", "message": msg,
 		})
 	}
 	s.notify("textDocument/publishDiagnostics", map[string]any{"uri": d.uri, "diagnostics": diags})
@@ -330,6 +343,12 @@ func (s *lspServer) analyze(d *lspDoc) {
 // analyzeSource runs the front half of the compiler over text, as if it
 // were the file at path. The index is nil when the text did not parse.
 func analyzeSource(text, path string) (idx *lspIndex, errs []string) {
+	idx, errs, _ = analyzeWithWarnings(text, path)
+	return idx, errs
+}
+
+// analyzeWithWarnings is analyzeSource with the checker's warnings too.
+func analyzeWithWarnings(text, path string) (idx *lspIndex, errs, warns []string) {
 	defer func() {
 		if r := recover(); r != nil {
 			errs = append(errs, fmt.Sprintf("%s:1:1: the checker failed on this file: %v", path, r))
@@ -360,21 +379,21 @@ func analyzeSource(text, path string) (idx *lspIndex, errs []string) {
 			}
 		}
 		if !parsed {
-			return idx, errs
+			return idx, errs, nil
 		}
 	}
 
 	all := append([]string{text}, imported...)
 	if e := addPrelude(prog, all); len(e) > 0 {
-		return idx, append(errs, e...)
+		return idx, append(errs, e...), nil
 	}
 	if e := addLibrary(prog, all); len(e) > 0 {
-		return idx, append(errs, e...)
+		return idx, append(errs, e...), nil
 	}
 	ck := NewChecker(path, asmLibrary{})
 	ck.Check(prog)
 	idx.checked = true
-	return idx, append(errs, ck.Errors...)
+	return idx, append(errs, ck.Errors...), ck.Warnings
 }
 
 func buildIndex(prog *front.Program, path, text string) *lspIndex {

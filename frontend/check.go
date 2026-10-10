@@ -30,6 +30,8 @@ type Checker struct {
 	curGlob  *LetStmt            // the global being checked, if any
 	globals  map[string]*LetStmt // top-level const and var, by name
 	Errors   []string
+	Warnings []string               // see warnings.go
+	uses     []map[string]*localUse // parallel to scopes: lets and whether read
 
 	// lib is the backend's set of builtins. The checker never assumes
 	// which backend it is serving; see library.go.
@@ -156,9 +158,12 @@ func baseName(path string) string {
 func (c *Checker) push() {
 	c.scopes = append(c.scopes, map[string]*Type{})
 	c.consts = append(c.consts, map[string]bool{})
+	c.uses = append(c.uses, map[string]*localUse{})
 }
 
 func (c *Checker) pop() {
+	c.reportUnused()
+	c.uses = c.uses[:len(c.uses)-1]
 	delete(c.loopVars, len(c.scopes)-1)
 	c.scopes = c.scopes[:len(c.scopes)-1]
 	c.consts = c.consts[:len(c.consts)-1]
@@ -664,6 +669,7 @@ func (c *Checker) stmt(s Stmt) {
 			st.T = annot
 		}
 		c.define(st.Name, st.T)
+		c.declareLocal(st)
 		if st.Const {
 			c.consts[len(c.consts)-1][st.Name] = true
 		}
@@ -682,7 +688,19 @@ func (c *Checker) stmt(s Stmt) {
 				describeTarget(st.Target), exprText(st.Target))
 			return
 		}
+		// Assigning to a name is not reading it: x = 5 alone leaves x
+		// unused.
+		var keep *localUse
+		wasUsed := false
+		if id, ok := st.Target.(*Ident); ok && st.Op == ASSIGN {
+			if keep = c.useOf(id.Name); keep != nil {
+				wasUsed = keep.used
+			}
+		}
 		want := c.expr(st.Target)
+		if keep != nil {
+			keep.used = wasUsed
+		}
 		valT := c.exprWant(st.Value, want)
 		if want.IsUnknown() {
 			return // already reported
@@ -1115,6 +1133,7 @@ func (c *Checker) expr(e Expr) *Type {
 				x.Name, baseName(g.File), kind, x.Name)
 		}
 		if t := c.lookup(x.Name); t != nil {
+			c.markUsed(x.Name)
 			// Inside a proven `x != nil`, the narrowed binding shadows the
 			// nullable one and the use is marked so codegen dereferences.
 			if c.isNarrowed(x.Name) {
@@ -1933,6 +1952,7 @@ func (c *Checker) call(x *Call) *Type {
 	// A variable holding a function shadows a declaration of the same
 	// name, which is ordinary scoping.
 	if t := c.lookup(name); t != nil {
+		c.markUsed(name)
 		x.ViaValue = true
 		x.T = c.callValue(x, t, name)
 		return x.T
@@ -2555,6 +2575,7 @@ func (c *Checker) enumTypes(t *Type) *Type {
 // Only while nothing later in the list assigns to x: a narrowing that
 // an assignment could quietly undo would let a nil through unchecked.
 func (c *Checker) stmts(list []Stmt) {
+	c.unreachable(list)
 	pushed := 0
 	for i, s := range list {
 		c.stmt(s)

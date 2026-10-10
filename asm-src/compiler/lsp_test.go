@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -102,14 +103,19 @@ func (c *lspClient) diagnostics() []string {
 		}
 		var p struct {
 			Diagnostics []struct {
-				Range   lspRange `json:"range"`
-				Message string   `json:"message"`
+				Range    lspRange `json:"range"`
+				Message  string   `json:"message"`
+				Severity int      `json:"severity"`
 			} `json:"diagnostics"`
 		}
 		json.Unmarshal(m.Params, &p)
 		var out []string
 		for _, d := range p.Diagnostics {
-			out = append(out, fmt.Sprintf("%d:%d %s", d.Range.Start.Line+1, d.Range.Start.Character+1, d.Message))
+			kind := "error"
+			if d.Severity == 2 {
+				kind = "warning"
+			}
+			out = append(out, fmt.Sprintf("%d:%d %s %s", d.Range.Start.Line+1, d.Range.Start.Character+1, kind, d.Message))
 		}
 		return out
 	}
@@ -156,8 +162,14 @@ let bad: int = "no"
 		"textDocument": map[string]any{"uri": uri, "languageId": "veyl", "version": 1, "text": src}}})
 
 	diags := c.diagnostics()
-	if len(diags) != 1 || !strings.Contains(diags[0], `"bad" is declared as int but the value is str`) || !strings.HasPrefix(diags[0], "25:") {
-		t.Fatalf("diagnostics: %q", diags)
+	sort.Strings(diags)
+	want := []string{
+		`22:1 warning "c" is declared but never used`,
+		`25:1 error "bad" is declared as int but the value is str`,
+		`25:1 warning "bad" is declared but never used`,
+	}
+	if strings.Join(diags, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("diagnostics:\n%s\nwant:\n%s", strings.Join(diags, "\n"), strings.Join(want, "\n"))
 	}
 
 	pos := func(line int, after string) map[string]any {

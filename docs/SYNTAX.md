@@ -3813,6 +3813,7 @@ defer own unsafe
 | `veyl build --dll f.vl` | write `f.dll`; see [Building a DLL](#building-a-dll) |
 | `veyl asm f.vl` | print the generated assembly |
 | `veyl ir f.vl` | print the intermediate representation |
+| `veyl check f.vl` | the errors and warnings `veyl build` would print, without building; fails only on errors |
 | `veyl test f.vl` | run the file's `test` blocks (a folder runs every file with tests; `--run text` only matching names; `--bench` the `bench` blocks); see [Testing](#testing) |
 | `veyl fmt f.vl` | lay a file out the standard way: 4-space indents, one space around operators, one blank line at most (a folder formats every `.vl` in it; `--check` changes nothing and fails if anything would) |
 | `veyl lsp` | the language server an editor starts, on stdin and stdout |
@@ -3913,6 +3914,20 @@ hello.vl:3:1: "y" is declared as int but the value is str
 hello.vl:4:9: '+' needs numbers, got int and bool
 veyl: 2 error(s)
 ```
+
+**Warnings** are things that are allowed but are almost always a
+mistake. They never stop a build:
+
+```
+hello.vl:2:5: warning: "spare" is declared but never used
+hello.vl:4:5: warning: this can never run - it comes after a return
+```
+
+A `let` nothing reads is reported - assigning to it does not count as
+reading - except when its name starts with `_`, which is the way to keep
+a value on purpose. `veyl build` and `veyl check` print warnings; `veyl
+run` does not, so a program's output is only its own. In VS Code they
+show as yellow squiggles.
 
 A name that does not exist is reported in the same list, and when a
 real name is close enough to be a likely slip, it is offered:
