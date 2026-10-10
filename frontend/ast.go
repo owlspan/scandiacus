@@ -45,7 +45,7 @@ type Program struct {
 
 	// Tests are the file's `test "name" { ... }` blocks, each a function
 	// with no parameters and TestName set. Only veyl test compiles them.
-	Tests []*FnDecl
+	Tests   []*FnDecl
 	Imports []*ImportDecl
 
 	// MainFile is the absolute path of the file the compiler was invoked

@@ -118,7 +118,8 @@ function activate(context) {
         server = new Server(command, (method, params) => {
             if (method === 'textDocument/publishDiagnostics') {
                 diagnostics.set(vscode.Uri.parse(params.uri), params.diagnostics.map((d) => {
-                    const diag = new vscode.Diagnostic(toRange(d.range), d.message, vscode.DiagnosticSeverity.Error);
+                    const sev = d.severity === 2 ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error;
+                    const diag = new vscode.Diagnostic(toRange(d.range), d.message, sev);
                     diag.source = 'veyl';
                     return diag;
                 }));

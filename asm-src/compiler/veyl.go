@@ -45,6 +45,7 @@ usage:
                           is the one veyl runs on (or VEYL_TARGET)
   veyl asm   <file.vl>    print the generated assembly
   veyl ir    <file.vl>    print the intermediate representation
+  veyl check <file.vl>... report errors and warnings without building
   veyl test  <file.vl>... run the test "name" { } blocks in files or folders
                           (--run TEXT only the tests whose names contain it,
                           --bench runs the bench "name" { } blocks instead)
@@ -113,6 +114,10 @@ func main() {
 		return
 	}
 
+	if cmd == "check" {
+		checkCommand(args[1:])
+		return
+	}
 	if cmd == "test" {
 		testCommand(args[1:])
 		return
@@ -236,6 +241,7 @@ func main() {
 		fail("cannot read %s: %v", args[1], err)
 	}
 
+	showWarnings = cmd == "build"
 	mod := compile(string(source), path)
 
 	switch cmd {
@@ -357,6 +363,9 @@ func compile(source, path string) *Module {
 	if len(ck.Errors) > 0 {
 		report(ck.Errors)
 	}
+	if showWarnings {
+		printWarnings(ck.Warnings)
+	}
 
 	mod, lowerErrs := Lower(prog, path)
 	if len(lowerErrs) > 0 {
@@ -364,6 +373,59 @@ func compile(source, path string) *Module {
 	}
 	Optimize(mod)
 	return mod
+}
+
+// showWarnings is set by veyl build, which prints the checker's warnings
+// on stderr. veyl run does not, so a program's own output is all it
+// writes; veyl check prints them on their own.
+var showWarnings bool
+
+func printWarnings(ws []string) {
+	ws = append([]string(nil), ws...)
+	sortByPosition(ws)
+	seen := map[string]bool{}
+	for _, w := range ws {
+		if seen[w] {
+			continue
+		}
+		seen[w] = true
+		if m := errPos.FindStringSubmatch(w); m != nil {
+			fmt.Fprintf(os.Stderr, "%s:%s:%s: warning: %s\n", m[1], m[2], m[3], m[4])
+		} else {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", w)
+		}
+	}
+}
+
+// checkCommand is veyl check: the errors and warnings veyl build would
+// print, without building anything. It fails only on errors.
+func checkCommand(args []string) {
+	if len(args) == 0 {
+		fail("veyl check needs a .vl file")
+	}
+	bad := false
+	for _, file := range args {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			fail("%v", err)
+		}
+		_, errs, warns := analyzeWithWarnings(string(b), file)
+		sortByPosition(errs)
+		seen := map[string]bool{}
+		for _, e := range errs {
+			if !seen[e] {
+				seen[e] = true
+				fmt.Fprintln(os.Stderr, e)
+			}
+		}
+		printWarnings(warns)
+		if len(errs) > 0 {
+			bad = true
+		}
+	}
+	if bad {
+		os.Exit(1)
+	}
 }
 
 func report(errs []string) {
