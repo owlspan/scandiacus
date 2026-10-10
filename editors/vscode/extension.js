@@ -248,6 +248,13 @@ function activate(context) {
             },
         }),
 
+        vscode.languages.registerDocumentFormattingEditProvider(selector, {
+            async provideDocumentFormattingEdits(doc) {
+                const edits = await ask('textDocument/formatting', doc, null);
+                return (edits || []).map((e) => vscode.TextEdit.replace(toRange(e.range), e.newText));
+            },
+        }),
+
         vscode.languages.registerDocumentSymbolProvider(selector, {
             async provideDocumentSymbols(doc) {
                 const syms = await ask('textDocument/documentSymbol', doc, null);

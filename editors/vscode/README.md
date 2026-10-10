@@ -56,7 +56,8 @@ Through `veyl lsp`, the language server built into veyl:
 - **go to definition** (F12) for functions, methods, structs, enums,
   fields, globals and locals, into imported files too;
 - **hover** for the type of a variable or the signature of a function;
-- **the outline** of a file (Ctrl+Shift+O).
+- **the outline** of a file (Ctrl+Shift+O);
+- **Format Document** (Shift+Alt+F), the same layout as `veyl fmt`.
 
 The extension starts the veyl that installed it. To use another, set
 **Veyl: Path** (`veyl.path`) in the settings. If veyl cannot be started

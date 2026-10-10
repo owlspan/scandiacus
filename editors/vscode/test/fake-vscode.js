@@ -23,6 +23,10 @@ class Diagnostic { constructor(range, message, severity) { this.range = range; t
 class MarkdownString { constructor(value) { this.value = value; } }
 class Hover { constructor(contents) { this.contents = contents; } }
 class CompletionItem { constructor(label, kind) { this.label = label; this.kind = kind; } }
+class TextEdit {
+    constructor(range, newText) { this.range = range; this.newText = newText; }
+    static replace(range, text) { return new TextEdit(range, text); }
+}
 class DocumentSymbol {
     constructor(name, detail, kind, range, selectionRange) {
         this.name = name; this.kind = kind; this.range = range; this.selectionRange = selectionRange;
@@ -32,7 +36,7 @@ class DocumentSymbol {
 const docs = [];
 
 module.exports = {
-    Uri, Position, Range, Location, Diagnostic, MarkdownString, Hover, CompletionItem, DocumentSymbol,
+    Uri, Position, Range, Location, TextEdit, Diagnostic, MarkdownString, Hover, CompletionItem, DocumentSymbol,
     DiagnosticSeverity: { Error: 0 },
     window: { showWarningMessage(msg) { module.exports._warnings.push(msg); } },
     workspace: {
@@ -55,6 +59,7 @@ module.exports = {
         registerDefinitionProvider(sel, p) { providers.definition = p; return { dispose() {} }; },
         registerHoverProvider(sel, p) { providers.hover = p; return { dispose() {} }; },
         registerDocumentSymbolProvider(sel, p) { providers.symbols = p; return { dispose() {} }; },
+        registerDocumentFormattingEditProvider(sel, p) { providers.format = p; return { dispose() {} }; },
     },
 
     // For the test.
