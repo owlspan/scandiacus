@@ -15,7 +15,11 @@ package main
 // vocabulary. The subset stops being a property of what happens to be
 // implemented and becomes something the compiler states up front.
 
-import front "veylfront"
+import (
+	"strings"
+
+	front "veylfront"
+)
 
 type asmLibrary struct{}
 
@@ -618,6 +622,32 @@ func (asmLibrary) Signature(name string) (front.Signature, bool) {
 	}
 	s, ok := sigs[name]
 	return s, ok
+}
+
+// checkedBuiltins are the builtins Signature answers in its switch
+// rather than from sigs, listed so Names can offer them too.
+var checkedBuiltins = []string{
+	"len", "push", "contains", "indexOf", "has", "find", "min", "max",
+	"map", "filter", "reduce", "sortBy", "any", "all", "each", "task.map",
+	"task.mapLimit", "task.each", "task.all", "http.serve", "stats.mean",
+	"stats.median", "stats.var", "stats.stdev", "stats.percentile",
+	"json.decode", "json.decodeOr", "os.path.join", "toInt", "toFloat",
+	"input", "padLeft", "padRight", "first", "last", "pop", "sum",
+	"reverse", "sort", "rand.shuffle", "rand.sample", "rand.pick",
+	"slice", "join", "insert", "removeAt", "keys", "values", "remove",
+	"clear", "fail", "ok", "isOk", "failed", "errorOf", "must", "valueOr",
+}
+
+// Names lists every builtin, for the checker's "did you mean" on a call
+// to a name that does not exist. Internal names are left out.
+func (asmLibrary) Names() []string {
+	out := append([]string(nil), checkedBuiltins...)
+	for n := range sigs {
+		if !strings.HasPrefix(n, "__") {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // ConstType reports the builtin float constants. NAN and INF were left

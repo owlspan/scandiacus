@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.55.0** - the language as currently implemented.
+**Version 0.56.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -3812,14 +3812,19 @@ hello.vl:4:9: '+' needs numbers, got int and bool
 veyl: 2 error(s)
 ```
 
-One gap: a misspelled name is found by a later stage than the type
-checker, so it is only reported once every type error is fixed.
+A name that does not exist is reported in the same list, and when a
+real name is close enough to be a likely slip, it is offered:
+
+```
+hello.vl:5:7: undefined variable "totl" - did you mean "total"?
+hello.vl:6:7: undefined function "lenn" - did you mean "len"?
+```
 
 ---
 
 ## Known limitations
 
-Honest list of what v0.55.0 does not do yet.
+Honest list of what v0.56.0 does not do yet.
 
 **The language**
 
