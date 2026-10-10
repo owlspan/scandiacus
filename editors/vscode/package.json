@@ -1,7 +1,7 @@
 {
   "name": "veyl-lang",
   "displayName": "Veyl",
-  "description": "Syntax highlighting for the Veyl programming language",
+  "description": "Highlighting, errors as you type, completion and go to definition for the Veyl programming language",
   "version": "0.60.0",
   "publisher": "veyl",
   "license": "MIT",
@@ -10,6 +10,10 @@
   },
   "categories": [
     "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:veyl"
   ],
   "contributes": {
     "languages": [
@@ -42,6 +46,16 @@
         "editor.tabSize": 4,
         "files.trimTrailingWhitespace": true,
         "files.insertFinalNewline": true
+      }
+    },
+    "configuration": {
+      "title": "Veyl",
+      "properties": {
+        "veyl.path": {
+          "type": "string",
+          "default": "",
+          "description": "The veyl executable that runs the language server. Empty means veyl on PATH."
+        }
       }
     }
   },

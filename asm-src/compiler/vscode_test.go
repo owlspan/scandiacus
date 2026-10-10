@@ -36,7 +36,13 @@ func TestVSIX(t *testing.T) {
 		r.Close()
 		have[f.Name] = string(b)
 	}
-	for _, want := range []string{"extension.vsixmanifest", "[Content_Types].xml", "extension/package.json",
+	if _, ok := have["extension/test/run.js"]; ok {
+		t.Errorf("the extension's own tests were packed")
+	}
+	if !strings.Contains(have["extension/package.json"], `"main": "./extension.js"`) {
+		t.Errorf("package.json lost its main")
+	}
+	for _, want := range []string{"extension/extension.js", "extension.vsixmanifest", "[Content_Types].xml", "extension/package.json",
 		"extension/syntaxes/veyl.tmLanguage.json", "extension/language-configuration.json",
 		"extension/icons/veyl.png", "extension/readme.md"} {
 		if _, ok := have[want]; !ok {

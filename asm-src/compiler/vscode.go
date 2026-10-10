@@ -269,7 +269,7 @@ func writeVSIX(path, dir string, m *extManifest) error {
 		rel, _ := filepath.Rel(dir, p)
 		rel = filepath.ToSlash(rel)
 		if info.IsDir() {
-			if strings.HasPrefix(info.Name(), ".") && rel != "." || info.Name() == "node_modules" {
+			if strings.HasPrefix(info.Name(), ".") && rel != "." || info.Name() == "node_modules" || rel == "test" {
 				return filepath.SkipDir
 			}
 			return nil
@@ -309,6 +309,9 @@ func writeVSIX(path, dir string, m *extManifest) error {
 			return err
 		}
 		name := rel
+		if rel == "package.json" {
+			data = withServerPath(data)
+		}
 		// vsce lowercases the readme, and the manifest points at it.
 		if strings.EqualFold(rel, "README.md") {
 			name = "readme.md"
@@ -337,6 +340,37 @@ func writeVSIX(path, dir string, m *extManifest) error {
 		return err
 	}
 	return f.Close()
+}
+
+// withServerPath sets the default of the veyl.path setting to this veyl,
+// so the language server starts whether or not veyl is on PATH - the
+// installer's PATH entry is optional, and a PATH change reaches only
+// programs started after it. A user setting still wins.
+func withServerPath(pkg []byte) []byte {
+	exe, err := os.Executable()
+	if err != nil {
+		return pkg
+	}
+	if abs, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = abs
+	}
+	var m map[string]any
+	if json.Unmarshal(pkg, &m) != nil {
+		return pkg
+	}
+	contrib, _ := m["contributes"].(map[string]any)
+	conf, _ := contrib["configuration"].(map[string]any)
+	props, _ := conf["properties"].(map[string]any)
+	setting, _ := props["veyl.path"].(map[string]any)
+	if setting == nil {
+		return pkg
+	}
+	setting["default"] = exe
+	out, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return pkg
+	}
+	return out
 }
 
 func vsixManifest(m *extManifest, readme string) string {

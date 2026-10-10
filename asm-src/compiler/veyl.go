@@ -45,6 +45,7 @@ usage:
                           is the one veyl runs on (or VEYL_TARGET)
   veyl asm   <file.vl>    print the generated assembly
   veyl ir    <file.vl>    print the intermediate representation
+  veyl lsp                a language server on stdin and stdout, for editors
   veyl vscode             install the Veyl extension into VS Code
                           (--vsix FILE only writes the package,
                           --uninstall removes it)
@@ -107,6 +108,10 @@ func main() {
 		return
 	}
 
+	if cmd == "lsp" {
+		lspCommand()
+		return
+	}
 	if cmd == "vscode" {
 		vscodeCommand(args[1:])
 		return

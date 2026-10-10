@@ -289,7 +289,8 @@ asm-src/
   installer/        the Inno Setup script and its build script
   scripts/          make-installer.bat and .sh, saferun.ps1, metrics.ps1
 docs/               SYNTAX.md and TUTORIAL.md
-editors/            VS Code, Sublime, Vim and Notepad++ highlighting
+editors/            VS Code (highlighting and a client for veyl lsp),
+                    Sublime, Vim and Notepad++ highlighting
 ```
 
 The lexer, parser, AST and types live in `../frontend` and are shared
@@ -321,6 +322,7 @@ veyl build f.vl    write an executable next to the source
 veyl asm   f.vl    print the generated assembly
 veyl ir    f.vl    print the intermediate representation
 veyl vscode        install the VS Code extension (the installer runs it)
+veyl lsp           the language server editors start, on stdin and stdout
 ```
 
 `asm` and `ir` matter more here than `veyl emit` does on the Go
@@ -593,7 +595,7 @@ bounds-checked on every access, and the C array is not.
 - **Collection inside a DLL**, whose exports run on the host's threads.
 - **Debug symbols** (a `.pdb`), so a debugger can show source lines and
   variables; the unwind tables (`unwind.go`) already give it the stack.
-- **A language server**, for completion and go-to-definition in
-  editors.
+- **More from the language server**: rename, find references, and
+  signature help as you type a call.
 - **Closures as callbacks.**
 - **`zip`**, the last library the Go backend has and this one does not.
