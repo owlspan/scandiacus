@@ -44,15 +44,14 @@ Key files: `linux.go`, `macos.go`, `ffi.go`, `net.go`, `winhttp.go`,
 - `net` (TCP sockets).
 - `db` (SQLite) - Linux links `-lsqlite3`, macOS dlopens
   `libsqlite3.dylib`. (v0.52.0)
-- `http` client over `http://` - `http.get/post/download`. `__winhttp` is
-  lowered to a Veyl socket client (`__vy_httpOverNet` in
-  `prelude_http.go`) off Windows. Handles Content-Length and chunked.
-  (v0.53.0)
+- `http` client - `http.get/post/download`. `__winhttp` is lowered to a
+  Veyl socket client (`__vy_httpOverNet` in `prelude_http.go`) off
+  Windows. Content-Length, chunked, redirects (v0.54.0), and https://
+  through a dlopen'd OpenSSL (v0.55.0).
 - `extern fn` into system C libraries.
 
 ## Still Windows-only
 
-- HTTPS (http client over TLS - WinHTTP). This is the big one; see below.
 - `com`, `proc`, raw native calls (`mem.call` / `mem.symbol`, which use
   the Windows calling convention), static `.lib` archives, `--dll` builds.
   Most of these are inherently Windows concepts.
@@ -89,7 +88,7 @@ with `codesign -s -`) and reports which fail, so you can isolate them.
 - Pushing to `veyl` auto-publishes a release when `veyl.go`'s version has
   none yet (see Releases below), so every push to `veyl` must be green.
 - Leave a usable, green, pushed checkpoint each time. Current HEAD is
-  `Version 0.53.0` (released).
+  `Version 0.55.0`.
 
 ## Releases and CI (read before bumping a version)
 
@@ -153,21 +152,17 @@ tests are marked unix-only to dodge wine flakiness.
    files, collect failures, isolate and fix. Everything macOS is untested;
    this is where the real bugs are.
 
-2. **HTTPS on Linux/macOS (big).** The only remaining library gap for
-   normal programs. Options:
-   - Link system TLS: OpenSSL `libssl`/`libcrypto` on Linux; on macOS
-     either dlopen libssl or use Secure Transport (deprecated) /
-     Network.framework. Then teach `__vy_httpOverNet` (or a sibling) to do
-     the handshake and wrap send/recv. Big surface, external dependency.
-   - Do NOT hand-write TLS.
-   Scope carefully; may want the owner's call on the OpenSSL dependency
-   first (a program needing HTTPS would then need libssl present).
-   When done, update the `__vy_httpOverNet` `secure` branch (it currently
-   returns a clear failure) and the SYNTAX/CHANGELOG limitation text.
+2. **HTTPS on Linux/macOS: done in 0.55.0.** `linuxrt/veyltls.c`
+   dlopens the system OpenSSL (libssl.so.3 / Homebrew on macOS) and
+   wraps the connected socket; `tls.go` lowers the internal
+   `__tlsOpen/Send/Recv/Close` builtins the prelude client calls.
+   Certificates are verified against the system store, with the host
+   name checked. `TestHTTPS` (Linux only) runs Go TLS servers with a CA
+   it makes and hands to OpenSSL through SSL_CERT_FILE. The macOS path
+   is unverified - add it to the batch for the owner's friend.
 
-3. **Follow redirects in the http client.** WinHTTP follows 3xx; the net
-   client does not yet. Add a bounded redirect loop in `__vy_httpOverNet`
-   (http:// only; a redirect to https:// hits the TLS gap above).
+3. **Redirects in the http client: done in 0.54.0.** Up to ten, POST to
+   GET on 301/302/303, method kept on 307/308, https -> http refused.
 
 4. **ARM64 codegen (very big).** macOS currently needs Rosetta on Apple
    Silicon; Linux ARM and Windows ARM likewise. This is a second backend,

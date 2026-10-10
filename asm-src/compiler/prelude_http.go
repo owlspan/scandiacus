@@ -263,24 +263,24 @@ fn __vy_httpSplitURL(url: str) -> __vy_URL! {
     return u
 }
 
-// __vy_httpOverNet is the http:// client for Linux and macOS, where
-// there is no WinHTTP. The __winhttp builtin is lowered to a call here
-// off Windows; it is never called on the Windows build. Each request is
+// __vy_httpOverNet is the http client for Linux and macOS, where there
+// is no WinHTTP. The __winhttp builtin is lowered to a call here off
+// Windows; it is never called on the Windows build. Each request is
 // HTTP/1.1 over one net connection with Connection: close, read to the
 // close and parsed. Content-Length and chunked bodies are both handled.
+// https:// puts TLS on the connection with the __tls builtins, which use
+// the system OpenSSL and check the certificate against the system's
+// trust store.
 //
 // Redirects are followed the way WinHTTP and browsers follow them, up to
 // ten: 301, 302 and 303 turn a POST into a GET with no body, 307 and 308
-// repeat the request as it was. https:// fails with a reason rather than
-// a wrong answer, because TLS is not written by hand here; that includes
-// an http:// url that redirects to one.
+// repeat the request as it was. A redirect from https:// to http:// is
+// refused, as WinHTTP refuses it, since it would send in the clear what
+// was asked for over TLS.
 fn __vy_httpOverNet(host: str, port: int, path: str, secure: bool, method: str, body: str) -> str! {
     let u = __vy_URL{host: host, port: port, path: path, secure: secure}
     let hops = 0
     while true {
-        if u.secure {
-            return fail("cannot fetch \"https://{u.host}{u.path}\": HTTPS needs TLS, which only the Windows build has so far - use an http:// url, or build this program with --windows")
-        }
         let raw = __vy_httpOnce(u, method, body)?
 
         let sep = indexOf(raw, "\r\n\r\n")
@@ -301,7 +301,11 @@ fn __vy_httpOverNet(host: str, port: int, path: str, secure: bool, method: str, 
                 if method != "GET" && method != "HEAD" { method = "GET" }
                 body = ""
             }
-            u = __vy_httpResolve(u, to)?
+            let next = __vy_httpResolve(u, to)?
+            if u.secure && !next.secure {
+                return fail("refused a redirect from https:// to \"{to}\", which is not encrypted")
+            }
+            u = next
             continue
         }
 
@@ -320,9 +324,28 @@ fn __vy_httpOverNet(host: str, port: int, path: str, secure: bool, method: str, 
 // One request, and the whole reply as it came off the wire.
 fn __vy_httpOnce(u: __vy_URL, method: str, body: str) -> str! {
     let conn = net.connect(u.host, u.port)?
+    let t = 0
+    if u.secure {
+        let opened = __tlsOpen(conn, u.host)
+        if !isOk(opened) {
+            net.close(conn)
+            return fail("cannot fetch \"https://{u.host}{u.path}\": {errorOf(opened)}")
+        }
+        t = must(opened)
+    }
+    let got = __vy_httpExchange(conn, t, __vy_httpRequestText(u, method, body))
+    if t != 0 { __tlsClose(t) }
+    net.close(conn)
+    return got
+}
 
+fn __vy_httpRequestText(u: __vy_URL, method: str, body: str) -> str {
+    let host = u.host
+    let deflt = 80
+    if u.secure { deflt = 443 }
+    if u.port != deflt { host = "{u.host}:{u.port}" }
     let req = "{method} {u.path} HTTP/1.1\r\n"
-    req = req + "Host: {u.host}\r\n"
+    req = req + "Host: {host}\r\n"
     req = req + "User-Agent: veyl\r\n"
     req = req + "Accept: */*\r\n"
     req = req + "Connection: close\r\n"
@@ -330,19 +353,31 @@ fn __vy_httpOnce(u: __vy_URL, method: str, body: str) -> str! {
         req = req + "Content-Type: application/x-www-form-urlencoded\r\n"
         req = req + "Content-Length: {len(body)}\r\n"
     }
-    req = req + "\r\n" + body
-    net.send(conn, req)?
+    return req + "\r\n" + body
+}
 
-    // The server was asked to close when done, so recv returns empty at
-    // the end. Chunks go onto a list and are joined once, because
-    // appending each onto the last would be quadratic.
+// Send the request and read until the server closes, over TLS when t is
+// a session and over the bare socket when it is zero. The server was
+// asked to close when done, so a read returns empty at the end. Chunks
+// go onto a list and are joined once, because appending each onto the
+// last would be quadratic.
+fn __vy_httpExchange(conn: int, t: int, req: str) -> str! {
+    if t != 0 {
+        __tlsSend(t, req)?
+    } else {
+        net.send(conn, req)?
+    }
     let parts: []str = []
     while true {
-        let chunk = net.recv(conn)?
+        let chunk = ""
+        if t != 0 {
+            chunk = __tlsRecv(t)?
+        } else {
+            chunk = net.recv(conn)?
+        }
         if len(chunk) == 0 { break }
         push(parts, chunk)
     }
-    net.close(conn)
     return join(parts, "")
 }
 

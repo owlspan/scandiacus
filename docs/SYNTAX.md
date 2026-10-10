@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.54.0** - the language as currently implemented.
+**Version 0.55.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -1944,16 +1944,26 @@ is not empty, is sent as the `Location` header.
 let page = http.get("http://example.com")?
 ```
 
-On Windows both `http://` and `https://` work: requests go through
-WinHTTP, which does TLS, the certificate chain, redirects and chunked
-bodies. On Linux and macOS `http://` works over a socket, with chunked
-bodies and redirects handled the same way. A 4xx or 5xx is a failure
-carrying the code.
+Both `http://` and `https://` work on every system. On Windows requests
+go through WinHTTP, which does TLS, the certificate chain, redirects and
+chunked bodies. On Linux and macOS the client is a socket one, and
+`https://` uses the system's OpenSSL, loaded when the first https url is
+fetched: the certificate is checked against the system's trust store
+and must name the host. A program that never fetches over https does
+not need OpenSSL at all. A 4xx or 5xx is a failure carrying the code.
+
+```
+cannot fetch "https://localhost/": the certificate of localhost was not accepted: hostname mismatch
+```
+
+OpenSSL is on every Linux distribution (`libssl3`). On macOS it is not
+part of the system; install it with `brew install openssl@3`.
 
 Redirects are followed up to ten deep. A 301, 302 or 303 turns a POST
 into a GET with no body, as browsers do; a 307 or 308 repeats the
 request unchanged. The `Location` can be a full url, a path on the same
-host, or a path relative to the current one.
+host, or a path relative to the current one. A redirect from `https://`
+down to `http://` is refused rather than followed.
 
 `http.post(url, body)` and `http.download(url, path)` are there too.
 
@@ -3809,7 +3819,7 @@ checker, so it is only reported once every type error is fixed.
 
 ## Known limitations
 
-Honest list of what v0.54.0 does not do yet.
+Honest list of what v0.55.0 does not do yet.
 
 **The language**
 
@@ -3850,13 +3860,11 @@ Honest list of what v0.54.0 does not do yet.
 
 **The library**
 
-- **HTTPS is Windows-only; `net` is plain TCP with no TLS.** On Windows
-  `http.get` and friends speak HTTPS through WinHTTP, which handles the
-  handshake, redirects and chunked bodies. On Linux and macOS the same
-  calls work over a socket for `http://` urls (Content-Length and chunked
-  bodies and redirects handled); an `https://` url there
-  fails with a reason, because TLS is not written by hand. A socket
-  opened with `net.connect` is unencrypted on every platform.
+- **`net` is plain TCP with no TLS.** `http.get` and friends speak
+  HTTPS everywhere - WinHTTP on Windows, the system OpenSSL on Linux and
+  macOS - but a socket opened with `net.connect` is unencrypted, and
+  the `http` server has no TLS. On macOS HTTPS needs a Homebrew OpenSSL
+  and is untested, since there is no Mac to test on.
 - **SQL is SQLite only**, through the `sqlite` package. No Postgres,
   MySQL or anything over a network.
 - **No `zip`.** It exists on the `veylgo` branch and has not been
@@ -3890,10 +3898,9 @@ Honest list of what v0.54.0 does not do yet.
   and `sound` - works on Linux through X11 and PulseAudio, so a game
   runs the same on both. Still Windows-only: `com`, `proc`, raw native
   calls through `mem.call` / `mem.symbol` (they use the Windows calling
-  convention), static `.lib` archives, `--dll` builds, and HTTPS (the
-  `http` client over TLS, through WinHTTP). TCP sockets (the `net`
-  library), the `http` client over `http://`, and `db` (SQLite) work on
-  all three - Linux and macOS use the system sqlite rather than the
+  convention), static `.lib` archives and `--dll` builds. TCP sockets
+  (the `net` library), the `http` client over `http://` and `https://`,
+  and `db` (SQLite) work on all three - Linux and macOS use the system sqlite rather than the
   packaged DLL. A Linux build that uses a Windows-only call names it and
   stops. A plain `extern fn` on Linux reaches the C functions the Linux
   runtime provides.
