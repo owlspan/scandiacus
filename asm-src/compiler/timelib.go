@@ -75,8 +75,8 @@ func (l *lowerer) timeBuiltin(c *Call, name string) (Reg, bool) {
 		if !arity(1) {
 			return l.junk(), true
 		}
-		l.ccall("Sleep", []Reg{l.intArg(c, 0)}, []vty{vInt},
-			vty{k: kVoid}, false, false)
+		l.blockingCall("Sleep", []Reg{l.intArg(c, 0)}, []vty{vInt},
+			vty{k: kVoid}, false)
 		return l.junk(), true
 	}
 

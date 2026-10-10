@@ -176,7 +176,7 @@ func (l *lowerer) mathBuiltin(c *Call, name string) (Reg, bool) {
 		// This used to take seconds and multiply, so sleep(1) waited a
 		// second here and a millisecond there.
 		ms := l.expr(c.Args[0])
-		l.ccall("Sleep", []Reg{ms}, []vty{vInt}, vty{k: kVoid}, false, false)
+		l.blockingCall("Sleep", []Reg{ms}, []vty{vInt}, vty{k: kVoid}, false)
 		return l.junk(), true
 	}
 

@@ -216,8 +216,8 @@ func (l *lowerer) netListen(port Reg) Reg {
 func (l *lowerer) netAccept(sock Reg) Reg {
 	ret := vty{k: kInt, res: true}
 	sym := l.helperFunc("netaccept", []vty{vInt}, ret, func(args []Reg) {
-		c := l.ccall("accept", []Reg{args[0], l.constant(0), l.constant(0)},
-			[]vty{vInt, vInt, vInt}, vInt, false, false)
+		c := l.blockingCall("accept", []Reg{args[0], l.constant(0), l.constant(0)},
+			[]vty{vInt, vInt, vInt}, vInt, false)
 		l.failIfNegative(c, "accept", ret)
 		l.emit(Instr{Op: OpRet, A: l.resOk(c, ret), Dst: NoReg})
 	})
@@ -250,8 +250,8 @@ func (l *lowerer) netRecv(sock, max Reg) Reg {
 	ret := vty{k: kStr, res: true}
 	sym := l.helperFunc("netrecv", []vty{vInt, vInt}, ret, func(args []Reg) {
 		buf := l.strAlloc(args[1])
-		n := l.ccall("recv", []Reg{args[0], buf, args[1], l.constant(0)},
-			[]vty{vInt, vStr, vInt, vInt}, vInt, true, false)
+		n := l.blockingCall("recv", []Reg{args[0], buf, args[1], l.constant(0)},
+			[]vty{vInt, vStr, vInt, vInt}, vInt, true)
 		l.failIfNegative(n, "recv", ret)
 		// A zero return is the peer closing cleanly, which is an empty
 		// string rather than a failure.
@@ -277,10 +277,10 @@ func (l *lowerer) netSend(sock, data Reg) Reg {
 		at := l.load(sent, vInt)
 		l.emit(Instr{Op: OpJumpNot, A: l.compare(OpLt, at, total), Dst: NoReg, Imm: done})
 
-		n := l.ccall("send",
+		n := l.blockingCall("send",
 			[]Reg{args[0], l.arith(OpAdd, args[1], at),
 				l.arith(OpSub, total, at), l.constant(0)},
-			[]vty{vInt, vInt, vInt, vInt}, vInt, true, false)
+			[]vty{vInt, vInt, vInt, vInt}, vInt, true)
 		l.failIfNegative(n, "send", ret)
 		l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, at, n), Dst: NoReg, Imm: sent})
 		l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
@@ -303,7 +303,7 @@ func (l *lowerer) netConnect(host, port Reg) Reg {
 	sym := l.helperFunc("netconnect", []vty{vStr, vInt}, ret, func(args []Reg) {
 		l.ensureWinsock()
 
-		he := l.ccall("gethostbyname", []Reg{args[0]}, []vty{vStr}, vInt, false, false)
+		he := l.blockingCall("gethostbyname", []Reg{args[0]}, []vty{vStr}, vInt, false)
 		bad := l.newLabel()
 		l.emit(Instr{Op: OpJumpIf, A: l.compare(OpEq, he, l.constant(0)),
 			Dst: NoReg, Imm: bad})
@@ -325,8 +325,8 @@ func (l *lowerer) netConnect(host, port Reg) Reg {
 		l.failIfNegative(s, "socket", ret)
 
 		sa := l.sockaddr(args[1], addr)
-		rc := l.ccall("connect", []Reg{s, sa, l.constant(sockaddrSize)},
-			[]vty{vInt, vInt, vInt}, vInt, true, false)
+		rc := l.blockingCall("connect", []Reg{s, sa, l.constant(sockaddrSize)},
+			[]vty{vInt, vInt, vInt}, vInt, true)
 		l.failIfNegative(rc, "connect", ret)
 		l.emit(Instr{Op: OpRet, A: l.resOk(s, ret), Dst: NoReg})
 

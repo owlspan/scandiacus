@@ -143,6 +143,9 @@ func (l *lowerer) taskRun(xs, f Reg, elem, ret vty, limit Reg, wantResults bool)
 	// One for the batch rather than one per thread: main waits for all
 	// of them before it touches the count again. Atomic, since threads
 	// from thread.spawn may be changing it at the same moment.
+	if !l.gcOff && !lowerForDLL {
+		l.gcSelf()
+	}
 	l.atomicAdd(l.rtSlot(gcTasksSlot), l.constant(1))
 	l.taskSpawn(jobs, handles, from, l.load(toSlot, vInt), entry, perJob)
 	l.taskWait(handles, from, l.load(toSlot, vInt))
@@ -194,9 +197,11 @@ func (l *lowerer) taskWait(handles, from, to Reg) {
 	l.taskLoop(from, to, func(i Reg) {
 		slot := l.arith(OpAdd, handles, l.arith(OpMul, i, l.constant(wordSize)))
 		h := l.field(slot, 0, vInt)
-		l.ccall("WaitForSingleObject", []Reg{h, l.constant(waitForever)},
-			[]vty{vInt, vInt}, vInt, true, false)
-		l.ccall("CloseHandle", []Reg{h}, []vty{vInt}, vInt, true, false)
+		hSlot := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: h, Dst: NoReg, Imm: hSlot})
+		l.blockingCall("WaitForSingleObject", []Reg{h, l.constant(waitForever)},
+			[]vty{vInt, vInt}, vInt, true)
+		l.ccall("CloseHandle", []Reg{l.load(hSlot, vInt)}, []vty{vInt}, vInt, true, false)
 	})
 }
 
@@ -227,9 +232,15 @@ func (l *lowerer) taskLoop(from, to Reg, body func(i Reg)) {
 // zero, so it is a LPTHREAD_START_ROUTINE without anything being said
 // about it anywhere.
 func (l *lowerer) taskEntry(elem, ret vty, hasArg bool) string {
+	l.mod.Threaded = true
 	name := "taskentry_" + taskShape(elem, ret, hasArg)
 	return l.helperFunc(name, []vty{vInt}, vInt, func(args []Reg) {
-		job := args[0]
+		jobSlot := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: args[0], Dst: NoReg, Imm: jobSlot})
+		if !l.gcOff && !lowerForDLL {
+			l.gcSelf()
+		}
+		job := l.load(jobSlot, vInt)
 		clo := l.field(job, jobCloOff, vInt)
 
 		var callArgs []Reg
@@ -240,7 +251,10 @@ func (l *lowerer) taskEntry(elem, ret vty, hasArg bool) string {
 		}
 		r := l.callClosure(clo, callArgs, callTypes, ret)
 		if r != NoReg {
-			l.emit(Instr{Op: OpStoreMem, A: job, B: r, Imm: jobResOff})
+			l.emit(Instr{Op: OpStoreMem, A: l.load(jobSlot, vInt), B: r, Imm: jobResOff})
+		}
+		if !l.gcOff && !lowerForDLL {
+			l.gcThreadDone()
 		}
 		l.emit(Instr{Op: OpRet, A: l.constant(0), Dst: NoReg})
 	})

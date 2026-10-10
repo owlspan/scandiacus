@@ -682,8 +682,12 @@ type Module struct {
 
 	// DLL makes the program a library: an entry point Windows calls on
 	// load instead of one that runs and exits, and an export table.
-	DLL     bool
-	Externs map[string]bool // foreign symbols called directly, declared
+	DLL bool
+	// Threaded is set when the program can start a thread. A collection
+	// then has to stop every thread, so each loop keeps a check it
+	// could otherwise drop; see dropPolls.
+	Threaded bool
+	Externs  map[string]bool // foreign symbols called directly, declared
 	// as .extern at the top of the .s file
 
 	// ExternSigs is the declared signature of each `extern fn`, so the

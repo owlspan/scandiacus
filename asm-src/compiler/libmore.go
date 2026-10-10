@@ -242,8 +242,8 @@ func (l *lowerer) osRun(c *Call) Reg {
 	top := l.newLabel()
 	read := l.newLabel()
 	l.mark(top)
-	got := l.ccall("fgets", []Reg{line, l.constant(lineMax), f},
-		[]vty{vStr, vInt, vInt}, vInt, false, false)
+	got := l.blockingCall("fgets", []Reg{line, l.constant(lineMax), f},
+		[]vty{vStr, vInt, vInt}, vInt, false)
 	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpNe, got, l.constant(0)),
 		Dst: NoReg, Imm: read})
 	l.emit(Instr{Op: OpStore, A: l.concat(l.load(text, vStr), l.copyStr(line)),

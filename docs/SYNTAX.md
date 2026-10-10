@@ -2218,14 +2218,20 @@ channel.
 
 ### Threads and the collector
 
-The collector looks at one stack, the one it runs on, so it never runs
-while any thread besides main is alive - not automatically, and not by
-`mem.collect()`, which then does nothing. Allocation carries on as
-normal, under a lock taken only while other threads are running, so a
-program without threads pays nothing for them. A long-lived thread that
-allocates heavily grows the heap until it finishes; a program that
-needs threads and bounded memory both can say `gc off` and `delete`
-what it is done with.
+The collector runs while threads do. A collection stops every thread,
+reads every thread's stack for what it holds, and lets them all go
+again, so a long-lived thread that allocates heavily is collected like
+anything else. A thread stops at the next statement it starts, or
+straight away if it is waiting - in `thread.join`, `thread.lock`,
+`thread.wait`, a channel, `sleep`, a socket, `input` or an HTTP
+request - so a thread blocked on another never holds a collection up.
+A loop that does nothing but spin, `while atomic.get(flag) == 0 {}`,
+still stops, since in a program with threads every loop checks once a
+time round.
+
+Allocation takes a lock only while other threads are running, and the
+checks a loop would otherwise drop are kept only in a program that
+starts a thread, so a program without threads pays nothing for them.
 
 Nothing checks what a thread touches. Two threads changing the same
 list without a mutex is a race, as in C++.
@@ -3928,9 +3934,10 @@ Honest list of what v0.58.0 does not do yet.
 
 **Memory**
 
-- **Collection pauses while tasks run.** The collector reads only the
-  stack of the thread it runs on, so it waits for a `task` batch to
-  finish rather than miss what another thread holds.
+- **A thread inside a long native call holds a collection up.** A
+  collection waits for every thread to stop. One that is in the middle
+  of an `extern fn` call, or any C function not in the waiting list
+  under Threads and the collector, stops only once that call returns.
 - **A DLL never collects by itself.** Its exports may be called on the
   host's threads, which the collector cannot see. Call `mem.collect()`
   from an export when the host is known to be single-threaded.

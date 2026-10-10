@@ -216,15 +216,16 @@ program, executables average 36% smaller than before the passes.
 
 ## What it does not have
 
-**Collection is statement-grained and single-threaded.** The collector
+**Collection is statement-grained and stops the world.** The collector
 runs by itself, at the start of a statement, once the live heap passes
 a threshold: 4 MB, then twice what survived the last collection. A
 statement boundary is safe because every pointer is in a stack slot or
 a global there - the register allocator never takes one - and the test
 suite runs with `VEYL_GC=eager`, which collects at nearly every
-statement, to hold it to that. It does not run while `task` threads are
-working, since it scans only its own stack, and it does not run in a
-DLL, whose exports the host may call on threads of its own.
+statement, to hold it to that. With threads running it stops all of
+them, each at a statement or while it waits in a blocking call, and
+scans every thread's stack (`gcthreads.go`). It does not run in a DLL,
+whose exports the host may call on threads of its own.
 `VEYL_GC=off` turns it off.
 
 **A string is NUL-terminated bytes**, with no length beside it. So a
@@ -589,9 +590,7 @@ bounds-checked on every access, and the C array is not.
 
 ## What comes next
 
-- **Collection across threads**, so it can run while threads work and
-  inside a DLL - which needs every thread's stack, not only the
-  collector's own.
+- **Collection inside a DLL**, whose exports run on the host's threads.
 - **Unwind tables** (`.pdata`), so native debuggers and Windows' own
   stack walking understand Veyl frames - which would also let a stack
   overflow be reported reliably.

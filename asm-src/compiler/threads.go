@@ -12,28 +12,19 @@ package main
 // instruction. Channel<T>, in prelude_channel.go, is built on those in
 // Veyl.
 //
-// What makes it safe with a garbage collector is one count: how many
-// threads are running besides main, kept in the runtime word task.map
-// already used for the same purpose. While it is not zero:
-//
-//   - Nothing collects. The collector scans one stack, the one it runs
-//     on, so an object only another thread holds would look dead. An
-//     allocation-heavy program with threads that live for its whole run
-//     therefore grows until they finish; a program that wants threads
-//     and bounded memory both says gc off and deletes.
-//   - Every allocation takes a spin lock around putting the object on
-//     the object list and counting it. With no other thread running the
-//     lock is not taken, so a program without threads pays one compare
-//     per allocation for all of this.
-//
+// Collecting while they run is gcthreads.go: every thread registers a
+// record, and a collection stops them all and reads every stack. The
+// count of threads running besides main, the runtime word task.map also
+// uses, is what lets a program without threads skip all of that: while
+// it is zero, allocation takes no lock and a blocking call parks nobody.
 // A thread is counted from just before CreateThread to just after its
-// function returns, so the count cannot be zero while any of its code is
-// running.
+// function returns.
 
 const (
-	// A thread's job: the closure to run. Allocated with malloc rather
-	// than as an object, and freed by the thread once it has read it.
-	threadJobBytes = wordSize
+	// A thread's job: the closure to run, and a word the thread sets
+	// once it has taken the closure. An object, held by the spawner
+	// until then; see thread.spawn.
+	threadJobBytes = 2 * wordSize
 
 	critSectionBytes   = 40 // CRITICAL_SECTION on x64
 	condVarBytes       = 8  // CONDITION_VARIABLE: one pointer, zero to start
@@ -105,24 +96,48 @@ func (l *lowerer) threadBuiltin(c *Call, name string) (Reg, bool) {
 			l.errorAt(c.Args[0], "thread.spawn runs a function that takes nothing, got %s", t)
 			return l.junk(), true
 		}
-		job := l.ccall("malloc", []Reg{l.constant(threadJobBytes)}, []vty{vInt}, vInt, false, false)
+		// The job is an object, so while the spawner holds it the
+		// closure inside cannot be collected. The spawner holds it until
+		// the new thread has registered and taken the closure onto its
+		// own stack, where a collection will find it.
+		job := l.allocObj(l.constant(threadJobBytes), tagPtrs)
 		l.emit(Instr{Op: OpStoreMem, A: job, B: f, Imm: 0})
+		l.emit(Instr{Op: OpStoreMem, A: job, B: l.constant(0), Imm: wordSize})
+		jobSlot := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: job, Dst: NoReg, Imm: jobSlot})
 		entry := l.threadEntry()
 		addr := l.newReg()
 		l.regTy[addr] = vInt
 		l.emit(Instr{Op: OpSymAddr, Dst: addr, A: NoReg, B: NoReg, Sym: fnSym(entry), Comment: entry})
+		if !l.gcOff && !lowerForDLL {
+			l.gcSelf() // known before any thread exists that could stop it
+		}
 		l.atomicAdd(l.rtSlot(gcTasksSlot), l.constant(1))
-		h := l.ccall("CreateThread", []Reg{zero(), zero(), addr, job, zero(), zero()},
+		h := l.ccall("CreateThread", []Reg{zero(), zero(), addr, l.load(jobSlot, vInt), zero(), zero()},
 			[]vty{vInt, vInt, vInt, vInt, vInt, vInt}, vInt, false, false)
-		return h, true
+		hSlot := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: h, Dst: NoReg, Imm: hSlot})
+
+		rec := l.gcEnter()
+		top, started := l.newLabel(), l.newLabel()
+		l.mark(top)
+		flag := l.loadWidth(l.arith(OpAdd, l.load(jobSlot, vInt), l.constant(wordSize)), memI64)
+		l.emit(Instr{Op: OpJumpIf, A: l.compare(OpNe, flag, l.constant(0)), Dst: NoReg, Imm: started})
+		l.yield()
+		l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
+		l.mark(started)
+		l.gcLeave(rec)
+		return l.load(hSlot, vInt), true
 
 	case "thread.join":
 		if !arity(1) {
 			return l.junk(), true
 		}
 		h := l.intArg(c, 0)
-		l.ccall("WaitForSingleObject", []Reg{h, l.constant(waitForever)}, []vty{vInt, vInt}, vInt, true, false)
-		l.ccall("CloseHandle", []Reg{h}, []vty{vInt}, vInt, true, false)
+		hSlot := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: h, Dst: NoReg, Imm: hSlot})
+		l.blockingCall("WaitForSingleObject", []Reg{h, l.constant(waitForever)}, []vty{vInt, vInt}, vInt, true)
+		l.ccall("CloseHandle", []Reg{l.load(hSlot, vInt)}, []vty{vInt}, vInt, true, false)
 		return l.void(), true
 
 	case "thread.id":
@@ -151,11 +166,11 @@ func (l *lowerer) threadBuiltin(c *Call, name string) (Reg, bool) {
 		if !arity(1) {
 			return l.junk(), true
 		}
-		fn := "EnterCriticalSection"
 		if name == "thread.unlock" {
-			fn = "LeaveCriticalSection"
+			l.ccall("LeaveCriticalSection", []Reg{l.intArg(c, 0)}, []vty{vInt}, vVoid, false, false)
+		} else {
+			l.blockingCall("EnterCriticalSection", []Reg{l.intArg(c, 0)}, []vty{vInt}, vVoid, false)
 		}
-		l.ccall(fn, []Reg{l.intArg(c, 0)}, []vty{vInt}, vVoid, false, false)
 		return l.void(), true
 
 	case "thread.cond":
@@ -170,8 +185,8 @@ func (l *lowerer) threadBuiltin(c *Call, name string) (Reg, bool) {
 		if !arity(2) {
 			return l.junk(), true
 		}
-		l.ccall("SleepConditionVariableCS", []Reg{l.intArg(c, 0), l.intArg(c, 1), l.constant(waitForever)},
-			[]vty{vInt, vInt, vInt}, vInt, true, false)
+		l.blockingCall("SleepConditionVariableCS", []Reg{l.intArg(c, 0), l.intArg(c, 1), l.constant(waitForever)},
+			[]vty{vInt, vInt, vInt}, vInt, true)
 		return l.void(), true
 
 	case "thread.notify", "thread.notifyAll":
@@ -233,12 +248,22 @@ func (l *lowerer) threadBuiltin(c *Call, name string) (Reg, bool) {
 // threadEntry is what CreateThread starts: take the closure out of the
 // job, free the job, run the closure, and stop being counted.
 func (l *lowerer) threadEntry() string {
+	l.mod.Threaded = true
 	return l.helperFunc("threadentry", []vty{vInt}, vInt, func(args []Reg) {
-		clo := l.field(args[0], 0, vFuncOf(nil, vVoid))
+		job := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: args[0], Dst: NoReg, Imm: job})
+		if !l.gcOff && !lowerForDLL {
+			l.gcSelf()
+		}
+		clo := l.field(l.load(job, vInt), 0, vFuncOf(nil, vVoid))
 		cloSlot := l.temp(vFuncOf(nil, vVoid))
 		l.emit(Instr{Op: OpStore, A: clo, Dst: NoReg, Imm: cloSlot})
-		l.ccall("free", []Reg{args[0]}, []vty{vInt}, vVoid, false, false)
+		// The closure is on this stack now; the spawner can let go.
+		l.atomicSwap(l.arith(OpAdd, l.load(job, vInt), l.constant(wordSize)), l.constant(1))
 		l.callClosure(l.load(cloSlot, vFuncOf(nil, vVoid)), nil, nil, vVoid)
+		if !l.gcOff && !lowerForDLL {
+			l.gcThreadDone()
+		}
 		l.atomicAdd(l.rtSlot(gcTasksSlot), l.constant(-1))
 		l.emit(Instr{Op: OpRet, A: l.constant(0), Dst: NoReg})
 	})

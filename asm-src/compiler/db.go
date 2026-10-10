@@ -209,7 +209,7 @@ func (l *lowerer) dbRun(conn, sql, args Reg, wantRows bool) Reg {
 			stepTop := l.newLabel()
 			stepDone := l.newLabel()
 			l.mark(stepTop)
-			step := l.ccall("sqlite3_step", []Reg{stmt}, []vty{vInt}, vInt, true, false)
+			step := l.blockingCall("sqlite3_step", []Reg{stmt}, []vty{vInt}, vInt, true)
 			l.emit(Instr{Op: OpJumpNot, A: l.compare(OpEq, step, l.constant(sqliteRow)),
 				Dst: NoReg, Imm: stepDone})
 
