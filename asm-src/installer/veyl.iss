@@ -15,8 +15,8 @@
 #define AppVersion "0.57.0"
 #define AppPublisher "Veyl"
 #define AppExeName "veyl.exe"
-; Has to match editors/vscode/package.json, because the folder name VS
-; Code expects embeds it. build.ps1 checks both against veyl.exe.
+; Has to match editors/vscode/package.json, which is the version VS
+; Code records for the extension. build.ps1 checks both against veyl.exe.
 #define ExtVersion "0.57.0"
 
 [Setup]
@@ -93,18 +93,14 @@ Source: "..\examples\gui\*.vl";   DestDir: "{app}\examples\gui"; Components: doc
 Source: "..\examples\mod\*.vl";   DestDir: "{app}\examples\mod"; Components: docs; Flags: ignoreversion
 Source: "..\examples\ffi\*.vl";   DestDir: "{app}\examples\ffi"; Components: docs; Flags: ignoreversion
 
-; Dropped straight into the extensions folder. VS Code scans that
-; directory at startup, so there is no marketplace step and nothing to
-; sideload by hand.
-;
-; The folder name is not decoration. VS Code expects
-; publisher.name-version, the same shape it gives its own installs. A
-; plain "veyl-lang" is treated as something it did not put there, and
-; the id it derives can end up in the .obsolete file beside the
-; extensions folder - anything named there is ignored outright, with no
-; highlighting and no error to say why.
-Source: "..\..\editors\vscode\*"; \
-    DestDir: "{%USERPROFILE}\.vscode\extensions\veyl.veyl-lang-{#ExtVersion}"; \
+; The VS Code extension goes in beside veyl.exe, and [Run] below has
+; veyl install it with VS Code's own command line. Copying the folder
+; into .vscode\extensions, as this used to, stopped working: VS Code
+; keeps a registry (extensions.json) and does not load a folder that is
+; not listed in it, so highlighting silently vanished for anyone who had
+; any other extension installed. veyl vscode packs the folder as a .vsix
+; and runs code --install-extension, which registers it.
+Source: "..\..\editors\vscode\*"; DestDir: "{app}\editors\vscode"; \
     Components: editors\vscode; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Notepad++ reads every XML in userDefineLangs at startup.
@@ -236,7 +232,22 @@ Root: HKA; Subkey: "Software\Classes\Directory\Background\shell\veylprompt"; Val
 Root: HKA; Subkey: "Software\Classes\Directory\Background\shell\veylprompt\command"; ValueType: string; ValueName: ""; \
     ValueData: "{cmd} /K ""set PATH={app};%PATH% && cd /d ""%V"""""; Tasks: associate
 
+[Run]
+; As the user who ran setup, not the administrator it elevated to, since
+; VS Code's extensions live in that user's profile.
+Filename: "{app}\{#AppExeName}"; Parameters: "vscode"; \
+    StatusMsg: "Installing the Veyl extension into VS Code..."; \
+    Components: editors\vscode; Flags: runhidden runasoriginaluser waituntilterminated
+
+[UninstallRun]
+Filename: "{app}\{#AppExeName}"; Parameters: "vscode --uninstall"; \
+    Components: editors\vscode; Flags: runhidden waituntilterminated; RunOnceId: "VeylVSCode"
+
 [UninstallDelete]
+Type: dirifempty; Name: "{app}\editors\vscode\syntaxes"
+Type: dirifempty; Name: "{app}\editors\vscode\icons"
+Type: dirifempty; Name: "{app}\editors\vscode"
+Type: dirifempty; Name: "{app}\editors"
 Type: dirifempty; Name: "{app}\examples\net"
 Type: dirifempty; Name: "{app}\examples\gui"
 Type: dirifempty; Name: "{app}\examples"

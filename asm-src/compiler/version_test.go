@@ -46,8 +46,8 @@ func TestVersionsAgree(t *testing.T) {
 		t.Errorf("editors/vscode/package.json is %s, the compiler is %s", pkg.Version, Version)
 	}
 
-	if !strings.Contains(read("editors/vscode/README.md"), "veyl.veyl-lang-"+Version) {
-		t.Errorf("editors/vscode/README.md does not install into veyl.veyl-lang-%s", Version)
+	if !strings.Contains(read("editors/vscode/README.md"), "veyl-lang-"+Version+".vsix") {
+		t.Errorf("editors/vscode/README.md does not name veyl-lang-%s.vsix", Version)
 	}
 
 	syntax := read("docs/SYNTAX.md")

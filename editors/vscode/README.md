@@ -11,29 +11,33 @@ component is ticked. The steps below are for doing it by hand.
 
 ## Installing it
 
-There is no marketplace listing. Copy the folder into your extensions
-directory and restart VS Code:
-
-**Windows**
+There is no marketplace listing. veyl installs it through VS Code's own
+command line:
 
 ```
-xcopy /E /I "editors\vscode" "%USERPROFILE%\.vscode\extensions\veyl.veyl-lang-0.57.0"
+veyl vscode editors/vscode
 ```
 
-**macOS and Linux**
+That packs this folder as a `.vsix` and runs `code --install-extension`
+on it. When `code` is not on PATH it says so and leaves the package in
+the temp folder; or write it somewhere yourself and install it from VS
+Code with **Extensions: Install from VSIX...**:
 
 ```
-cp -r editors/vscode ~/.vscode/extensions/veyl.veyl-lang-0.57.0
+veyl vscode --vsix veyl-lang-0.57.0.vsix editors/vscode
 ```
 
-The folder name matters: VS Code expects `publisher.name-version`
-matching `package.json`, and a folder it does not recognise can end up
-ignored with no error to say why. Restart VS Code, open a `.vl` file, and the language
-indicator in the status bar should read **Veyl**.
+Copying the folder into `~/.vscode/extensions` no longer works. VS Code
+keeps a registry, `extensions.json`, and does not load a folder that is
+not in it, which is why highlighting disappeared for anyone with another
+extension installed. `veyl vscode` also removes those old copies.
 
-If it does not, run **Developer: Inspect Editor Tokens and Scopes** from
-the command palette and put the cursor on a keyword. The scope should
-start with `source.veyl`.
+Reload VS Code, open a `.vl` file, and the language indicator in the
+status bar should read **Veyl**. If it does not, run **Developer:
+Inspect Editor Tokens and Scopes** and put the cursor on a keyword; the
+scope should start with `source.veyl`.
+
+`veyl vscode --uninstall` removes it.
 
 ---
 
@@ -46,7 +50,7 @@ adds a final newline on save.
 **Does not:** completion, go-to-definition or inline errors. Those need
 a language server, which does not exist yet.
 
-Reserved-but-unimplemented words - `defer`, `own`, `unsafe` - are
+Reserved-but-unimplemented words - `own` and `unsafe` - are
 highlighted as errors on purpose. The compiler will refuse them, and
 finding that out from the editor beats finding out from a build.
 

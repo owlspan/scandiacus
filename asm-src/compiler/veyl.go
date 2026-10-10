@@ -45,6 +45,9 @@ usage:
                           is the one veyl runs on (or VEYL_TARGET)
   veyl asm   <file.vl>    print the generated assembly
   veyl ir    <file.vl>    print the intermediate representation
+  veyl vscode             install the Veyl extension into VS Code
+                          (--vsix FILE only writes the package,
+                          --uninstall removes it)
   veyl version            print the version
 
 packages:
@@ -101,6 +104,11 @@ func main() {
 	}
 	if cmd == "help" || cmd == "-h" || cmd == "--help" {
 		fmt.Print(usage)
+		return
+	}
+
+	if cmd == "vscode" {
+		vscodeCommand(args[1:])
 		return
 	}
 
