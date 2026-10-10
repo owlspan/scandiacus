@@ -3,6 +3,27 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.61.0
+
+**A language server, and VS Code uses it.** `veyl lsp` speaks the
+Language Server Protocol, and the VS Code extension now starts it, so
+editing a `.vl` file gets:
+
+- errors as you type, the same ones `veyl build` reports;
+- completion of names in scope and the library, and after a dot a
+  struct's fields and methods, a library's functions, or an enum's
+  variants;
+- go to definition (F12), into imported files too;
+- hover, for a variable's type or a function's signature;
+- the outline of the file (Ctrl+Shift+O).
+
+The extension runs the veyl that installed it, so nothing needs to be on
+PATH; the new **Veyl: Path** setting picks another. Any other editor with
+an LSP client can start `veyl lsp` itself.
+
+Tests: TestLanguageServer, and TestVSCodeClient, which runs the
+extension's client under node against a real `veyl lsp`.
+
 ## 0.60.0
 
 **Unwind tables.** Windows executables now carry a `.pdata` section, so
