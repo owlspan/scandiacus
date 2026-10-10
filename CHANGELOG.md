@@ -3,6 +3,23 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.60.0
+
+**Unwind tables.** Windows executables now carry a `.pdata` section, so
+Windows can walk the stack through Veyl functions. A native debugger
+(Visual Studio, WinDbg) shows the whole call stack of a Veyl program
+instead of one frame, a crash dump has a stack, and
+`RtlCaptureStackBackTrace` finds every caller - before, it lost its way
+at the first Veyl function. The debugger shows the calls, not Veyl
+variables or source lines; there are no debug symbols yet.
+
+A function that calls itself without end is reported as
+`crash: stack overflow - probably a function that calls itself without
+end`, now covered by a test.
+
+Tests: TestUnwindTable, tests/unwind.vl, and a stack overflow in
+TestErrorLocations.
+
 ## 0.59.0
 
 **The collector runs while threads do.** Before, nothing was collected
