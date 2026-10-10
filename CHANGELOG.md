@@ -3,6 +3,25 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.56.0
+
+**Undefined names are reported with the type errors.** A misspelled
+variable, function or struct used to be found only after every type
+error was fixed, and an unknown function was reported as "not on the
+assembly backend yet". The checker now reports them itself, in the
+same list, and offers the closest real name when one is a likely slip:
+
+```
+hello.vl:5:7: undefined variable "totl" - did you mean "total"?
+hello.vl:6:7: undefined function "lenn" - did you mean "len"?
+```
+
+A const or var computed from a `let` in the program body now gets the
+sentence explaining why it cannot see it, instead of "a global of type
+unknown".
+
+Test: TestUndefinedNames.
+
 ## 0.55.0
 
 **HTTPS on Linux and macOS.** `http.get`, `http.post` and
