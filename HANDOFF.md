@@ -88,7 +88,7 @@ with `codesign -s -`) and reports which fail, so you can isolate them.
 - Pushing to `veyl` auto-publishes a release when `veyl.go`'s version has
   none yet (see Releases below), so every push to `veyl` must be green.
 - Leave a usable, green, pushed checkpoint each time. Current HEAD is
-  `Version 0.57.0`.
+  `Version 0.61.0`.
 
 ## Releases and CI (read before bumping a version)
 
@@ -153,6 +153,20 @@ tests are marked unix-only to dodge wine flakiness.
   loaded key prints by variant. tests/enummaps.vl.
 - Linux/macOS socket calls now set the last error, so net failures read
   "No connection could be made..." instead of a stale message.
+
+- 0.58.0: `veyl vscode` installs the VS Code extension as a .vsix through
+  `code --install-extension` (vscode.go). Copying the folder into
+  .vscode/extensions stopped working: VS Code ignores folders missing
+  from its extensions.json registry. The installer runs it after setup.
+- 0.59.0: the collector runs while threads do (gcthreads.go): thread
+  records, stop the world at statement checks and around blocking calls
+  (`blockingCall`), scan every held stack. Any new C call that can block
+  should go through blockingCall, or a collection waits for it.
+- 0.60.0: .pdata unwind tables (unwind.go), one shared UNWIND_INFO for
+  the push rbp; mov rbp, rsp frame every function uses.
+- 0.61.0: `veyl lsp` (lsp.go) and the VS Code client
+  (editors/vscode/extension.js, no npm deps; tested by TestVSCodeClient
+  under node with a fake vscode module in editors/vscode/test).
 
 Under wine, tests/com.vl differs in one line (a COM call wine answers
 differently); it was already so before these changes, and CI runs on
