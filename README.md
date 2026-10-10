@@ -319,6 +319,7 @@ veyl run   f.vl    the same thing, spelled out
 veyl build f.vl    write an executable next to the source
 veyl asm   f.vl    print the generated assembly
 veyl ir    f.vl    print the intermediate representation
+veyl vscode        install the VS Code extension (the installer runs it)
 ```
 
 `asm` and `ir` matter more here than `veyl emit` does on the Go
