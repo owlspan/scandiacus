@@ -3,6 +3,25 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.64.0
+
+**Warnings, and `veyl check`.** The compiler now warns about things that
+are allowed but almost always a mistake:
+
+```
+calc.vl:2:5: warning: "spare" is declared but never used
+calc.vl:4:5: warning: this can never run - it comes after a return
+```
+
+A `let` nothing reads is reported (assigning to it does not count),
+unless its name starts with `_`; so is code after a `return`, `break` or
+`continue`. Warnings never stop a build. `veyl build` prints them,
+`veyl run` does not, and the new `veyl check` prints errors and
+warnings without building anything. In VS Code they show as warnings,
+not errors.
+
+Test: TestWarnings.
+
 ## 0.63.0
 
 **`veyl test`.** Tests are written in Veyl, in `test` blocks beside the

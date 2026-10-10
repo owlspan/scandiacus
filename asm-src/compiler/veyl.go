@@ -31,7 +31,7 @@ import (
 	"strings"
 )
 
-const Version = "0.63.0"
+const Version = "0.64.0"
 
 const usage = `veyl ` + Version + ` - the Veyl compiler
 
