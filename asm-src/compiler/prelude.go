@@ -174,6 +174,9 @@ var preludeOf = map[string]string{
 	"csv.write":        "__vy_csvWrite",
 	"csv.read":         "__vy_csvRead",
 	"csv.save":         "__vy_csvSave",
+	"zip.make":         "__vy_zipMake",
+	"zip.list":         "__vy_zipList",
+	"zip.extract":      "__vy_zipExtract",
 	"http.serve":       "__vy_httpServe",
 	"http.get":         "__vy_httpGet",
 	"http.post":        "__vy_httpPost",
@@ -509,6 +512,7 @@ var preludeSource = strings.Join([]string{
 	preludeRe,
 	preludeText,
 	preludePNG,
+	preludeZip,
 	preludeProc,
 	preludeCom,
 }, "\n")

@@ -167,8 +167,9 @@ pipeline:
   `padRight`, and the constants `INF` and `NAN`, with comparisons that
   treat a NaN the way Go does
 
-Missing against the Go backend: `zip`. Everything absent is a compile
-error naming it, never wrong output.
+Nothing is missing against the Go backend any more; `zip` was the last.
+Anything a program asks for that does not exist is a compile error
+naming it, never wrong output.
 
 What the Go backend does not have: `extern fn` and callbacks, raw
 memory and `extern struct`, DLLs, `var` globals, enums, generics, interfaces, and the `\xHH`
@@ -600,4 +601,3 @@ bounds-checked on every access, and the C array is not.
 - **More from the language server**: rename, find references, and
   signature help as you type a call.
 - **Closures as callbacks.**
-- **`zip`**, the last library the Go backend has and this one does not.

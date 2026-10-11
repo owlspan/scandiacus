@@ -2431,6 +2431,37 @@ read one is less useful than handing it over.
 
 ---
 
+### `zip` - archives
+
+| Function | Returns | Description |
+| --- | --- | --- |
+| `zip.make(dest, paths)` | `void!` | write an archive of these files and folders |
+| `zip.list(src)` | `[]str!` | the names inside, without unpacking |
+| `zip.extract(src, dir)` | `int!` | unpack into `dir`, returning how many files |
+
+```veyl
+must(zip.make("backup.zip", ["notes.txt", "src"]))
+print(must(zip.list("backup.zip")))     // [notes.txt, src/, src/main.vl, ...]
+print(must(zip.extract("backup.zip", "restored")))
+```
+
+A folder is added whole, under its own name, so unpacking does not
+recreate your machine's whole tree. Each file is compressed, or stored
+as it is when compressing would not make it smaller, and any zip tool
+reads the result; `zip.extract` reads what any zip tool writes.
+
+**Extraction refuses any entry whose path is absolute or climbs out of
+the destination**, before writing anything, and names it:
+
+```
+archive contains an unsafe path: ../../escaped.txt
+```
+
+An archive that could write outside its own folder could overwrite
+anything you can, so this is a refusal rather than a warning. Not
+supported, each with a sentence saying so: archives or files of 4 GB
+or more (zip64), encrypted entries, and compression other than DEFLATE.
+
 ### `time` - clocks and formatting
 
 Format strings use readable tokens rather than a reference date:
@@ -4029,8 +4060,6 @@ Honest list of what v0.70.0 does not do yet.
   and is untested, since there is no Mac to test on.
 - **SQL is SQLite only**, through the `sqlite` package. No Postgres,
   MySQL or anything over a network.
-- **No `zip`.** It exists on the `veylgo` branch and has not been
-  ported.
 - **The web server handles one request at a time.** Fine for a tool or
   something on your own network, not a production server.
 - **A string is NUL-terminated bytes.** Binary data containing a zero

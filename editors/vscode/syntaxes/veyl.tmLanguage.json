@@ -226,7 +226,7 @@
     },
     "libraries": {
       "comment": "Dotted library paths: os.file.read, http.get, win.rect. Keep in step with the namespaces in asm-src/compiler/library.go.",
-      "match": "\\b(args|bits|bytes|csv|hash|http|json|mem|net|os|rand|re|sound|stats|task|term|time|url|win)\\b((?:\\.[A-Za-z_][A-Za-z0-9_]*)+)",
+      "match": "\\b(args|bits|bytes|csv|hash|http|json|mem|net|os|rand|re|sound|stats|task|term|time|url|win|zip)\\b((?:\\.[A-Za-z_][A-Za-z0-9_]*)+)",
       "captures": {
         "1": {
           "name": "support.class.library.veyl"

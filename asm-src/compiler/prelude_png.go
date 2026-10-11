@@ -131,7 +131,7 @@ fn __vy_pngCodes(src: bytes, st: []int, out: bytes, lc: []int, ls: []int, dc: []
         }
         if sym < 256 {
             if st[3] >= len(out) {
-                return "the image data is longer than its size says"
+                return "the data is longer than its size says"
             }
             __bytePut(out, st[3], sym)
             st[3] += 1
@@ -152,7 +152,7 @@ fn __vy_pngCodes(src: bytes, st: []int, out: bytes, lc: []int, ls: []int, dc: []
                 return "the compressed data refers back past its start"
             }
             if st[3] + length > len(out) {
-                return "the image data is longer than its size says"
+                return "the data is longer than its size says"
             }
             let k = 0
             while k < length {
@@ -171,7 +171,13 @@ fn __vy_pngInflate(src: bytes, out: bytes) -> str {
     if len(src) < 2 || (__byteAt(src, 0) & 15) != 8 {
         return "the image data is not zlib-compressed"
     }
-    let st = [2, 0, 0, 0]
+    return __vy_inflateAt(src, 2, out)
+}
+
+// inflateAt decompresses raw DEFLATE starting at byte at of src: a
+// zlib stream's body, or a zip entry's data.
+fn __vy_inflateAt(src: bytes, at: int, out: bytes) -> str {
+    let st = [at, 0, 0, 0]
     // The length and distance tables of RFC 1951, section 3.2.5, and
     // the order code-length codes come in.
     let t = [
