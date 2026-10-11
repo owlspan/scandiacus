@@ -4042,9 +4042,6 @@ Honest list of what v0.70.0 does not do yet.
 - **`toFloat` and `isFloat` take decimal numbers only.** Go's parser
   also accepts a hexadecimal mantissa with a `p` exponent, like
   `0x1p-2`.
-- **Printing a float rounds through the C library**, which stops at
-  seventeen significant digits, so a value needing sixteen can round
-  the wrong way in the last place.
 
 **Windows and Linux**
 

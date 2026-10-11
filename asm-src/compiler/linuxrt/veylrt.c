@@ -404,6 +404,16 @@ int VYW(_snprintf)(char *dst, size_t size, const char *fmt, ...)
 	return n;
 }
 
+/* UCRT's formatter, which the float printer calls on Windows because
+   msvcrt rounds wrong. The arguments arrive as a va_list already. */
+int VYW(__stdio_common_vsprintf)(unsigned long long options, char *dst, size_t size,
+				 const char *fmt, void *locale, __builtin_ms_va_list ap)
+{
+	(void)options;
+	(void)locale;
+	return snprintf_ms(dst, size, fmt, &ap, 1);
+}
+
 int VYW(snprintf)(char *dst, size_t size, const char *fmt, ...)
 {
 	__builtin_ms_va_list ap;

@@ -81,6 +81,11 @@ var importOverride = func() map[string]string {
 	for _, s := range sqliteSyms {
 		m[s] = "sqlite3.dll"
 	}
+	// Floats are formatted and parsed by the Universal C Runtime, which
+	// every Windows 10 and 11 has: msvcrt rounds some values to the
+	// wrong last digit both ways.
+	m["__stdio_common_vsprintf"] = "ucrtbase.dll"
+	m["strtod"] = "ucrtbase.dll"
 	return m
 }()
 
@@ -116,6 +121,7 @@ func overrideImport(sym, dll string) { importOverride[sym] = dll }
 // in pkg.go, which is what consumes it.
 var knownSystemDLL = map[string]bool{
 	"kernel32.dll": true,
+	"ucrtbase.dll": true,
 	"user32.dll":   true,
 	"gdi32.dll":    true,
 	"shell32.dll":  true,
@@ -165,8 +171,8 @@ const (
 // peOptions is what differs between an executable and a DLL.
 type peOptions struct {
 	dll     bool
-	name    string   // the DLL's file name, as its export table records it
-	exports []Export // what the export table lists
+	name    string     // the DLL's file name, as its export table records it
+	exports []Export   // what the export table lists
 	icon    []icoImage // the executable's icon, from --icon; nil for none
 }
 

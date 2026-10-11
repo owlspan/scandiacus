@@ -235,10 +235,6 @@ file holding a zero byte reads back short where the Go backend reads it
 whole, which is what the `bytes` type is for, and building a string by
 repeated appending is quadratic - push the pieces and `join` them.
 
-**Printing a float rounds through msvcrt**, which stops at seventeen
-significant digits, so a value needing sixteen can round the wrong way.
-The fix is Go's `strconv/decimal.go` in the prelude.
-
 ## Why assembly text and not machine code
 
 Assembly and machine code are one to one. Every decision that is hard -

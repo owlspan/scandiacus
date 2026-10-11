@@ -361,7 +361,7 @@ func (e *Emitter) externs() []string {
 		out = append(out, "_snprintf", "_write", "exit", "fflush")
 	}
 	if e.mod.Helpers["floattostr"] {
-		out = append(out, "malloc", "strlen", "strcpy", "_snprintf", "strtod")
+		out = append(out, "malloc", "strlen", "strcpy", "__stdio_common_vsprintf", "strtod")
 	}
 	if e.mod.Helpers["fmod"] {
 		out = append(out, "fmod")
@@ -1587,12 +1587,13 @@ __vy_floattostr:
 .Lftoa_entry:
     push rbp
     mov rbp, rsp
-    sub rsp, 256
+    sub rsp, 384
     movsd qword ptr [rbp-8], xmm0
     mov dword ptr [rbp-32], r10d
     lea rax, [rbp-104]
     mov qword ptr [rbp-24], rax
     mov dword ptr [rbp-16], 1
+    mov dword ptr [rbp-40], 0
     # Infinities and NaN are spelled out here. msvcrt writes 1.#INF and
     # 1.#QNAN, and the round trip below cannot settle on either, so Go's
     # +Inf, -Inf and NaN are written straight into the buffer: an
@@ -1621,13 +1622,19 @@ __vy_floattostr:
     mov dword ptr [rbp-104], 5136718
     jmp .Lftoa_copy
 .Lftoa_loop:
-    mov rcx, qword ptr [rbp-24]
-    mov edx, 64
-    lea r8, __fmt_g[rip]
     mov r9d, dword ptr [rbp-16]
+    mov qword ptr [rbp-200], r9
     movsd xmm0, qword ptr [rbp-8]
-    movsd qword ptr [rsp+32], xmm0
-    call _snprintf
+    movsd qword ptr [rbp-192], xmm0
+    mov ecx, 2
+    mov rdx, qword ptr [rbp-24]
+    mov r8d, 64
+    lea r9, __fmt_g[rip]
+    xor eax, eax
+    mov qword ptr [rsp+32], rax
+    lea rax, [rbp-200]
+    mov qword ptr [rsp+40], rax
+    call __stdio_common_vsprintf
     # MSVCRT pads the exponent to three digits - "1e+008" where Go and a
     # POSIX libc both write "1e+08" - because this links the legacy
     # msvcrt.dll rather than UCRT. Stripping one redundant leading zero
@@ -1643,6 +1650,11 @@ __vy_floattostr:
     add rax, 1
     jmp .Lftoa_scan
 .Lftoa_strip:
+    movzx ecx, byte ptr [rax+4]
+    cmp ecx, 48
+    jl .Lftoa_stripped
+    cmp ecx, 57
+    jg .Lftoa_stripped
     movzx ecx, byte ptr [rax+2]
     cmp ecx, 48
     jne .Lftoa_stripped
@@ -1678,6 +1690,69 @@ __vy_floattostr:
     cmp eax, 18
     jl .Lftoa_loop
 .Lftoa_found:
+    # A tie: the exact value is the [rbp-16]-digit candidate plus exactly
+    # half a unit in its last place, so two candidates are equally near
+    # and both read back. Go and glibc take the even one; UCRT rounds
+    # up. So the exact digits are written out (thirty past the kept
+    # ones, into [rbp-360]) and when they are a 5 then zeros after an
+    # even last digit, [rbp-40] is set. UCRT's answer then ends in that
+    # digit plus one - never a carry, since it was even - so lowering
+    # the last digit of the finished text gives the even candidate.
+    mov eax, dword ptr [rbp-16]
+    add eax, 29
+    mov qword ptr [rbp-200], rax
+    movsd xmm0, qword ptr [rbp-8]
+    movsd qword ptr [rbp-192], xmm0
+    mov ecx, 2
+    lea rdx, [rbp-360]
+    mov r8d, 96
+    lea r9, __fmt_e[rip]
+    xor eax, eax
+    mov qword ptr [rsp+32], rax
+    lea rax, [rbp-200]
+    mov qword ptr [rsp+40], rax
+    call __stdio_common_vsprintf
+    lea rdx, [rbp-360]
+    movzx ecx, byte ptr [rdx]
+    cmp ecx, 45
+    jne .Ltie_start
+    add rdx, 1
+.Ltie_start:
+    xor r8d, r8d
+    mov r9d, dword ptr [rbp-16]
+    xor r10d, r10d
+.Ltie_next:
+    movzx ecx, byte ptr [rdx]
+    add rdx, 1
+    cmp ecx, 46
+    je .Ltie_next
+    cmp ecx, 48
+    jl .Ltie_end
+    cmp ecx, 57
+    jg .Ltie_end
+    sub ecx, 48
+    cmp r8d, r9d
+    jl .Ltie_kept
+    je .Ltie_half
+    test ecx, ecx
+    jne .Lftoa_notie
+    jmp .Ltie_count
+.Ltie_kept:
+    mov r10d, ecx
+    jmp .Ltie_count
+.Ltie_half:
+    cmp ecx, 5
+    jne .Lftoa_notie
+.Ltie_count:
+    add r8d, 1
+    jmp .Ltie_next
+.Ltie_end:
+    cmp r8d, r9d
+    jle .Lftoa_notie
+    and r10d, 1
+    jne .Lftoa_notie
+    mov dword ptr [rbp-40], 1
+.Lftoa_notie:
     # [rbp-16] now holds the fewest significant digits that read back as
     # the same double, which is what Go means by the shortest form. It is
     # not what decides fixed against exponential, though.
@@ -1690,14 +1765,20 @@ __vy_floattostr:
     #
     # So the exponent is read off an %e rendering and the choice is made
     # here rather than left to the C library.
-    mov rcx, qword ptr [rbp-24]
-    mov edx, 64
-    lea r8, __fmt_e[rip]
     mov r9d, dword ptr [rbp-16]
     sub r9d, 1
+    mov qword ptr [rbp-200], r9
     movsd xmm0, qword ptr [rbp-8]
-    movsd qword ptr [rsp+32], xmm0
-    call _snprintf
+    movsd qword ptr [rbp-192], xmm0
+    mov ecx, 2
+    mov rdx, qword ptr [rbp-24]
+    mov r8d, 64
+    lea r9, __fmt_e[rip]
+    xor eax, eax
+    mov qword ptr [rsp+32], rax
+    lea rax, [rbp-200]
+    mov qword ptr [rsp+40], rax
+    call __stdio_common_vsprintf
     xor r9d, r9d
     mov rdx, qword ptr [rbp-24]
 .Lftoa_seek:
@@ -1745,13 +1826,19 @@ __vy_floattostr:
     jge .Lftoa_haveprec
     mov eax, dword ptr [rbp-16]
 .Lftoa_haveprec:
-    mov rcx, qword ptr [rbp-24]
-    mov edx, 64
-    lea r8, __fmt_g[rip]
     mov r9d, eax
+    mov qword ptr [rbp-200], r9
     movsd xmm0, qword ptr [rbp-8]
-    movsd qword ptr [rsp+32], xmm0
-    call _snprintf
+    movsd qword ptr [rbp-192], xmm0
+    mov ecx, 2
+    mov rdx, qword ptr [rbp-24]
+    mov r8d, 64
+    lea r9, __fmt_g[rip]
+    xor eax, eax
+    mov qword ptr [rsp+32], rax
+    lea rax, [rbp-200]
+    mov qword ptr [rsp+40], rax
+    call __stdio_common_vsprintf
     jmp .Lftoa_copy
 .Lftoa_exponential:
     # The buffer already holds the %e rendering; only msvcrt's three-digit
@@ -1766,6 +1853,11 @@ __vy_floattostr:
     add rax, 1
     jmp .Lftoa_escan
 .Lftoa_estrip:
+    movzx ecx, byte ptr [rax+4]
+    cmp ecx, 48
+    jl .Lftoa_copy
+    cmp ecx, 57
+    jg .Lftoa_copy
     movzx ecx, byte ptr [rax+2]
     cmp ecx, 48
     jne .Lftoa_copy
@@ -1784,6 +1876,30 @@ __vy_floattostr:
     test ecx, ecx
     jne .Lftoa_eshift
 .Lftoa_copy:
+    cmp dword ptr [rbp-40], 0
+    je .Lftoa_copied
+    # The tie: lower the last digit of the mantissa, the one before the
+    # e or the end.
+    mov rax, qword ptr [rbp-24]
+.Lftoa_tend:
+    movzx ecx, byte ptr [rax]
+    test ecx, ecx
+    je .Lftoa_tback
+    cmp ecx, 101
+    je .Lftoa_tback
+    add rax, 1
+    jmp .Lftoa_tend
+.Lftoa_tback:
+    # Only when the C library rounded up, which leaves it odd: glibc
+    # already rounds a tie to even, and its answer stands.
+    sub rax, 1
+    movzx ecx, byte ptr [rax]
+    mov edx, ecx
+    and edx, 1
+    je .Lftoa_copied
+    sub ecx, 1
+    mov byte ptr [rax], cl
+.Lftoa_copied:
     mov rcx, qword ptr [rbp-24]
     call strlen
     mov rcx, rax
