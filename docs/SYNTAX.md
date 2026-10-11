@@ -1905,7 +1905,7 @@ nothing for them to fail at.
 | `os.env.has(n)` | `bool` | whether it is set at all |
 | `os.args()` | `[]str` | command-line arguments |
 | `os.run(cmd, args)` | `str!` | run a program, return its output |
-| `os.name()` `os.arch()` | `str` | the OS and CPU architecture |
+| `os.name()` `os.arch()` | `str` | the system the program was built for - `"windows"`, `"linux"` or `"macos"` - and the CPU architecture |
 | `os.cpus()` `os.pid()` | `int` | processor count, process id |
 | `os.hostname()` | `str` | this machine's name |
 

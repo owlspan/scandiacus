@@ -466,9 +466,9 @@ func (l *lowerer) pathBuiltin(c *Call, name string) (Reg, bool) {
 		return buf, true
 
 	case "os.name":
-		// This compiler emits a Windows PE and nothing else, so the
-		// answer is known at compile time rather than asked for.
-		return l.strLit("windows"), true
+		// A build is for one system, so the answer is known at compile
+		// time rather than asked for: "windows", "linux" or "macos".
+		return l.strLit(target), true
 
 	case "os.arch":
 		return l.strLit("amd64"), true
