@@ -38,6 +38,11 @@ while i < 3 {
     }
 }
 print(f(1))
+fn bump(p: *i32) {
+    *p += 1
+}
+let handed: i32 = 0
+bump(&handed)
 `
 	p := filepath.Join(dir, "w.vl")
 	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {

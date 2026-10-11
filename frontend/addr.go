@@ -28,6 +28,9 @@ func (c *Checker) addrLocal(x *Unary, id *Ident) *Type {
 		c.ErrorAt(x, "'&' needs a variable, and %s is not one", id.Name)
 		return Unknown
 	}
+	// Giving the address away is a use: whatever receives it can read
+	// the variable, which is usually why the variable exists.
+	c.markUsed(id.Name)
 	if t.IsUnknown() {
 		return Unknown
 	}
