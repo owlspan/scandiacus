@@ -3,6 +3,26 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.70.0
+
+**A new logo.** A cube with its front corner carved out, in the
+installer, the file icon for `.vl`, the VS Code extension, the README,
+and now `veyl.exe` itself, which had no icon before. `icons/veyl.svg` is
+the source and every size is drawn from the same shape.
+
+**`veyl build --icon game.ico`** gives a Windows program its own icon:
+the one Explorer, the taskbar and shortcuts show. Every size in the
+`.ico` is kept. A Linux or macOS build says it left the icon out, since
+those executables carry none.
+
+**`veyl build -o path`** writes the executable where it says, making the
+folder if need be. It used to be ignored, and every build landed next
+to its source. Build's options can now come after the file too:
+`veyl build game.vl -o dist/game.exe --icon game.ico`.
+
+**The vulkan package draws indexed meshes**: `vkIndices` and
+`vkDrawIndexed`, so a vertex shared by several triangles is stored once.
+
 ## 0.67.0
 
 **OpenGL and Vulkan on Linux.** The `gl` and `vulkan` packages now run
