@@ -2,7 +2,8 @@
 
 Syntax highlighting for `.vl` files: keywords, types, strings with
 interpolation, the dotted libraries, the bare builtins, and the `?`/`!`
-type markers.
+type markers. Errors as you type, completion, go to definition, and a
+button that runs the file.
 
 The Windows installer puts this in place for you if the VS Code
 component is ticked. The steps below are for doing it by hand.
@@ -60,6 +61,15 @@ Through `veyl lsp`, the language server built into veyl:
   with the comment above its declaration;
 - **the outline** of a file (Ctrl+Shift+O);
 - **Format Document** (Shift+Alt+F), the same layout as `veyl fmt`.
+
+**Running a file.** A `.vl` file gets a run button at the top right of
+the editor, as Python files do, with **Build Veyl Executable** in the
+menu beside it. Ctrl+F5 runs too, and both are on the right-click menu
+of the editor and of `.vl` files in the explorer. Unsaved changes are
+saved first. The program runs in a terminal called Veyl, in the file's
+folder, so it can read input and its output stays there after it ends;
+the next run replaces that terminal. Build writes the `.exe` next to the
+source.
 
 The extension starts the veyl that installed it. To use another, set
 **Veyl: Path** (`veyl.path`) in the settings. If veyl cannot be started

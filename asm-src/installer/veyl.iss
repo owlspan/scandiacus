@@ -108,8 +108,12 @@ Source: "..\..\editors\notepad++\veyl.xml"; \
     DestDir: "{userappdata}\Notepad++\userDefineLangs"; \
     Components: editors\npp; Flags: ignoreversion
 
-; Sublime scans Packages\User.
+; Sublime scans Packages\User. The build file makes Ctrl+B build the
+; open .vl file, and Ctrl+Shift+B offer Run.
 Source: "..\..\editors\sublime\Veyl.sublime-syntax"; \
+    DestDir: "{userappdata}\Sublime Text\Packages\User"; \
+    Components: editors\sublime; Flags: ignoreversion
+Source: "..\..\editors\sublime\Veyl.sublime-build"; \
     DestDir: "{userappdata}\Sublime Text\Packages\User"; \
     Components: editors\sublime; Flags: ignoreversion
 
@@ -122,6 +126,10 @@ Source: "..\..\editors\vim\ftdetect\veyl.vim"; DestDir: "{userdocs}\vimfiles\ftd
 Source: "..\..\editors\vim\syntax\veyl.vim"; DestDir: "{localappdata}\nvim\syntax"; \
     Components: editors\vim; Flags: ignoreversion
 Source: "..\..\editors\vim\ftdetect\veyl.vim"; DestDir: "{localappdata}\nvim\ftdetect"; \
+    Components: editors\vim; Flags: ignoreversion
+Source: "..\..\editors\vim\ftplugin\veyl.vim"; DestDir: "{userdocs}\vimfiles\ftplugin"; \
+    Components: editors\vim; Flags: ignoreversion
+Source: "..\..\editors\vim\ftplugin\veyl.vim"; DestDir: "{localappdata}\nvim\ftplugin"; \
     Components: editors\vim; Flags: ignoreversion
 
 [Icons]

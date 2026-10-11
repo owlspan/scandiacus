@@ -4,13 +4,20 @@
 // node, so its protocol code is tested against a real veyl lsp. It
 // records what the extension registers and what it reports.
 
-const listeners = { open: [], change: [], close: [], config: [] };
+const listeners = { open: [], change: [], close: [], config: [], closeTerminal: [] };
+const commands = {};
+const terminals = [];
 const providers = {};
 const reported = new Map();
 let configPath = '';
 
 class Uri {
-    constructor(s) { this.s = s; }
+    constructor(s) {
+        this.s = s;
+        // file:///C:/x.vl and file:///tmp/x.vl, as the platform writes them.
+        const p = s.replace(/^file:\/\//, '');
+        this.fsPath = /^\/[A-Za-z]:/.test(p) ? p.slice(1).replace(/\//g, '\\') : p;
+    }
     static parse(s) { return new Uri(s); }
     toString() { return this.s; }
 }
@@ -38,7 +45,21 @@ const docs = [];
 module.exports = {
     Uri, Position, Range, Location, TextEdit, Diagnostic, MarkdownString, Hover, CompletionItem, DocumentSymbol,
     DiagnosticSeverity: { Error: 0, Warning: 1 },
-    window: { showWarningMessage(msg) { module.exports._warnings.push(msg); } },
+    window: {
+        activeTextEditor: undefined,
+        showWarningMessage(msg) { module.exports._warnings.push(msg); },
+        createTerminal(options) {
+            const t = { options, shown: false, disposed: false };
+            t.show = () => { t.shown = true; };
+            t.dispose = () => { t.disposed = true; };
+            terminals.push(t);
+            return t;
+        },
+        onDidCloseTerminal(f) { listeners.closeTerminal.push(f); return { dispose() {} }; },
+    },
+    commands: {
+        registerCommand(name, f) { commands[name] = f; return { dispose() {} }; },
+    },
     workspace: {
         textDocuments: docs,
         getConfiguration() { return { get() { return configPath; } }; },
@@ -64,6 +85,8 @@ module.exports = {
 
     // For the test.
     _warnings: [],
+    _commands: commands,
+    _terminals: terminals,
     _providers: providers,
     _reported: reported,
     _setPath(p) { configPath = p; },

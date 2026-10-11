@@ -3834,7 +3834,7 @@ defer own unsafe
 | `veyl test f.vl` | run the file's `test` blocks (a folder runs every file with tests; `--run text` only matching names; `--bench` the `bench` blocks); see [Testing](#testing) |
 | `veyl fmt f.vl` | lay a file out the standard way: 4-space indents, one space around operators, one blank line at most (a folder formats every `.vl` in it; `--check` changes nothing and fails if anything would) |
 | `veyl lsp` | the language server an editor starts, on stdin and stdout |
-| `veyl vscode` | install the VS Code extension: highlighting, errors as you type, completion, go to definition, hover |
+| `veyl vscode` | install the VS Code extension: highlighting, errors as you type, completion, go to definition, hover, and a button that runs the file |
 | `veyl version` | print the version |
 | `veyl f.vl` | same as `run` |
 

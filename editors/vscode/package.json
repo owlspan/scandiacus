@@ -1,7 +1,7 @@
 {
   "name": "veyl-lang",
   "displayName": "Veyl",
-  "description": "Highlighting, errors as you type, completion and go to definition for the Veyl programming language",
+  "description": "Highlighting, errors as you type, completion, go to definition, and a button to run or build the file, for the Veyl programming language",
   "version": "0.66.0",
   "publisher": "veyl",
   "license": "MIT",
@@ -13,7 +13,9 @@
   ],
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:veyl"
+    "onLanguage:veyl",
+    "onCommand:veyl.run",
+    "onCommand:veyl.build"
   ],
   "contributes": {
     "languages": [
@@ -54,10 +56,79 @@
         "veyl.path": {
           "type": "string",
           "default": "",
-          "description": "The veyl executable that runs the language server. Empty means veyl on PATH."
+          "description": "The veyl executable used for the language server and the run and build buttons. Empty means veyl on PATH."
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "veyl.run",
+        "title": "Run Veyl File",
+        "category": "Veyl",
+        "icon": "$(play)"
+      },
+      {
+        "command": "veyl.build",
+        "title": "Build Veyl Executable",
+        "category": "Veyl",
+        "icon": "$(package)"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "veyl.run",
+          "when": "resourceLangId == veyl",
+          "group": "navigation@0"
+        },
+        {
+          "command": "veyl.build",
+          "when": "resourceLangId == veyl",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "veyl.run",
+          "when": "resourceLangId == veyl",
+          "group": "veyl@0"
+        },
+        {
+          "command": "veyl.build",
+          "when": "resourceLangId == veyl",
+          "group": "veyl@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "veyl.run",
+          "when": "resourceLangId == veyl",
+          "group": "veyl@0"
+        },
+        {
+          "command": "veyl.build",
+          "when": "resourceLangId == veyl",
+          "group": "veyl@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "veyl.run",
+          "when": "editorLangId == veyl"
+        },
+        {
+          "command": "veyl.build",
+          "when": "editorLangId == veyl"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "veyl.run",
+        "key": "ctrl+f5",
+        "when": "editorLangId == veyl"
+      }
+    ]
   },
   "icon": "icons/veyl.png"
 }

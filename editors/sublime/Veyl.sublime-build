@@ -1,0 +1,12 @@
+{
+    "selector": "source.veyl",
+    "cmd": ["veyl", "build", "$file"],
+    "working_dir": "$file_path",
+    "file_regex": "^(..[^:]*):([0-9]+):([0-9]+): (.*)$",
+    "variants": [
+        {
+            "name": "Run",
+            "cmd": ["veyl", "run", "$file"]
+        }
+    ]
+}

@@ -10,9 +10,13 @@
 //
 // If veyl cannot be started (not on PATH, or veyl.path is wrong) the
 // highlighting still works; a message says what to fix.
+//
+// It also puts a run button, with build beside it in its menu, on the
+// title bar of a .vl file, the way the Python extension does.
 
 const vscode = require('vscode');
 const cp = require('child_process');
+const path = require('path');
 
 class Server {
     constructor(command, onNotify, onExit) {
@@ -180,9 +184,52 @@ function activate(context) {
         }
     }
 
+    // The run and build buttons. Each one starts a terminal whose process
+    // is veyl itself rather than a shell, so it works the same whichever
+    // shell the user has, the path needs no quoting, and a program that
+    // reads input gets the terminal's. The previous run's terminal is
+    // closed first, so there is one Veyl terminal rather than a pile.
+    let runTerminal = null;
+
+    async function runVeyl(verb, uri) {
+        let target = uri && uri.fsPath ? uri : null;
+        const editor = vscode.window.activeTextEditor;
+        if (!target && editor) {
+            target = editor.document.uri;
+        }
+        if (!target || !target.fsPath) {
+            vscode.window.showWarningMessage('Veyl: open a .vl file to ' + verb + ' it.');
+            return null;
+        }
+        // Run what is on screen, not what was last saved.
+        const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === target.toString());
+        if (doc && doc.isDirty) {
+            await doc.save();
+        }
+        if (runTerminal) {
+            runTerminal.dispose();
+        }
+        runTerminal = vscode.window.createTerminal({
+            name: 'Veyl',
+            shellPath: vscode.workspace.getConfiguration('veyl').get('path') || 'veyl',
+            shellArgs: [verb, target.fsPath],
+            cwd: path.dirname(target.fsPath),
+        });
+        runTerminal.show();
+        return runTerminal;
+    }
+
     start();
 
     context.subscriptions.push(
+        vscode.commands.registerCommand('veyl.run', (uri) => runVeyl('run', uri)),
+        vscode.commands.registerCommand('veyl.build', (uri) => runVeyl('build', uri)),
+        vscode.window.onDidCloseTerminal((t) => {
+            if (t === runTerminal) {
+                runTerminal = null;
+            }
+        }),
+
         vscode.workspace.onDidOpenTextDocument((doc) => open(doc)),
         vscode.workspace.onDidChangeTextDocument((e) => {
             const doc = e.document;
