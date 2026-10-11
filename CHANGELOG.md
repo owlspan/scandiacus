@@ -21,8 +21,11 @@ while win.poll(w) {
 }
 ```
 
-`veyl get gl` installs it. Windows only so far; off Windows the handle
-is the runtime's own window record.
+`veyl get gl` installs it, and `veyl get vulkan` the same for Vulkan:
+a swapchain with vsync, depth, pipelines from SPIR-V and push
+constants, with every Vulkan function also callable directly. Both
+are Windows only so far; off Windows the handle is the runtime's own
+window record.
 
 **Run from the editor.** VS Code shows a run button on a `.vl` file,
 as it does for Python, with Build in its menu and Ctrl+F5 for Run. The

@@ -3872,6 +3872,7 @@ every install carrying three megabytes of database.
 | Package | What it is |
 | --- | --- |
 | `dotenv` | `.env` files: quoting, `export` prefixes, typed reads |
+| `gl` | OpenGL on a [`win`](#win---windows-drawing-and-input) window: context, shaders, buffers, textures, matrices |
 | `ini` | `[sections]`, `key = value`, comments, stable round trip |
 | `jwt` | JSON Web Tokens, HS256, signing and verifying |
 | `querybuilder` | Building SQL without pasting values into it |
@@ -3879,6 +3880,7 @@ every install carrying three megabytes of database.
 | `toml` | TOML, flattened to dotted keys, typed reads |
 | `totp` | TOTP and HOTP, the codes an authenticator app shows |
 | `validator` | Checking data, collecting every problem rather than the first |
+| `vulkan` | Vulkan on a `win` window: swapchain, depth, pipelines from SPIR-V, push constants |
 
 Each one documents itself at the top of its `.vl` file, including what
 it deliberately does not do. `toml`, for instance, refuses dates,
