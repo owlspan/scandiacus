@@ -40,6 +40,10 @@ usage:
   veyl build <file.vl>    compile to an executable next to the source
   veyl build --dll <file.vl>
                           compile to a DLL; export fn marks what it exports
+  veyl build <file.vl> -o <path>
+                          write the executable somewhere else
+  veyl build <file.vl> --icon <file.ico>
+                          give a Windows executable its icon
   veyl run --linux <file.vl>, veyl build --windows <file.vl>
                           pick the system the program is for; the default
                           is the one veyl runs on (or VEYL_TARGET)
@@ -215,9 +219,40 @@ func main() {
 	// instead of a program; `--linux` and `--windows` pick the system the
 	// output runs on (the default is the one veyl itself is running on,
 	// or VEYL_TARGET when set).
+	// For build, options may come after the file too - `veyl build
+	// game.vl -o game.exe` - since nothing follows a build's file the
+	// way a program's arguments follow run's. Move the file to the end
+	// so the loop below sees every option first.
+	if cmd == "build" {
+		for i := 1; i < len(args); i++ {
+			if strings.HasSuffix(args[i], ".vl") {
+				file := args[i]
+				args = append(append(args[:i:i], args[i+1:]...), file)
+				break
+			}
+		}
+	}
+
 	dll := false
-	for len(args) > 1 && strings.HasPrefix(args[1], "--") {
+	outPath, iconPath := "", ""
+	// value takes an option's value, written --opt=v or --opt v.
+	value := func(opt, name string) string {
+		if v, ok := strings.CutPrefix(opt, name+"="); ok {
+			return v
+		}
+		if len(args) < 3 {
+			fail("%s needs a value", name)
+		}
+		v := args[2]
+		args = append(args[:2], args[3:]...)
+		return v
+	}
+	for len(args) > 1 && strings.HasPrefix(args[1], "-") && !strings.HasSuffix(args[1], ".vl") {
 		switch opt := args[1]; {
+		case cmd == "build" && (opt == "-o" || opt == "--out" || strings.HasPrefix(opt, "--out=")):
+			outPath = value(opt, "--out")
+		case cmd == "build" && (opt == "--icon" || strings.HasPrefix(opt, "--icon=")):
+			iconPath = value(opt, "--icon")
 		case opt == "--dll" && cmd == "build":
 			dll = true
 		case opt == "--linux" || opt == "--target=linux":
@@ -260,6 +295,27 @@ func main() {
 		if dll {
 			out = strings.TrimSuffix(path, filepath.Ext(path)) + ".dll"
 			mod.DLL = true
+		}
+		if outPath != "" {
+			if out, err = filepath.Abs(outPath); err != nil {
+				fail("%v", err)
+			}
+			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+				fail("%v", err)
+			}
+		}
+		if iconPath != "" {
+			if targetLinux() || targetMac() {
+				fmt.Fprintf(os.Stderr, "veyl: --icon left out: a %s executable carries no icon\n", target)
+			} else {
+				raw, err := os.ReadFile(iconPath)
+				if err != nil {
+					fail("cannot read the icon: %v", err)
+				}
+				if buildIcon, err = parseICO(raw); err != nil {
+					fail("%s: %v", iconPath, err)
+				}
+			}
 		}
 		writeExecutable(mod, out, filepath.Dir(path))
 		fmt.Printf("wrote %s\n", out)
@@ -485,6 +541,9 @@ func writeExecutable(mod *Module, out, root string) {
 	copyDLLsBeside(out, packageDLLs(root))
 }
 
+// buildIcon is the icon --icon names, put in the next executable built.
+var buildIcon []icoImage
+
 func buildExe(mod *Module, out, root string) {
 	asmText := Emit(mod)
 	if !envOff("VEYL_NOPEEP") && !envOff("VEYL_NOOPT") {
@@ -505,7 +564,7 @@ func buildExe(mod *Module, out, root string) {
 		if err := linkStatic(obj, root, staticImports); err != nil {
 			fail("%v", err)
 		}
-		opt := peOptions{dll: mod.DLL, name: filepath.Base(out), exports: mod.Exports}
+		opt := peOptions{dll: mod.DLL, name: filepath.Base(out), exports: mod.Exports, icon: buildIcon}
 		if err := writePE(obj, out, opt); err != nil {
 			fail("the executable could not be written. This is a compiler "+
 				"bug, not a mistake in your program.\n%v", err)

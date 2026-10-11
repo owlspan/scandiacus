@@ -167,6 +167,7 @@ type peOptions struct {
 	dll     bool
 	name    string   // the DLL's file name, as its export table records it
 	exports []Export // what the export table lists
+	icon    []icoImage // the executable's icon, from --icon; nil for none
 }
 
 func writePE(obj *object, out string, opt peOptions) error {
@@ -230,6 +231,13 @@ func writePE(obj *object, out string, opt peOptions) error {
 	if len(obj.data) > 0 {
 		dataRVA = next
 		next = alignUp(next+len(obj.data), sectionAlignment)
+	}
+	var rsrc []byte
+	rsrcRVA := 0
+	if len(opt.icon) > 0 {
+		rsrcRVA = next
+		rsrc = buildResources(opt.icon, rsrcRVA)
+		next = alignUp(next+len(rsrc), sectionAlignment)
 	}
 	bssRVA := next
 
@@ -337,6 +345,11 @@ func writePE(obj *object, out string, opt peOptions) error {
 		sections = append(sections,
 			peSection{".data", dataRVA, len(obj.data), obj.data, scnData | scnRead | scnWrite})
 	}
+	if len(rsrc) > 0 {
+		sections = append(sections,
+			peSection{".rsrc", rsrcRVA, len(rsrc), rsrc, scnData | scnRead})
+		img.resourceRVA, img.resourceSize = rsrcRVA, len(rsrc)
+	}
 	if obj.bssLen > 0 {
 		sections = append(sections,
 			peSection{".bss", bssRVA, obj.bssLen, nil, scnBSS | scnRead | scnWrite})
@@ -354,6 +367,8 @@ type imageInfo struct {
 	relocRVA, relocSize   int
 	exceptionRVA          int // the RUNTIME_FUNCTION table in .pdata
 	exceptionSize         int
+	resourceRVA           int
+	resourceSize          int
 	dll                   bool
 }
 
@@ -540,6 +555,8 @@ func writeImage(out string, sections []peSection, img imageInfo) error {
 	binary.LittleEndian.PutUint32(buf[dirs+0*8+4:], uint32(img.exportSize))
 	binary.LittleEndian.PutUint32(buf[dirs+1*8+0:], uint32(img.importRVA))
 	binary.LittleEndian.PutUint32(buf[dirs+1*8+4:], uint32(img.importSize))
+	binary.LittleEndian.PutUint32(buf[dirs+2*8+0:], uint32(img.resourceRVA))
+	binary.LittleEndian.PutUint32(buf[dirs+2*8+4:], uint32(img.resourceSize))
 	binary.LittleEndian.PutUint32(buf[dirs+3*8+0:], uint32(img.exceptionRVA))
 	binary.LittleEndian.PutUint32(buf[dirs+3*8+4:], uint32(img.exceptionSize))
 	binary.LittleEndian.PutUint32(buf[dirs+5*8+0:], uint32(img.relocRVA))

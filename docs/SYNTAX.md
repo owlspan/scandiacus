@@ -3845,6 +3845,8 @@ defer own unsafe
 | `veyl run f.vl` | compile and run |
 | `veyl build f.vl` | write `f.exe` next to the source |
 | `veyl build --dll f.vl` | write `f.dll`; see [Building a DLL](#building-a-dll) |
+| `veyl build f.vl -o path` | write the executable at `path` instead, making its folder if need be (`--out=path` too) |
+| `veyl build f.vl --icon game.ico` | give a Windows executable the icon Explorer, the taskbar and shortcuts show; every size in the `.ico` is kept. A Linux or macOS build says it left the icon out, since those executables carry none |
 | `veyl asm f.vl` | print the generated assembly |
 | `veyl ir f.vl` | print the intermediate representation |
 | `veyl doc f.vl` | a reference of the file's declarations with the comments above them, as Markdown; `-o api.md` writes it to a file, `-o api.html` as a web page (a file that marks anything `pub` documents only that) |
