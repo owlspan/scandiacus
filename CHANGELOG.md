@@ -3,6 +3,33 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.67.0
+
+**OpenGL and Vulkan on Linux.** The `gl` and `vulkan` packages now run
+on Linux as well as Windows, from the same source: `gl` makes a GLX
+context on the win window, `vulkan` an Xlib surface. Checked under Xvfb
+on Mesa's software renderers, where both read back the same pixels the
+Windows builds do on a real GPU. What made it possible:
+
+- **`mem.call` off Windows.** It used to call with the Windows
+  convention everywhere; on Linux and macOS the build now generates a
+  small C bridge for each shape of call, so `mem.symbol` and `mem.call`
+  reach any shared library.
+- **`win.display(w)`**, the X11 `Display*` the window is on (the
+  `HINSTANCE` on Windows), and **`win.handle(w)`** now the real X11
+  `Window` on Linux and `NSWindow` on macOS. The runtime's emulated
+  user32 calls accept either.
+- **`from "opengl32"` and `from "vulkan-1"`** name `libGL.so.1` and
+  `libvulkan.so.1` on Linux, opened at the first call, so nothing needs
+  installing until a program uses them.
+- **Windows-only externs in packages.** A package may declare a
+  function from `user32`, `gdi32` and the other Windows libraries and
+  build on Linux; calling it there stops the program with a sentence.
+  The program's own file still gets a build error.
+
+**`os.name()` was always `"windows"`.** It now says what the program
+was built for: `"windows"`, `"linux"` or `"macos"`.
+
 ## 0.66.0
 
 **`win.handle(w)`.** The window's `HWND`, so code outside the compiler
