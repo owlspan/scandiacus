@@ -24,6 +24,12 @@ while win.poll(w) {
 `veyl get gl` installs it. Windows only so far; off Windows the handle
 is the runtime's own window record.
 
+**Run from the editor.** VS Code shows a run button on a `.vl` file,
+as it does for Python, with Build in its menu and Ctrl+F5 for Run. The
+program runs in a terminal called Veyl in the file's folder. Sublime
+gets a build system (Ctrl+B builds, Run as a variant) and Vim an
+ftplugin (`:make`, F5 to run).
+
 **Warnings.** Taking a variable's address with `&` now counts as using
 it, so `let id: u32 = 0` passed as `&id` to a native call no longer
 warns that `id` is never used.
