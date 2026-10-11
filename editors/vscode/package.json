@@ -30,8 +30,8 @@
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./icons/veyl.png",
-          "dark": "./icons/veyl.png"
+          "light": "./icons/veyl-file.png",
+          "dark": "./icons/veyl-file.png"
         }
       }
     ],

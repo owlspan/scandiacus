@@ -1,3 +1,5 @@
+<img src="icons/veyl.svg" width="96" alt="Veyl">
+
 # veyl - the Veyl compiler
 
 Veyl compiled to x86-64, with no Go anywhere.
