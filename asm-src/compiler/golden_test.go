@@ -106,7 +106,7 @@ func unixOnlyProgram(name string) bool {
 func windowsOnlyProgram(name string) bool {
 	switch name {
 	case "com.vl", "native.vl", "nativecall.vl", "proc.vl", "proc_list.vl",
-		"staticlib.vl", "staticdll.vl", "unwind.vl":
+		"staticlib.vl", "staticdll.vl", "unwind.vl", "winhandle.vl":
 		return true
 	}
 	return false

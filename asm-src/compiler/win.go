@@ -247,6 +247,13 @@ func (l *lowerer) winBuiltin(c *Call, name string) (Reg, bool) {
 			return l.junk(), true
 		}
 		return l.field(l.expr(c.Args[0]), winHeightAt, vInt), true
+	case "win.handle":
+		// The HWND, for code that attaches something of its own to the
+		// window: an OpenGL context, a Vulkan surface, a child control.
+		if !arity(1) {
+			return l.junk(), true
+		}
+		return l.field(l.expr(c.Args[0]), winHwndAt, vInt), true
 
 	case "win.mouseDown":
 		if !arity(1) {

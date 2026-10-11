@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.65.0** - the language as currently implemented.
+**Version 0.66.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -3596,6 +3596,7 @@ changing the numbers - there is nothing to update or lay out again.
 | `win.width(w)` `win.height(w)` | the drawing area, in pixels |
 | `win.title(w, s)` | change the title bar |
 | `win.resizable(w, on)` | add or remove the drag border |
+| `win.handle(w)` | the native window, for attaching an OpenGL context or a Vulkan surface: an `HWND` on Windows; on Linux and macOS the runtime's own window record for now, which nothing outside Veyl can use |
 
 **Windows open at a fixed size.** No drag border, no maximise button.
 That is almost always what a game wants, and it matches the back buffer
@@ -3957,7 +3958,7 @@ hello.vl:6:7: undefined function "lenn" - did you mean "len"?
 
 ## Known limitations
 
-Honest list of what v0.65.0 does not do yet.
+Honest list of what v0.66.0 does not do yet.
 
 **The language**
 

@@ -253,6 +253,7 @@ var sigs = map[string]front.Signature{
 	"win.clicked":   {Params: []*Type{Int}, Ret: Bool},
 	"win.key":       {Params: []*Type{Int, Int}, Ret: Bool},
 	"win.resizable": {Params: []*Type{Int, Bool}, Ret: Void},
+	"win.handle":    {Params: []*Type{Int}, Ret: Int},
 
 	// Canvases, images, text measurement and sound; see winmedia.go.
 	"win.canvas": {Params: []*Type{Int, Int}, Ret: Int},
