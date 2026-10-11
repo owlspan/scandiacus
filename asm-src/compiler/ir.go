@@ -756,6 +756,11 @@ type externSig struct {
 	sym      string
 	dll      string
 	static   bool // dll names a static library (.lib/.a/.o), linked at build time
+	// imported is set when the declaration is in an imported file, not
+	// the program itself. Off Windows, an imported extern into a
+	// Windows-only DLL becomes a stub rather than a build error, so a
+	// package can carry a Windows path beside its Linux one.
+	imported bool
 }
 
 // collectExtern records one extern declaration. The checker has already
@@ -771,7 +776,8 @@ type externSig struct {
 // char* to be copied; and `-> float` arrives in xmm0, untouched by all
 // of this.
 func (l *lowerer) collectExtern(fd *FnDecl) {
-	es := externSig{sym: fd.Name, dll: fd.DLL, variadic: fd.Variadic}
+	es := externSig{sym: fd.Name, dll: fd.DLL, variadic: fd.Variadic,
+		imported: fd.File != "" && !samePath(fd.File, l.mainFile)}
 	for _, pa := range fd.Params {
 		t, good := typeOfName(pa.Type)
 		// A function is a callback: the address of a stub that makes
@@ -848,10 +854,11 @@ func scalarVty(t vty) bool {
 // ---- lowering ----
 
 type lowerer struct {
-	mod  *Module
-	fn   *Func
-	file string
-	errs []string
+	mod      *Module
+	fn       *Func
+	file     string
+	mainFile string // Program.MainFile: what was built, not imported
+	errs     []string
 
 	// Scopes, innermost last. A block introduces one, so an inner name
 	// can shadow an outer one and stops existing at the closing brace.
@@ -977,6 +984,7 @@ func Lower(p *Program, file string) (*Module, []string) {
 	l := &lowerer{
 		mod:       &Module{Helpers: map[string]bool{}, Externs: map[string]bool{}},
 		file:      file,
+		mainFile:  p.MainFile,
 		sigs:      map[string]sig{},
 		externFns: map[string]externSig{},
 		globals:   map[string]int64{},

@@ -74,6 +74,24 @@ func (l *lowerer) rawMemBuiltin(c *Call, name string) (Reg, bool) {
 		if name == "mem.callF" {
 			ret = vFloat
 		}
+		if targetLinux() || targetMac() {
+			// The code at the address uses the system convention, not
+			// the Windows one this code calls with. A thunk generated
+			// for this shape of call bridges it (callThunk in ffi.go).
+			shape := "vycall_I_"
+			if ret.k == kFloat {
+				shape = "vycall_F_"
+			}
+			for _, t := range types {
+				if t.k == kFloat {
+					shape += "f"
+				} else {
+					shape += "i"
+				}
+			}
+			return l.ccall(shape, append([]Reg{target}, args...), append([]vty{vInt}, types...),
+				ret, false, false), true
+		}
 		return l.callAddr(target, args, types, ret, false, name), true
 
 	case "com.call", "com.call64", "com.callF":

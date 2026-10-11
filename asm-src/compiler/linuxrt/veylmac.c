@@ -162,6 +162,20 @@ typedef struct window {
 
 static window *g_windows[MAX_WINDOWS];
 static int g_nwin;
+
+
+/* The window a Win32-style call was handed: the runtime's own record,
+   or the NSWindow win.handle gives programs. */
+static window *as_window(void *h)
+{
+	for (int i = 0; i < g_nwin; i++)
+		if (g_windows[i] == h)
+			return h;
+	for (int i = 0; i < g_nwin; i++)
+		if (g_windows[i] && (void *)g_windows[i]->nswin == h)
+			return g_windows[i];
+	return NULL;
+}
 static unsigned char g_async[256];
 static int g_cursorCount;
 static id g_app; /* NSApplication */
@@ -258,12 +272,17 @@ MS void *__vyw_LoadCursorA(void *inst, int id_) { (void)inst; (void)id_; return 
 MS int __vyw_ShowWindow(void *h, int cmd) { (void)h; (void)cmd; return 1; }
 MS int __vyw_UpdateWindow(void *h) { (void)h; return 1; }
 MS int __vyw_AdjustWindowRect(i32 *r, u32 style, int menu) { (void)r; (void)style; (void)menu; return 1; }
-MS void *__vyw_GetDC(void *h) { window *w = h; return w ? w->dc : NULL; }
+MS void *__vyw_GetDC(void *h) { window *w = as_window(h); return w ? w->dc : NULL; }
+
+/* win.handle and win.display: the NSWindow, and no display, which
+   Cocoa does not have. */
+MS void *__vyw_VeylNativeWindow(void *h) { window *w = h; return w ? (void *)w->nswin : NULL; }
+MS void *__vyw_VeylNativeDisplay(void *h) { (void)h; return NULL; }
 MS int __vyw_ReleaseDC(void *h, void *dc) { (void)h; (void)dc; return 1; }
 
 MS int __vyw_DestroyWindow(void *h)
 {
-	window *w = h;
+	window *w = as_window(h);
 	if (!w || w->destroyed)
 		return 0;
 	w->destroyed = 1;
@@ -274,7 +293,7 @@ MS int __vyw_DestroyWindow(void *h)
 
 MS int __vyw_IsWindow(void *h)
 {
-	window *w = h;
+	window *w = as_window(h);
 	if (!w)
 		return 0;
 	for (int i = 0; i < g_nwin; i++)
@@ -285,7 +304,7 @@ MS int __vyw_IsWindow(void *h)
 
 MS int __vyw_GetClientRect(void *h, i32 *rect)
 {
-	window *w = h;
+	window *w = as_window(h);
 	if (!rect)
 		return 0;
 	rect[0] = 0;
@@ -297,7 +316,7 @@ MS int __vyw_GetClientRect(void *h, i32 *rect)
 
 MS int __vyw_SetWindowTextA(void *h, const char *t)
 {
-	window *w = h;
+	window *w = as_window(h);
 	if (w && w->nswin && t) {
 		snprintf(w->title, sizeof w->title, "%s", t);
 		sendP(w->nswin, "setTitle:", nsstr(t));
@@ -489,10 +508,10 @@ MS void *__vyw_FindWindowA(const char *clsName, const char *title)
 	return NULL;
 }
 
-MS long __vyw_GetWindowLongPtrA(void *h, int idx) { window *w = h; (void)idx; return w ? w->style : 0; }
+MS long __vyw_GetWindowLongPtrA(void *h, int idx) { window *w = as_window(h); (void)idx; return w ? w->style : 0; }
 MS long __vyw_SetWindowLongPtrA(void *h, int idx, long v)
 {
-	window *w = h;
+	window *w = as_window(h);
 	(void)idx;
 	if (!w)
 		return 0;
@@ -507,7 +526,7 @@ MS int __vyw_SetWindowPos(void *h, void *after, int x, int y, int cx, int cy, u3
 }
 MS int __vyw_GetWindowRect(void *h, i32 *rect)
 {
-	window *w = h;
+	window *w = as_window(h);
 	if (!rect || !w)
 		return 0;
 	rect[0] = 0; rect[1] = 0; rect[2] = w->w; rect[3] = w->h;

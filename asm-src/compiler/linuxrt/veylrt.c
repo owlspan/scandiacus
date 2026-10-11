@@ -31,6 +31,7 @@
 #define _XOPEN_SOURCE 700  /* macOS needs this for the ucontext routines */
 #define _DARWIN_C_SOURCE   /* ...and this to keep its _np and MAP_ANON extras */
 #include <ctype.h>
+#include <dlfcn.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -1656,3 +1657,30 @@ int VYW(setsockopt)(int s, int level, int opt, const void *val, int len)
 }
 
 void *VYW(gethostbyname)(const char *name) { return gethostbyname(name); }
+
+/* ---- externs into libraries loaded at the first call (ffi.go) ---- */
+
+/* An extern into opengl32 or vulkan-1 is the same function in libGL or
+   libvulkan here. It is looked up the first time it is called, so a
+   program that never calls one needs neither library installed - and
+   when one is called and missing, the program stops saying which. */
+void *__vy_lazy(const char *lib, const char *sym)
+{
+	void *h = dlopen(lib, RTLD_NOW | RTLD_GLOBAL);
+	void *f = h ? dlsym(h, sym) : NULL;
+	if (!f) {
+		const char *why = dlerror();
+		fprintf(stderr, "veyl: %s could not be found in %s%s%s\n", sym, lib,
+			why ? ": " : "", why ? why : "");
+		exit(1);
+	}
+	return f;
+}
+
+/* An extern a package declared into a Windows-only library, called on
+   a system that does not have it. */
+void __vy_not_here(const char *sym, const char *lib)
+{
+	fprintf(stderr, "veyl: %s is in %s, which exists only on Windows\n", sym, lib);
+	exit(1);
+}

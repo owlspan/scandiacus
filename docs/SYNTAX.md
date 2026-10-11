@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.66.0** - the language as currently implemented.
+**Version 0.67.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -2564,10 +2564,12 @@ program, as it would in C.
 
 `mem.call` is how an address becomes a call - one from `mem.symbol`,
 from `mem.scan`, read out of a table in memory, or handed over by
-native code. Arguments follow the Windows x64 convention: an `int`,
-`bool`, `str`, `bytes` or extern struct is one word, and a `float` a
-`double`. Nothing checks that the address is code or that it takes
-what it is given.
+native code. An `int`, `bool`, `str`, `bytes` or extern struct is one
+word, and a `float` a `double`, placed where the system's own C calling
+convention puts them: the Windows x64 one on Windows, System V on Linux
+and macOS, where the build generates a small C bridge for each shape of
+call. Nothing checks that the address is code or that it takes what it
+is given.
 
 ```veyl
 let pow = mem.symbol("msvcrt.dll", "pow")
@@ -2842,6 +2844,21 @@ On Linux and macOS a `from` naming a shared library - `"libm.so"`,
 generates a small wrapper so the C compiler bridges the calling
 convention, and links the library. Variadic C functions cannot be called
 this way yet (printf-style), only on Windows.
+
+A few Windows libraries are the same API under another name, and a
+`from` naming one works everywhere: `"opengl32"` is `libGL.so.1` on
+Linux and `"vulkan-1"` is `libvulkan.so.1` (`libvulkan.1.dylib` on
+macOS). Those are opened at the first call rather than linked, so a
+program that never makes the call needs neither the library nor its
+development files, and one that makes it on a machine without the
+library stops with a sentence naming it.
+
+A `from` naming a Windows-only library - `"user32"`, `"gdi32"`,
+`"kernel32"` and the rest - is an error in a Linux or macOS build of
+the program that declares it. In an imported file it is allowed, and
+calling it stops the program saying the function exists only on
+Windows. That is what lets one package carry a Windows path and a Linux
+path side by side, choosing between them with `os.name()`.
 
 ### Static libraries
 
@@ -3596,7 +3613,8 @@ changing the numbers - there is nothing to update or lay out again.
 | `win.width(w)` `win.height(w)` | the drawing area, in pixels |
 | `win.title(w, s)` | change the title bar |
 | `win.resizable(w, on)` | add or remove the drag border |
-| `win.handle(w)` | the native window, for attaching an OpenGL context or a Vulkan surface: an `HWND` on Windows; on Linux and macOS the runtime's own window record for now, which nothing outside Veyl can use |
+| `win.handle(w)` | the native window, for attaching an OpenGL context or a Vulkan surface: an `HWND` on Windows, an X11 `Window` on Linux, an `NSWindow` on macOS |
+| `win.display(w)` | what that window belongs to: the X11 `Display*` on Linux, the program's `HINSTANCE` on Windows (what a Vulkan surface asks for beside the `HWND`), `0` on macOS |
 
 **Windows open at a fixed size.** No drag border, no maximise button.
 That is almost always what a game wants, and it matches the back buffer
@@ -3960,7 +3978,7 @@ hello.vl:6:7: undefined function "lenn" - did you mean "len"?
 
 ## Known limitations
 
-Honest list of what v0.66.0 does not do yet.
+Honest list of what v0.67.0 does not do yet.
 
 **The language**
 
@@ -4038,9 +4056,10 @@ Honest list of what v0.66.0 does not do yet.
 - **Windows and graphics both run on Linux.** The `win` library -
   windows, the frame buffer, keyboard and mouse, drawing, text, images
   and `sound` - works on Linux through X11 and PulseAudio, so a game
-  runs the same on both. Still Windows-only: `com`, `proc`, raw native
-  calls through `mem.call` / `mem.symbol` (they use the Windows calling
-  convention), static `.lib` archives and `--dll` builds. TCP sockets
+  runs the same on both. Still Windows-only: `com`, `proc`, static
+  `.lib` archives and `--dll` builds. `mem.call` passes a `float` as a
+  `double` everywhere, so a native function taking a C `float` needs an
+  `extern fn` declaration instead. TCP sockets
   (the `net` library), the `http` client over `http://` and `https://`,
   and `db` (SQLite) work on all three - Linux and macOS use the system sqlite rather than the
   packaged DLL. A Linux build that uses a Windows-only call names it and

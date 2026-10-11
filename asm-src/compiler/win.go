@@ -248,12 +248,30 @@ func (l *lowerer) winBuiltin(c *Call, name string) (Reg, bool) {
 		}
 		return l.field(l.expr(c.Args[0]), winHeightAt, vInt), true
 	case "win.handle":
-		// The HWND, for code that attaches something of its own to the
-		// window: an OpenGL context, a Vulkan surface, a child control.
+		// The native window, for code that attaches something of its own
+		// to it: an OpenGL context, a Vulkan surface, a child control.
+		// The HWND on Windows. Off Windows the slot holds the runtime's
+		// own record, which knows the X11 Window or the NSWindow.
 		if !arity(1) {
 			return l.junk(), true
 		}
-		return l.field(l.expr(c.Args[0]), winHwndAt, vInt), true
+		hwnd := l.field(l.expr(c.Args[0]), winHwndAt, vInt)
+		if targetLinux() || targetMac() {
+			return l.ccall("VeylNativeWindow", []Reg{hwnd}, []vty{vInt}, vInt, false, false), true
+		}
+		return hwnd, true
+	case "win.display":
+		// What the native window belongs to: the X11 Display on Linux,
+		// and on Windows the program's HINSTANCE, which is what a Vulkan
+		// surface asks for beside the HWND. Nothing on macOS.
+		if !arity(1) {
+			return l.junk(), true
+		}
+		hwnd := l.field(l.expr(c.Args[0]), winHwndAt, vInt)
+		if targetLinux() || targetMac() {
+			return l.ccall("VeylNativeDisplay", []Reg{hwnd}, []vty{vInt}, vInt, false, false), true
+		}
+		return l.ccall("GetModuleHandleA", []Reg{l.constant(0)}, []vty{vInt}, vInt, false, false), true
 
 	case "win.mouseDown":
 		if !arity(1) {

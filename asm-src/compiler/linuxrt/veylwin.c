@@ -336,18 +336,35 @@ static window *find_window(Window xw)
 	return NULL;
 }
 
+/* The window a Win32-style call was handed. Usually the runtime's own
+   record, from the win library; but win.handle gives programs the X11
+   Window, and one passed back in to an emulated user32 call must reach
+   the same window rather than be read as a pointer. */
+static window *as_window(void *h)
+{
+	for (int i = 0; i < g_nwin; i++)
+		if (g_windows[i] == h)
+			return h;
+	return h ? find_window((Window)(uintptr_t)h) : NULL;
+}
+
 MS int __vyw_RegisterClassA(void *wc) { (void)wc; return 1; }
 MS long __vyw_DefWindowProcA(void *h, u32 m, long wp, long lp) { (void)h; (void)m; (void)wp; (void)lp; return 0; }
 MS void *__vyw_LoadCursorA(void *inst, int id) { (void)inst; (void)id; return (void *)1; }
-MS int __vyw_ShowWindow(void *h, int cmd) { (void)cmd; window *w = h; if (w && dpy) X.MapWindow(dpy, w->xwin); return 1; }
+MS int __vyw_ShowWindow(void *h, int cmd) { (void)cmd; window *w = as_window(h); if (w && dpy) X.MapWindow(dpy, w->xwin); return 1; }
 MS int __vyw_UpdateWindow(void *h) { (void)h; if (dpy) X.Flush(dpy); return 1; }
 MS int __vyw_AdjustWindowRect(i32 *r, u32 style, int menu) { (void)r; (void)style; (void)menu; return 1; }
-MS void *__vyw_GetDC(void *h) { window *w = h; return w ? w->dc : NULL; }
+MS void *__vyw_GetDC(void *h) { window *w = as_window(h); return w ? w->dc : NULL; }
+
+/* win.handle and win.display: the X11 Window and the Display it is on,
+   for code that puts a GLX context or a Vulkan surface on the window. */
+MS unsigned long __vyw_VeylNativeWindow(void *h) { window *w = h; return w ? w->xwin : 0; }
+MS void *__vyw_VeylNativeDisplay(void *h) { (void)h; return dpy; }
 MS int __vyw_ReleaseDC(void *h, void *dc) { (void)h; (void)dc; return 1; }
 
 MS int __vyw_DestroyWindow(void *h)
 {
-	window *w = h;
+	window *w = as_window(h);
 	if (!w || w->destroyed)
 		return 0;
 	w->destroyed = 1;
@@ -361,7 +378,7 @@ MS int __vyw_DestroyWindow(void *h)
 
 MS int __vyw_IsWindow(void *h)
 {
-	window *w = h;
+	window *w = as_window(h);
 	if (!w)
 		return 0;
 	for (int i = 0; i < g_nwin; i++)
@@ -372,7 +389,7 @@ MS int __vyw_IsWindow(void *h)
 
 MS int __vyw_GetClientRect(void *h, i32 *rect)
 {
-	window *w = h;
+	window *w = as_window(h);
 	if (!rect)
 		return 0;
 	rect[0] = 0;
@@ -384,7 +401,7 @@ MS int __vyw_GetClientRect(void *h, i32 *rect)
 
 MS int __vyw_SetWindowTextA(void *h, const char *t)
 {
-	window *w = h;
+	window *w = as_window(h);
 	if (w && dpy && t) {
 		snprintf(w->title, sizeof w->title, "%s", t);
 		X.StoreName(dpy, w->xwin, t);
@@ -565,14 +582,14 @@ MS void *__vyw_FindWindowA(const char *cls, const char *title)
 
 MS long __vyw_GetWindowLongPtrA(void *h, int idx)
 {
-	window *w = h;
+	window *w = as_window(h);
 	(void)idx;
 	return w ? w->style : 0;
 }
 
 MS long __vyw_SetWindowLongPtrA(void *h, int idx, long v)
 {
-	window *w = h;
+	window *w = as_window(h);
 	(void)idx;
 	if (!w)
 		return 0;
@@ -584,7 +601,7 @@ MS long __vyw_SetWindowLongPtrA(void *h, int idx, long v)
 MS int __vyw_SetWindowPos(void *h, void *after, int x, int y, int cx, int cy, u32 flags)
 {
 	(void)after; (void)flags;
-	window *w = h;
+	window *w = as_window(h);
 	if (w && dpy && cx > 0 && cy > 0) {
 		X.MoveResizeWindow(dpy, w->xwin, x, y, (unsigned)cx, (unsigned)cy);
 		X.Flush(dpy);
@@ -594,7 +611,7 @@ MS int __vyw_SetWindowPos(void *h, void *after, int x, int y, int cx, int cy, u3
 
 MS int __vyw_GetWindowRect(void *h, i32 *rect)
 {
-	window *w = h;
+	window *w = as_window(h);
 	if (!rect || !w)
 		return 0;
 	rect[0] = 0;
