@@ -3,6 +3,31 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.66.0
+
+**`win.handle(w)`.** The window's `HWND`, so code outside the compiler
+can attach something of its own to a win window and keep `win.poll`
+and the input functions. The new `gl` package uses it for OpenGL:
+
+```veyl
+import "gl"
+
+let w = must(win.open("cube", 800, 600))
+let g = must(glOpen(w))
+while win.poll(w) {
+    glClearColor(0.1, 0.1, 0.15, 1.0)
+    glClear(GL_COLOR_BUFFER_BIT)
+    glSwap(g)
+}
+```
+
+`veyl get gl` installs it. Windows only so far; off Windows the handle
+is the runtime's own window record.
+
+**Warnings.** Taking a variable's address with `&` now counts as using
+it, so `let id: u32 = 0` passed as `&id` to a native call no longer
+warns that `id` is never used.
+
 ## 0.65.0
 
 **`veyl doc`.** Writes a reference for a file from its declarations and
