@@ -1001,7 +1001,7 @@ functions that fill in a buffer.
 **`examples/ffi/memreader.vl`**: lists running programs, finds where
 one is loaded, and follows a pointer chain through its memory.
 
-Under the hood: width-specific loads and stores in the IR, and the
+What it took: width-specific loads and stores in the IR, and the
 byte encoder learned `movsx`, word operands, and the single-precision
 conversions, each checked against GNU as.
 
