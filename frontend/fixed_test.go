@@ -120,7 +120,7 @@ fn fine() -> i32 {
 		{"fn f() {\n    let x = 1\n    let g = fn() { let p = &x }\n}", "cannot take its address"},
 		{"let s = \"a\"\nlet p = &s", "only a number, a bool or a pointer variable"},
 		{"const k = 5\nlet p = &k", "k is const"},
-		{"var g = 5\nfn f() {\n    let p = &g\n}", "is a global"},
+		{"var g: f32 = 5.0\nfn f() {\n    let p = &g\n}", "is an f32 global"},
 		{"for i in 0..3 {\n    let p = &i\n}", "i is a loop variable"},
 	}
 	for _, b := range bad {

@@ -3662,6 +3662,9 @@ func (l *lowerer) readGlobal(slot int64) Reg {
 	d := l.newReg()
 	l.regTy[d] = l.globalTy[slot]
 	l.emit(Instr{Op: OpLoadMem, Dst: d, A: l.globalAddr(slot), B: NoReg, Imm: 0})
+	if n := fixedOf(l.globalTy[slot]); n != "" && n != "f32" {
+		return l.wrapFixed(d, l.globalTy[slot])
+	}
 	return d
 }
 

@@ -43,11 +43,12 @@ func (c *Checker) addrLocal(x *Unary, id *Ident) *Type {
 		c.ErrorAt(x, "%s is const, so it cannot be written through a pointer", id.Name)
 		return Unknown
 	}
-	if depth == 0 {
-		c.ErrorAt(x, "%s is a global, which has no address to give yet - allocate it with new", id.Name)
+	if depth == 0 && t.IsFixed() && t.Name == "f32" {
+		c.ErrorAt(x, "%s is an f32 global, which is kept as a double and has no f32 to point at - "+
+			"use a local, or allocate it with new", id.Name)
 		return Unknown
 	}
-	if c.loopVars[depth][id.Name] {
+	if depth > 0 && c.loopVars[depth][id.Name] {
 		c.ErrorAt(x, "%s is a loop variable, which the loop itself keeps changing - copy it into "+
 			"a let and take the address of that", id.Name)
 		return Unknown
@@ -69,7 +70,9 @@ func (c *Checker) addrLocal(x *Unary, id *Ident) *Type {
 			id.Name, t)
 		return Unknown
 	}
-	x.Local = true
+	// A global lives as long as the program, so its address can go
+	// anywhere; only a local's is followed.
+	x.Local = depth > 0
 	return p
 }
 

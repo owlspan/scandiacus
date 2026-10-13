@@ -3179,8 +3179,13 @@ fn broken() -> *i32 {
 Returning it, storing it in a global, a field, a list, a map or
 through another pointer, and using it in a closure are all errors.
 Passing it to a function you call is not, as in C: that function must
-not keep it. A `for` loop's variable, a `const` and a global have no
-address to give.
+not keep it. A `for` loop's variable and a `const` have no address to
+give.
+
+A global (`var` at the top level) does, and since it lives as long as
+the program, its address can be returned, stored and kept like any
+other pointer. An `f32` global is the exception: it is kept as a
+double, so there is no `f32` in memory to point at.
 
 `as` changes what an address is seen as, never the address: between
 `int`, any pointer type, and an extern struct view. A pointer goes
@@ -4079,9 +4084,9 @@ Honest list of what v1.75.0 does not do yet.
   and the rest of the math functions, the `mem` functions and the
   bounds of a `for` range do not take the fixed-width types yet: convert
   with `int(x)` or `float(x)`. A map key cannot be one either.
-- **`&` has no global to point at.** A local variable, a parameter, a
-  field of an extern struct, `*p` and `p[i]` have addresses; a global
-  and a loop variable do not.
+- **A loop variable and an `f32` global have no address.** A local
+  variable, a parameter, a global, a field of an extern struct, `*p`
+  and `p[i]` do.
 - **An escaping address is caught within one function.** Passing
   `&x` to a function that keeps it, or smuggling it out as an `int`
   through something the compiler cannot follow, is not detected.

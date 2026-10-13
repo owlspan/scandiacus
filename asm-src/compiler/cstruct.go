@@ -131,6 +131,12 @@ func (l *lowerer) keepInMemory(n Node, name string, slot int64) {
 func (l *lowerer) addrOfLocal(x *Unary, id *Ident, want vty) Reg {
 	slot, ok := l.lookup(id.Name)
 	if !ok {
+		// A global's word in static storage. A narrow integer global is
+		// re-extended each time it is read, so a write through the
+		// pointer, which only touches its own width, reads back right.
+		if g, isGlobal := l.globals[id.Name]; isGlobal {
+			return l.retype(l.globalAddr(g), want)
+		}
 		l.errorAt(x, "cannot take the address of %s", id.Name)
 		return l.junk()
 	}
