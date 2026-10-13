@@ -3,6 +3,27 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.73.0
+
+**Cross compiling.** Each of the three systems now builds for the other
+two: `--linux` and `--macos` from Windows, `--windows` and `--linux`
+from macOS, `--windows` and `--macos` from Linux.
+
+A Windows executable already needed nothing but veyl, which writes the
+PE itself. A Linux or macOS one is linked by a C toolchain for that
+system, so from another system veyl uses zig's: `veyl cross install`
+downloads zig 0.13.0 once (about 80 MB, checked against a pinned hash)
+into the user cache folder, and the Windows installer has an optional
+"Cross compiling" component that does the same. `veyl cross` says
+whether it is set up. The symbol renames objcopy does in a native Linux
+build are made in the assembly text instead, and sqlite is loaded at
+run time, since there is no libsqlite3 to link against.
+
+Checked: every golden program that runs on Linux, built on Windows and
+run on Linux, prints what it should; a Windows build from Linux runs on
+Windows. CI now builds a test on each system for the other two and runs
+each result on the system it is for.
+
 ## 1.72.0
 
 **Strings know their length.** Until now a string was a bare pointer to
