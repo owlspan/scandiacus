@@ -198,9 +198,10 @@ func (l *lowerer) liftFunc(fd *FnDecl, t vty, captured []capture) string {
 	// Any of this literal's own names that a literal *inside* it takes
 	// has to be boxed here too, exactly as in an ordinary function.
 	inner := capturedIn(fd)
-	savedBoxNames := l.boxNames
+	savedBoxNames, savedAppend := l.boxNames, l.appendNames
 	l.boxNames = inner
-	defer func() { l.boxNames = savedBoxNames }()
+	l.appendNames = appendTargets(fd.Body.Stmts)
+	defer func() { l.boxNames, l.appendNames = savedBoxNames, savedAppend }()
 
 	for i, pa := range fd.Params {
 		// Read before boxed, for the reason in ir.go's function().

@@ -1041,6 +1041,14 @@ A string is UTF-8 bytes. `len` and `indexOf` count bytes; `charAt`,
 `substr`, `chars`, `padLeft` and `padRight` count characters. A byte
 that does not begin a valid character reads as one character, U+FFFD.
 
+Building a string with `s += t` (or `s = s + t`) in a loop is linear,
+like a string builder elsewhere: the string grows in place, with room
+to spare, as long as nothing else has seen it yet. Reading `s` anywhere
+but in `len(s)` hands out the value, and the next append copies once
+before growing again - so append in the loop and use the result after
+it. This applies to local variables; appending to a field, a list
+element, or a variable a closure captures copies every time.
+
 A string knows its own length, so `len` costs nothing however long the
 string is, and a string can hold any byte, zero included: `"a\0b"` is
 three bytes, and a file or a network read with zeros in it comes back
@@ -4102,9 +4110,6 @@ Honest list of what v1.75.0 does not do yet.
   MySQL or anything over a network.
 - **The web server handles one request at a time.** Fine for a tool or
   something on your own network, not a production server.
-- **Building a string by repeated appending is quadratic**: each `+`
-  copies both sides. Push the pieces onto a list and `join` them once,
-  which is linear.
 - **`upper` and `lower` cover the common alphabets, not all of
   Unicode**: ASCII, Latin-1, Latin Extended-A, Greek and Cyrillic.
   Letters elsewhere, and ones whose other case is a different length

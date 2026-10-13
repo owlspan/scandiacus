@@ -75,8 +75,15 @@ func (l *lowerer) pokeWord(addr Reg, off int64, v Reg) {
 	l.emit(Instr{Op: OpStoreMem, A: addr, B: v, Imm: off})
 }
 
-// unmarked strips the mark bit off a link word, leaving the pointer.
+// unmarked strips the mark bit and the owned bit (strappend.go) off a
+// link word, leaving the pointer.
 func (l *lowerer) unmarked(link Reg) Reg {
+	return l.arith(OpBAnd, link, l.constant(^int64(objMarkBit|objOwnedBit)))
+}
+
+// unmarkedKeep strips only the mark, for writing a link back: an owned
+// string stays owned through a collection.
+func (l *lowerer) unmarkedKeep(link Reg) Reg {
 	return l.arith(OpBAnd, link, l.constant(^int64(objMarkBit)))
 }
 
@@ -127,7 +134,7 @@ func (l *lowerer) collectBody() {
 	// ---- fill the index, and clear the marks from last time ----
 	l.walkObjects(func(raw Reg) {
 		l.tableInsert(table, mask, l.arith(OpAdd, raw, l.constant(objHeader)))
-		l.pokeWord(raw, objNextOff, l.unmarked(l.peekWord(raw, objNextOff)))
+		l.pokeWord(raw, objNextOff, l.unmarkedKeep(l.peekWord(raw, objNextOff)))
 	})
 
 	// ---- roots ----
@@ -497,13 +504,15 @@ func (l *lowerer) sweep() {
 	l.emit(Instr{Op: OpJumpNot, A: live, Dst: NoReg, Imm: dead})
 
 	// Survived: clear the mark and move prev along.
-	l.pokeWord(cur, objNextOff, l.load(nextSlot, vInt))
+	l.pokeWord(cur, objNextOff, l.unmarkedKeep(l.load(linkSlot, vInt)))
 	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, cur, l.constant(objNextOff)),
 		Dst: NoReg, Imm: prev})
 	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: step})
 
 	l.mark(dead)
-	l.pokeWord(l.load(prev, vInt), 0, l.load(nextSlot, vInt))
+	// The link prev points at may be a survivor's, owned bit and all.
+	l.pokeWord(l.load(prev, vInt), 0, l.arith(OpBOr, l.load(nextSlot, vInt),
+		l.arith(OpBAnd, l.peekWord(l.load(prev, vInt), 0), l.constant(objOwnedBit))))
 	size := l.jsonObjectSize(l.peekWord(cur, objTagOff))
 	l.rtStore(gcLiveSlot, l.arith(OpSub, l.rtLoad(gcLiveSlot), l.constant(1)))
 	l.rtStore(gcBytesSlot, l.arith(OpSub, l.rtLoad(gcBytesSlot), size))

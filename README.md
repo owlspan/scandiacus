@@ -236,9 +236,8 @@ that calls an export is made known to it on the way in and parks on
 the way out (`dllgc.go`).
 `VEYL_GC=off` turns it off.
 
-**Building a string by repeated appending is quadratic**: each `+`
-copies both sides into a new string. Push the pieces onto a list and
-`join` them once.
+`s += t` on a local string appends in place when nothing else can see
+the string, so building one in a loop is linear (`strappend.go`).
 
 ## Why assembly text and not machine code
 

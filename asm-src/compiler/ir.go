@@ -881,8 +881,14 @@ type lowerer struct {
 	// inside it captures, worked out before the body is lowered because
 	// the decision has to be made where the name is declared.
 	boxNames map[string]bool
-	slotTy   map[int64]vty
-	regTy    map[Reg]vty
+
+	// appendNames are the names `+=` appends to in place, and keepOwned
+	// is set while reading one where the value cannot escape; see
+	// strappend.go.
+	appendNames map[string]bool
+	keepOwned   bool
+	slotTy      map[int64]vty
+	regTy       map[Reg]vty
 
 	loops []loopTarget
 
@@ -1084,6 +1090,7 @@ func Lower(p *Program, file string) (*Module, []string) {
 	l.captures = nil
 	l.captureTy = nil
 	l.boxNames = capturedInStmts(p.Main)
+	l.appendNames = appendTargets(p.Main)
 	l.pushScope()
 	// The runtime's own words sit ahead of the program's, so a program
 	// with no globals at all still has somewhere to keep the object
@@ -1172,6 +1179,7 @@ func (l *lowerer) function(fd *FnDecl) {
 	l.boxed = map[int64]bool{}
 	l.captures = nil
 	l.boxNames = capturedIn(fd)
+	l.appendNames = appendTargets(fd.Body.Stmts)
 	l.pushScope()
 
 	// Parameters arrive in registers and are immediately written to
@@ -1729,6 +1737,23 @@ func (l *lowerer) assign(st *AssignStmt) {
 		l.undefined(st, id.Name)
 		return
 	}
+	if l.ownable(id.Name, slot) {
+		var part Expr
+		if st.Op == PLUSEQ {
+			part = st.Value
+		} else {
+			part = selfAppend(st, id)
+		}
+		if part != nil {
+			v := l.rvalue(part)
+			if l.regTy[v].k != kStr {
+				l.errorAt(st, "a str can only have a str added to it")
+				return
+			}
+			l.appendInPlace(slot, v)
+			return
+		}
+	}
 	v := l.rvalue(st.Value)
 	target := l.slotTy[slot]
 
@@ -2267,7 +2292,12 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 		if !arity(1) {
 			return l.junk()
 		}
+		// The length is read and the string let go, so a string being
+		// appended to stays owned through `while len(s) < n { s += t }`.
+		_, plain := c.Args[0].(*Ident)
+		l.keepOwned = plain
 		a := l.expr(c.Args[0])
+		l.keepOwned = false
 		switch l.regTy[a].k {
 		case kList:
 			return l.field(a, listLenOff, vInt)
@@ -2776,6 +2806,9 @@ func (l *lowerer) expr(e Expr) Reg {
 			return l.junk()
 		}
 		d := l.loadLocal(slot)
+		if l.ownable(x.Name, slot) && !l.keepOwned {
+			l.disown(d)
+		}
 		// The checker marks a use it has proved non-nil, and only those,
 		// so unboxing here needs no check of its own.
 		if x.Narrowed && l.regTy[d].null {
