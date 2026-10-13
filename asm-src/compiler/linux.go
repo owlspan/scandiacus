@@ -11,7 +11,9 @@ package main
 // the instructions the program runs are the ones the Windows target runs,
 // and only the layer under them differs.
 //
-// For now the object is assembled and linked by the system's own tools -
+// From another system the same assembly goes through zig instead; see
+// cross.go. On Linux the object is assembled and linked by the system's
+// own tools -
 // as, objcopy and cc, which every Linux machine that builds software
 // has - the way the Windows target went through MinGW before it had its
 // own PE writer. An ELF writer of the compiler's own is the obvious next
@@ -176,6 +178,11 @@ func buildLinux(mod *Module, out string) {
 		fail("a variadic extern function cannot be called on Linux yet: %s\n"+
 			"        Build it with --windows, or wrap it in a non-variadic C function.",
 			strings.Join(variadic, ", "))
+	}
+
+	if runtime.GOOS != "linux" {
+		buildLinuxCross(asmText, externs, wrapperC, wrapperLibs, out)
+		return
 	}
 
 	asTool := linuxTool("as")

@@ -19,9 +19,8 @@ package main
 //     through .balign rather than clang's power-of-two .align.
 //
 // The build runs a C compiler that targets macOS. On a Mac that is the
-// system cc; from another system it is a cross compiler named in
-// VEYL_MACCC, for example zig: "python3 -m ziglang cc -target
-// x86_64-macos". The result is an x86-64 Mach-O, which runs natively on an
+// system cc; from another system it is zig (see cross.go), or whatever
+// compiler VEYL_MACCC names. The result is an x86-64 Mach-O, which runs natively on an
 // Intel Mac and through Rosetta on Apple Silicon. It is left unsigned;
 // recent macOS wants at least an ad-hoc signature, which is a one-line
 // `codesign -s - <file>` on the Mac (no account), done by the helper
@@ -32,6 +31,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -42,6 +42,9 @@ func targetMac() bool { return target == "macos" }
 func macCC() []string {
 	if env := os.Getenv("VEYL_MACCC"); env != "" {
 		return strings.Fields(env)
+	}
+	if runtime.GOOS != "darwin" {
+		return crossCC(zigMacTarget, "macOS")
 	}
 	return []string{"cc"}
 }
@@ -125,8 +128,7 @@ func buildMac(mod *Module, out string) {
 	args = append(args, wrapperLibs...)
 
 	if outp, err := exec.Command(cc[0], args...).CombinedOutput(); err != nil {
-		fail("the macOS build failed. If this is not a Mac, set VEYL_MACCC to a cross "+
-			"compiler such as \"python3 -m ziglang cc -target x86_64-macos\".\n%s\n%s", err, outp)
+		fail("the macOS build failed.\n%s\n%s", err, outp)
 	}
 }
 
@@ -134,6 +136,18 @@ func buildMac(mod *Module, out string) {
 // assembler: Mach-O section names, byte alignment, and the leading
 // underscore on the symbols that cross into the C runtime.
 func transformMacAsm(asmText string, externs []string) string {
+	return transformCrossAsm(asmText, externs, true)
+}
+
+// transformCrossAsm is the rewrite for a toolchain's own assembler:
+// clang's, which takes no # comments and is told the symbol renames in
+// the text. macho adds Mach-O's section names and leading underscores;
+// without it the result is for ELF.
+func transformCrossAsm(asmText string, externs []string, macho bool) string {
+	under := ""
+	if macho {
+		under = "_"
+	}
 	// Longest extern first, so one name is not rewritten inside another.
 	sorted := append([]string(nil), externs...)
 	for i := 0; i < len(sorted); i++ {
@@ -151,9 +165,9 @@ func transformMacAsm(asmText string, externs []string) string {
 	mainRe := regexp.MustCompile(`\bmain\b`)
 	rename := func(line string) string {
 		for i, re := range res {
-			line = re.ReplaceAllString(line, "___vyw_"+sorted[i])
+			line = re.ReplaceAllString(line, under+"__vyw_"+sorted[i])
 		}
-		line = startRe.ReplaceAllString(line, "___start")
+		line = startRe.ReplaceAllString(line, under+"__start")
 		line = mainRe.ReplaceAllString(line, "__vy_main")
 		return line
 	}
@@ -174,7 +188,7 @@ func transformMacAsm(asmText string, externs []string) string {
 		}
 		switch {
 		case strings.HasPrefix(s, ".intel_syntax"):
-			out = append(out, raw, "    .globl ___start")
+			out = append(out, raw, "    .globl "+under+"__start")
 		case strings.HasPrefix(s, ".extern"):
 			// Mach-O makes undefined symbols external on its own.
 		case strings.HasPrefix(s, ".asciz"), strings.HasPrefix(s, ".string"),
@@ -184,9 +198,17 @@ func transformMacAsm(asmText string, externs []string) string {
 			arg := strings.TrimSpace(strings.TrimPrefix(s, ".section"))
 			switch arg {
 			case ".rdata", ".rodata":
-				out = append(out, "    .section __TEXT,__const")
+				if macho {
+					out = append(out, "    .section __TEXT,__const")
+				} else {
+					out = append(out, "    .section .rodata")
+				}
 			case ".bss":
-				out = append(out, "    .section __DATA,__bss")
+				if macho {
+					out = append(out, "    .section __DATA,__bss")
+				} else {
+					out = append(out, raw)
+				}
 			default:
 				out = append(out, raw)
 			}

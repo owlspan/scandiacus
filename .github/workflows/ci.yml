@@ -68,3 +68,78 @@ jobs:
         env:
           VEYL_NOOPT: '1'
         run: go test -count=1 -run "TestGolden|TestErrorLocations" ./compiler
+
+  # Cross compiling: each system builds the string test for the other
+  # two through `veyl cross install`, and each system then runs what the
+  # others built for it, checked against the expected output.
+  cross-build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: veyl
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: Build for the other systems
+        working-directory: veyl/asm-src
+        run: |
+          go build -o veylc.exe ./compiler
+          ./veylc.exe cross install
+          host=$(echo "${{ runner.os }}" | tr 'A-Z' 'a-z')
+          mkdir -p out
+          for t in windows linux macos; do
+            [ "$t" = "$host" ] && continue
+            flag=--$t; [ "$t" = macos ] && flag=--mac
+            ext=; [ "$t" = windows ] && ext=.exe
+            ./veylc.exe build $flag tests/strbytes.vl -o "out/strbytes-$t-from-$host$ext"
+          done
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cross-${{ matrix.os }}
+          path: veyl/asm-src/out
+
+  cross-run:
+    needs: cross-build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: veyl
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: built
+          merge-multiple: true
+
+      - name: Run what the other systems built
+        run: |
+          host=$(echo "${{ runner.os }}" | tr 'A-Z' 'a-z')
+          n=0
+          for f in built/strbytes-$host-from-*; do
+            chmod +x "$f"
+            "$f" > got.txt
+            cmp got.txt veyl/asm-src/tests/strbytes.out
+            echo "ok $f"
+            n=$((n+1))
+          done
+          [ "$n" = 2 ]

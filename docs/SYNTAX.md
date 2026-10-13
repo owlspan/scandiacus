@@ -3891,6 +3891,8 @@ defer own unsafe
 | `veyl build f.vl -o path` | write the executable at `path` instead, making its folder if need be (`--out=path` too) |
 | `veyl build f.vl --product Name --description text --company Name --copyright text --file-version 1.2.3` | what Properties, Details shows for a Windows executable. Without them the product and description are the file's name and the version 1.0.0.0 |
 | `veyl build f.vl --icon game.ico` | give a Windows executable the icon Explorer, the taskbar and shortcuts show; every size in the `.ico` is kept. A Linux or macOS build says it left the icon out, since those executables carry none |
+| `veyl build --linux f.vl`, `--macos`, `--windows` | build for that system, whichever one veyl runs on; see [Cross compiling](#cross-compiling) |
+| `veyl cross install` | set up building for Linux and macOS from the other systems (once; `veyl cross` says whether it is) |
 | `veyl asm f.vl` | print the generated assembly |
 | `veyl ir f.vl` | print the intermediate representation |
 | `veyl doc f.vl` | a reference of the file's declarations with the comments above them, as Markdown; `-o api.md` writes it to a file, `-o api.html` as a web page (a file that marks anything `pub` documents only that) |
@@ -4108,6 +4110,33 @@ Honest list of what v1.72.0 does not do yet.
 - **`toFloat` and `isFloat` take decimal numbers only.** Go's parser
   also accepts a hexadecimal mantissa with a `p` exponent, like
   `0x1p-2`.
+
+### Cross compiling
+
+Any of the three systems builds for the other two:
+
+```
+veyl build --linux game.vl -o game        # on Windows or macOS
+veyl build --macos game.vl -o game-mac    # on Windows or Linux
+veyl build --windows game.vl              # on Linux or macOS
+```
+
+A Windows executable needs nothing beyond veyl on any system, since veyl
+writes the PE itself. A Linux or macOS one is linked by a C toolchain
+for that system, and from another system that is zig's: run
+`veyl cross install` once and it downloads zig 0.13.0 (about 80 MB,
+300 MB unpacked, checked against a pinned hash) into the user cache
+folder. The Windows installer does the same when its "Cross compiling"
+component is ticked. veyl looks for zig in `VEYL_ZIG`, then a `zig`
+folder beside veyl, then the cache, then `PATH`. The first build for a
+system takes a few seconds longer while zig prepares its C library for
+it; later ones do not.
+
+What differs from a native build: sqlite is loaded at run time on Linux
+too (the system's `libsqlite3.so.0`) rather than linked, and an `extern
+fn` from a library veyl does not know by name cannot be linked, since
+the library is not on the building machine. A macOS executable built
+elsewhere is unsigned, like one built on a Mac; see the macOS notes.
 
 **Windows and Linux**
 

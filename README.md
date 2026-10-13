@@ -23,11 +23,15 @@ Nothing in that arrow is another program. veyl encodes the
 instructions, links, and writes the PE itself, so a build needs nothing
 installed.
 
-It also builds for Linux:
+It also builds for Linux and macOS, from any of the three:
 
 ```
 hello.vl  ->  [veyl --linux]  ->  hello
 ```
+
+From Windows or macOS a Linux build, and from Windows or Linux a macOS
+one, goes through zig's linker: `veyl cross install` fetches it once
+(the Windows installer offers it as "Cross compiling").
 
 The Linux executable runs the same instructions as the Windows one. The
 generated code is left exactly as it is; every library call it makes is

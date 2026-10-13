@@ -51,6 +51,8 @@ usage:
   veyl run --linux <file.vl>, veyl build --windows <file.vl>
                           pick the system the program is for; the default
                           is the one veyl runs on (or VEYL_TARGET)
+  veyl cross install      set up building for Linux and macOS from any
+                          system (downloads zig, about 80 MB, once)
   veyl asm   <file.vl>    print the generated assembly
   veyl ir    <file.vl>    print the intermediate representation
   veyl check <file.vl>... report errors and warnings without building
@@ -142,6 +144,10 @@ func main() {
 	}
 	if cmd == "lsp" {
 		lspCommand()
+		return
+	}
+	if cmd == "cross" {
+		crossCommand(args[1:])
 		return
 	}
 	if cmd == "vscode" {

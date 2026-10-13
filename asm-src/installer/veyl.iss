@@ -61,6 +61,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "core"; Description: "The Veyl compiler"; Types: full compact custom; Flags: fixed
 Name: "docs"; Description: "Examples and documentation"; Types: full custom
 
+; Building Linux and macOS executables from Windows. It is zig's C
+; toolchain, downloaded at install time (about 80 MB, 300 MB unpacked)
+; rather than carried in this installer; `veyl cross install` does the
+; same later if this is left unticked or the download fails.
+Name: "cross"; Description: "Cross compiling (build for Linux and macOS; downloads about 80 MB)";     Types: full custom; ExtraDiskSpaceRequired: 320000000
+
 ; Editor syntax highlighting. Each writes into that editor's own config
 ; folder, so ticking one for an editor you do not have is harmless: the
 ; folder is created and simply never read.
@@ -247,11 +253,14 @@ Filename: "{app}\{#AppExeName}"; Parameters: "vscode"; \
     StatusMsg: "Installing the Veyl extension into VS Code..."; \
     Components: editors\vscode; Flags: runhidden runasoriginaluser waituntilterminated
 
+Filename: "{app}\{#AppExeName}"; Parameters: "cross install --dir ""{app}\zig""";     StatusMsg: "Downloading the cross compiling toolchain (about 80 MB)...";     Components: cross; Flags: runhidden waituntilterminated
+
 [UninstallRun]
 Filename: "{app}\{#AppExeName}"; Parameters: "vscode --uninstall"; \
     Components: editors\vscode; Flags: runhidden waituntilterminated; RunOnceId: "VeylVSCode"
 
 [UninstallDelete]
+Type: filesandordirs; Name: "{app}\zig"
 Type: dirifempty; Name: "{app}\editors\vscode\syntaxes"
 Type: dirifempty; Name: "{app}\editors\vscode\icons"
 Type: dirifempty; Name: "{app}\editors\vscode"
