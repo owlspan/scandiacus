@@ -1726,6 +1726,35 @@ print("hello")     // error: an imported file can only declare things
 Importing the same file twice is harmless - it is folded in once. An
 import cycle is an error rather than a hang.
 
+### Namespaces: `import ... as`
+
+A plain import folds the file's names in as they are, so two files
+that both export `area` collide. Give an import a name and its file's
+names are reached through it instead:
+
+```veyl
+import "geometry.vl" as geo
+import "shapes.vl" as shapes      // also has an area and a Vec
+
+print(geo.area(2.0))
+print(shapes.area(3))
+let v: geo.Vec = geo.Vec{x: 1.0, y: 2.0}
+let k = geo.Kind.Round
+let boxes: []geo.Vec = []
+```
+
+Everything the file declares - functions, structs, enums, interfaces,
+`const` and `var` - is under the name, and nothing of it is reachable
+without it. Inside the file itself nothing changes: it uses its own
+names bare. `pub` still decides what other files may use. Methods are
+called on values as always, `v.len()`.
+
+A file imported with a name has that name everywhere: importing it
+elsewhere without one, or under another, is an error, and so is giving
+one name to two files. A name the library already uses - `http`, `os`,
+`json` and the rest - cannot be an import name. An `extern fn` keeps
+its own name, since that is the native symbol.
+
 ### Globals
 
 A top-level `const` and a top-level `var` are globals: visible inside
@@ -4102,9 +4131,8 @@ Honest list of what v1.75.0 does not do yet.
   value. `has()` and `find()` distinguish it; the bare index was left
   alone because making every map read return `?V` would mean a nil
   check on each one.
-- **No namespacing on imports.** Everything `pub` in an imported file
-  lands in one flat namespace, so two files exporting the same name
-  collide. The error names both files.
+- **A plain import is one flat namespace.** Two files exporting the
+  same name collide unless one is imported with `as`.
 - **A map key is a `str`, an `int` or an enum.** Not a struct, a float
   or an enum whose variants carry values.
 - **Garbage collected**, with raw memory beside it: `mem.alloc` and

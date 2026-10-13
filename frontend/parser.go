@@ -26,6 +26,11 @@ type Parser struct {
 	// argument list and still has another to close: Box<Box<int>>.
 	pendingGT int
 
+	// aliases are the namespaces this file's imports were given with
+	// `as`, so that `geo.Vec` can be read as a type and `geo.Vec{...}`
+	// as a struct literal.
+	aliases map[string]bool
+
 	Errors []string
 }
 
@@ -314,11 +319,21 @@ func (p *Parser) ParseProgram() *Program {
 func (p *Parser) parseImport() *ImportDecl {
 	kw := p.advance() // 'import'
 	pathTok := p.expect(STRING, `a file path in quotes, as in: import "helpers.vl"`)
+	alias := ""
+	if p.check(IDENT) && p.cur().Lex == "as" {
+		p.advance()
+		name := p.expect(IDENT, "a name for the import after 'as', as in: import \"geo.vl\" as geo")
+		alias = name.Lex
+		if p.aliases == nil {
+			p.aliases = map[string]bool{}
+		}
+		p.aliases[alias] = true
+	}
 	p.endStmt()
 	if pathTok.Kind != STRING {
 		return nil
 	}
-	return &ImportDecl{Span: at(kw), Path: pathTok.Lex, File: p.file}
+	return &ImportDecl{Span: at(kw), Path: pathTok.Lex, File: p.file, As: alias}
 }
 
 // parseStruct reads `struct User { name: str, age: int }`. Fields are
@@ -820,13 +835,18 @@ func (p *Parser) parseTypeRef() string {
 	default:
 		name := p.expect(IDENT, "a type name")
 		base = name.Lex
+		// geo.Vec: a type from a file imported as geo.
+		if p.aliases[name.Lex] && p.check(DOT) && p.peekKind(1) == IDENT {
+			p.advance()
+			base = name.Lex + "." + p.advance().Lex
+		}
 		if p.check(LT) {
 			args, ok := p.typeArgs()
 			if !ok {
 				p.errorAt(p.cur(), "expected '>' to close the type arguments of %s, found %s",
-					name.Lex, describe(p.cur()))
+					base, describe(p.cur()))
 			}
-			base = GenericName(name.Lex, args)
+			base = GenericName(base, args)
 		}
 	}
 
@@ -1225,6 +1245,9 @@ func (p *Parser) parsePostfix() Expr {
 		case p.check(LBRACE) && p.noBrace == 0 && isStructLitTarget(x):
 			x = p.parseStructLit(x.(*Ident))
 
+		case p.check(LBRACE) && p.noBrace == 0 && p.aliasedName(x) != nil:
+			x = p.parseStructLit(p.aliasedName(x))
+
 		case p.check(QUESTION):
 			q := p.advance()
 			x = &Try{Span: at(q), X: x}
@@ -1378,6 +1401,20 @@ func (p *Parser) parseNew() Expr {
 // literal. Only a bare name can name a struct, and only a capitalised
 // one by convention - but the convention is not enforced, so any plain
 // identifier qualifies and the checker decides whether it exists.
+// aliasedName is geo.Vec, a name from a file imported as geo, as one
+// identifier, or nil when x is not one.
+func (p *Parser) aliasedName(x Expr) *Ident {
+	f, ok := x.(*Field)
+	if !ok {
+		return nil
+	}
+	id, ok := f.X.(*Ident)
+	if !ok || !p.aliases[id.Name] {
+		return nil
+	}
+	return &Ident{Span: id.Span, Name: id.Name + "." + f.Name}
+}
+
 func isStructLitTarget(x Expr) bool {
 	_, ok := x.(*Ident)
 	return ok

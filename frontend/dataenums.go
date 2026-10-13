@@ -114,7 +114,7 @@ func (c *Checker) variantValue(x *Field, e *EnumDecl) *Type {
 func (c *Checker) variantCall(x *Call, fld *Field, e *EnumDecl, args []*Type) *Type {
 	if c.private(e.File, e.Pub) {
 		c.ErrorAt(x, "enum %q is private to %s - mark it 'pub enum %s' to use it from another file",
-			e.Name, baseName(e.File), e.Name)
+			e.Name, baseName(e.File), Unqual(e.Name))
 	}
 	check := func() {
 		if args == nil {

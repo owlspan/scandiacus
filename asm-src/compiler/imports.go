@@ -29,6 +29,11 @@ type importLoader struct {
 	stack  []string        // in progress, for cycle detection
 	errors []string
 
+	// The namespace each file was imported under with `as`, by path, and
+	// the file each namespace belongs to; see namespace.go.
+	aliasOf  map[string]string
+	fileOfNS map[string]string
+
 	// The text of every file folded in. The prelude decides what to
 	// pull in by looking for names in the source, and an imported file
 	// is as much of the program as the one that imported it.
@@ -42,7 +47,9 @@ func loadImports(prog *Program, from string) ([]string, []string) {
 	if err != nil {
 		abs = from
 	}
-	l := &importLoader{seen: map[string]bool{abs: true}}
+	l := &importLoader{seen: map[string]bool{abs: true},
+		aliasOf: map[string]string{}, fileOfNS: map[string]string{}}
+	namespaceFile(prog, "")
 	l.resolve(prog, abs)
 	return l.errors, l.sources
 }
@@ -81,6 +88,9 @@ func (l *importLoader) resolve(prog *Program, from string) {
 				filepath.Base(target))
 			continue
 		}
+		if !l.checkAlias(imp, target) {
+			continue
+		}
 		if l.seen[target] {
 			continue // already folded in; importing twice is harmless
 		}
@@ -90,6 +100,7 @@ func (l *importLoader) resolve(prog *Program, from string) {
 		if !ok {
 			continue
 		}
+		namespaceFile(sub, imp.As)
 
 		l.stack = append(l.stack, target)
 		l.resolve(sub, target)
@@ -145,6 +156,39 @@ func (l *importLoader) load(imp *ImportDecl, target string) (*Program, bool) {
 
 	stampImportedFile(sub, target)
 	return sub, true
+}
+
+// checkAlias holds a file to one namespace: imported with `as` under
+// the same name everywhere or never, and no two files under one name.
+func (l *importLoader) checkAlias(imp *ImportDecl, target string) bool {
+	if imp.As != "" && libraryNamespace(imp.As) {
+		l.errorAt(imp, "%q is a library namespace already - import this file under another name", imp.As)
+		return false
+	}
+	if l.seen[target] {
+		if was := l.aliasOf[target]; was != imp.As {
+			switch {
+			case was == "":
+				l.errorAt(imp, "%s is already imported without a namespace, so it cannot also be %q - "+
+					"import it the same way everywhere", imp.Path, imp.As)
+			case imp.As == "":
+				l.errorAt(imp, "%s is already imported as %q - import it as %q here too", imp.Path, was, was)
+			default:
+				l.errorAt(imp, "%s is already imported as %q, so it cannot also be %q", imp.Path, was, imp.As)
+			}
+			return false
+		}
+		return true
+	}
+	if imp.As != "" {
+		if other, taken := l.fileOfNS[imp.As]; taken && other != target {
+			l.errorAt(imp, "%q already names %s - give this import another name", imp.As, filepath.Base(other))
+			return false
+		}
+		l.fileOfNS[imp.As] = target
+	}
+	l.aliasOf[target] = imp.As
+	return true
 }
 
 func (l *importLoader) onStack(path string) bool {

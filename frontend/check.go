@@ -1130,7 +1130,7 @@ func (c *Checker) expr(e Expr) *Type {
 				kind = "var"
 			}
 			c.ErrorAt(x, "%q is private to %s - mark it 'pub %s %s' to use it from another file",
-				x.Name, baseName(g.File), kind, x.Name)
+				x.Name, baseName(g.File), kind, Unqual(x.Name))
 		}
 		if t := c.lookup(x.Name); t != nil {
 			c.markUsed(x.Name)
@@ -1227,7 +1227,7 @@ func (c *Checker) field(x *Field) *Type {
 	if e := c.enumNamed(x.X); e != nil && e.Data {
 		if c.private(e.File, e.Pub) {
 			c.ErrorAt(x, "enum %q is private to %s - mark it 'pub enum %s' to use it from another file",
-				e.Name, baseName(e.File), e.Name)
+				e.Name, baseName(e.File), Unqual(e.Name))
 		}
 		return c.variantValue(x, e)
 	}
@@ -1240,7 +1240,7 @@ func (c *Checker) field(x *Field) *Type {
 			if v == x.Name {
 				if c.private(e.File, e.Pub) {
 					c.ErrorAt(x, "enum %q is private to %s - mark it 'pub enum %s' to use it from another file",
-						e.Name, baseName(e.File), e.Name)
+						e.Name, baseName(e.File), Unqual(e.Name))
 				}
 				return EnumOf(e.Name)
 			}
@@ -1329,7 +1329,7 @@ func (c *Checker) structLit(x *StructLit) *Type {
 	}
 	if c.private(d.File, d.Pub) {
 		c.ErrorAt(x, "struct %q is private to %s - mark it 'pub struct %s' to use it from another file",
-			x.Name, baseName(d.File), x.Name)
+			x.Name, baseName(d.File), Unqual(x.Name))
 	}
 
 	seen := map[string]bool{}
@@ -2457,7 +2457,7 @@ func (c *Checker) checkFnPrivacy(at Node, f *FnDecl) {
 	// An instance was checked as its template, under the name written.
 	if f.Recv == "" && !f.Instance && c.private(f.File, f.Pub) {
 		c.ErrorAt(at, "%q is private to %s - mark it 'pub fn %s' to use it from another file",
-			f.Name, baseName(f.File), f.Name)
+			f.Name, baseName(f.File), Unqual(f.Name))
 	}
 }
 

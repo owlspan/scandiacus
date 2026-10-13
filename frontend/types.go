@@ -657,6 +657,8 @@ func isTypeName(s string) bool {
 		switch {
 		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c == '_':
 		case c >= '0' && c <= '9' && i > 0:
+		case c == '.' && i > 0 && i < len(s)-1 && s[i-1] != '.':
+			// geo.Vec: a struct from a file imported as geo.
 		default:
 			return false
 		}
@@ -668,6 +670,15 @@ func isTypeName(s string) bool {
 // for something imported, and the bare name for the program's own code.
 // Two packages exporting the same name therefore cannot collide, which
 // was the whole reason for namespacing imports.
+// Unqual is a name without the namespace an `as` import gave it, which
+// is how the declaration is written in its own file.
+func Unqual(name string) string {
+	if i := strings.LastIndexByte(name, '.'); i >= 0 {
+		return name[i+1:]
+	}
+	return name
+}
+
 func Qual(pkg, name string) string {
 	if pkg == "" {
 		return name

@@ -356,13 +356,22 @@ func (c *Checker) instantiate(file string, toks []Token, skip int, params, args 
 	return len(ps.Errors) == 0
 }
 
-// typeTokens lexes a type's name, for splicing into a template.
+// typeTokens lexes a type's name, for splicing into a template. A dot
+// in a type name can only be a namespace, geo.Vec, so the three tokens
+// it lexes as are put back together into the one name it is.
 func typeTokens(s string) []Token {
 	var out []Token
 	for _, t := range NewLexer("", s).Scan() {
-		if t.Kind != EOF && t.Kind != NEWLINE {
-			out = append(out, t)
+		if t.Kind == EOF || t.Kind == NEWLINE {
+			continue
 		}
+		n := len(out)
+		if t.Kind == IDENT && n >= 2 && out[n-1].Kind == DOT && out[n-2].Kind == IDENT {
+			out[n-2].Lex += "." + t.Lex
+			out = out[:n-1]
+			continue
+		}
+		out = append(out, t)
 	}
 	return out
 }

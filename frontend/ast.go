@@ -97,6 +97,10 @@ type ImportDecl struct {
 	Span
 	Path string
 	File string // the file this import was written in
+
+	// As is the namespace from `import "geo.vl" as geo`, or "" for an
+	// import that folds the file's names in as they are.
+	As string
 }
 
 // ---- expressions ----
