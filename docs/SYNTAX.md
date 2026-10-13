@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 0.71.0** - the language as currently implemented.
+**Version 0.72.0** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -4043,7 +4043,7 @@ hello.vl:6:7: undefined function "lenn" - did you mean "len"?
 
 ## Known limitations
 
-Honest list of what v0.71.0 does not do yet.
+Honest list of what v0.72.0 does not do yet.
 
 **The language**
 

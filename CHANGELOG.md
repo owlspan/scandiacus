@@ -3,6 +3,20 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.72.0
+
+**A DLL collects its garbage.** It used to keep everything it ever
+allocated, since its exports run on the host's threads and the
+collector could not see them; a mod or plugin left running leaked
+until it was unloaded. Each export is now entered through a wrapper
+that tells the collector about the calling thread on the way in and
+parks it on the way out, so a collection stops whichever host threads
+are inside the DLL and reads their stacks, as in a program.
+
+What an export returns, a `str` or an extern struct, stays alive until
+the same thread calls into the DLL again, so the host can read it in
+the meantime. A thread that ends is forgotten when Windows says so.
+
 ## 0.71.0
 
 **Fewer antivirus false positives.** A Windows executable from Veyl
