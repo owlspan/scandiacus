@@ -1526,7 +1526,7 @@ length, and `clear()` empties it.
 
 | Function                        | Returns | Description                      |
 | ------------------------------- | ------- | -------------------------------- |
-| `upper(s)` `lower(s)`           | `str`   | change case of ASCII letters      |
+| `upper(s)` `lower(s)`           | `str`   | change case: ASCII, Latin-1, Latin Extended-A, Greek, Cyrillic |
 | `trim(s)`                       | `str`   | remove surrounding whitespace     |
 | `contains(s, sub)`              | `bool`  | whether `sub` occurs in `s`       |
 | `startsWith(s, p)` `endsWith(s, p)` | `bool` | prefix / suffix test         |
@@ -4105,8 +4105,11 @@ Honest list of what v1.74.0 does not do yet.
 - **Building a string by repeated appending is quadratic**: each `+`
   copies both sides. Push the pieces onto a list and `join` them once,
   which is linear.
-- **`upper` and `lower` change ASCII letters only**, where the Go
-  backend also changes accented and non-Latin ones.
+- **`upper` and `lower` cover the common alphabets, not all of
+  Unicode**: ASCII, Latin-1, Latin Extended-A, Greek and Cyrillic.
+  Letters elsewhere, and ones whose other case is a different length
+  (the German sharp s, the Turkish dotted and dotless i), are left as
+  they are.
 - **`toFloat` and `isFloat` take decimal numbers only.** Go's parser
   also accepts a hexadecimal mantissa with a `p` exponent, like
   `0x1p-2`.
@@ -4161,10 +4164,11 @@ elsewhere is unsigned, like one built on a Mac; see the macOS notes.
   packaged DLL. A Linux build that uses a Windows-only call names it and
   stops. A plain `extern fn` on Linux reaches the C functions the Linux
   runtime provides.
-- **A Linux build needs the system tools.** It assembles and links with
-  `as`, `objcopy` and `cc` for now, where a Windows build needs nothing.
-- **One window per program**, no images, no sound, one font at one
-  size, and no way to measure text.
+- **A Linux or macOS build needs a C toolchain.** On its own system it
+  uses the system's (`as`, `objcopy` and `cc` on Linux, `cc` on a Mac);
+  from another system, zig's, after `veyl cross install`. A Windows
+  build needs nothing.
+- **One window per program**, one font at the system size.
 
 **Memory**
 

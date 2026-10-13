@@ -102,6 +102,8 @@ var sigs = map[string]front.Signature{
 	// Strings.
 	"upper":      {Params: []*Type{Str}, Ret: Str},
 	"lower":      {Params: []*Type{Str}, Ret: Str},
+	"__upperA":   {Params: []*Type{Str}, Ret: Str},
+	"__lowerA":   {Params: []*Type{Str}, Ret: Str},
 	"substr":     {Params: []*Type{Str, Int, Int}, Ret: Str},
 	"charAt":     {Params: []*Type{Str, Int}, Ret: Str},
 	"startsWith": {Params: []*Type{Str, Str}, Ret: Bool},

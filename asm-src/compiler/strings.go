@@ -339,7 +339,9 @@ func (l *lowerer) stringBuiltin(c *Call, name string) (Reg, bool) {
 	}
 
 	switch name {
-	case "upper":
+	// ASCII only; upper and lower themselves are __vy_upper and
+	// __vy_lower in the prelude, which call these first.
+	case "__upperA":
 		if !need(1) {
 			return l.junk(), true
 		}
@@ -347,7 +349,7 @@ func (l *lowerer) stringBuiltin(c *Call, name string) (Reg, bool) {
 			return l.shiftIf(b, 'a', 'z', -32)
 		}), true
 
-	case "lower":
+	case "__lowerA":
 		if !need(1) {
 			return l.junk(), true
 		}

@@ -217,6 +217,8 @@ var preludeOf = map[string]string{
 	"padRight": "__vy_padRight",
 	"substr":   "__vy_substr",
 	"charAt":   "__vy_charAt",
+	"upper":    "__vy_upper",
+	"lower":    "__vy_lower",
 	"chars":    "__vy_chars",
 
 	"mem.scan": "__vy_memScan",

@@ -81,6 +81,152 @@ fn __vy_runeCount(s: str) -> int {
     return c
 }
 
+// upper and lower: ASCII through the byte loop, then the letters of
+// Latin-1, Latin Extended-A, Greek and Cyrillic, which are two bytes in
+// UTF-8 and stay two bytes when their case changes, so the result is
+// fixed up in place. The mappings are Go's unicode.ToUpper / ToLower for
+// those ranges, minus the dotted and dotless i (their partner is one
+// byte). A string with no lead byte from C2 to D1 is returned as the
+// ASCII pass left it.
+fn __vy_upper(s: str) -> str {
+    return __vy_caseFix(__upperA(s), true)
+}
+
+fn __vy_lower(s: str) -> str {
+    return __vy_caseFix(__lowerA(s), false)
+}
+
+fn __vy_caseFix(s: str, up: bool) -> str {
+    let n = len(s)
+    let p = 0
+    let found = false
+    while p < n {
+        let b0 = __strByte(s, p)
+        if b0 >= 194 && b0 <= 209 {
+            found = true
+            break
+        }
+        p += 1
+    }
+    if !found {
+        return s
+    }
+    let b = bytes.of(s)
+    while p + 1 < n {
+        let b0 = __byteAt(b, p)
+        let b1 = __byteAt(b, p + 1)
+        if b0 >= 194 && b0 <= 209 && b1 >= 128 && b1 <= 191 {
+            let c = (b0 - 192) * 64 + (b1 - 128)
+            let m = c
+            if up {
+                m = __vy_upperRune(c)
+            } else {
+                m = __vy_lowerRune(c)
+            }
+            if m != c {
+                __bytePut(b, p, 192 + m / 64)
+                __bytePut(b, p + 1, 128 + m % 64)
+            }
+            p += 2
+        } else {
+            p += 1
+        }
+    }
+    return bytes.str(b)
+}
+
+fn __vy_upperRune(c: int) -> int {
+    if c == 181 {
+        return 924
+    }
+    if c >= 224 && c <= 254 && c != 247 {
+        return c - 32
+    }
+    if c == 255 {
+        return 376
+    }
+    if c >= 256 && c <= 311 && c % 2 == 1 && c != 305 {
+        return c - 1
+    }
+    if c >= 313 && c <= 328 && c % 2 == 0 {
+        return c - 1
+    }
+    if c >= 330 && c <= 375 && c % 2 == 1 {
+        return c - 1
+    }
+    if c >= 378 && c <= 382 && c % 2 == 0 {
+        return c - 1
+    }
+    if c == 940 {
+        return 902
+    }
+    if c >= 941 && c <= 943 {
+        return c - 37
+    }
+    if c == 962 {
+        return 931
+    }
+    if c >= 945 && c <= 971 {
+        return c - 32
+    }
+    if c == 972 {
+        return 908
+    }
+    if c == 973 || c == 974 {
+        return c - 63
+    }
+    if c >= 1072 && c <= 1103 {
+        return c - 32
+    }
+    if c >= 1104 && c <= 1119 {
+        return c - 80
+    }
+    return c
+}
+
+fn __vy_lowerRune(c: int) -> int {
+    if c >= 192 && c <= 222 && c != 215 {
+        return c + 32
+    }
+    if c == 376 {
+        return 255
+    }
+    if c >= 256 && c <= 310 && c % 2 == 0 && c != 304 {
+        return c + 1
+    }
+    if c >= 313 && c <= 327 && c % 2 == 1 {
+        return c + 1
+    }
+    if c >= 330 && c <= 374 && c % 2 == 0 {
+        return c + 1
+    }
+    if c >= 377 && c <= 381 && c % 2 == 1 {
+        return c + 1
+    }
+    if c == 902 {
+        return 940
+    }
+    if c >= 904 && c <= 906 {
+        return c + 37
+    }
+    if c == 908 {
+        return 972
+    }
+    if c == 910 || c == 911 {
+        return c + 63
+    }
+    if c >= 913 && c <= 939 && c != 930 {
+        return c + 32
+    }
+    if c >= 1040 && c <= 1071 {
+        return c + 32
+    }
+    if c >= 1024 && c <= 1039 {
+        return c + 80
+    }
+    return c
+}
+
 fn __vy_charAt(s: str, i: int) -> str {
     if i < 0 {
         return ""
