@@ -3877,6 +3877,7 @@ defer own unsafe
 | `veyl build f.vl` | write `f.exe` next to the source |
 | `veyl build --dll f.vl` | write `f.dll`; see [Building a DLL](#building-a-dll) |
 | `veyl build f.vl -o path` | write the executable at `path` instead, making its folder if need be (`--out=path` too) |
+| `veyl build f.vl --product Name --description text --company Name --copyright text --file-version 1.2.3` | what Properties, Details shows for a Windows executable. Without them the product and description are the file's name and the version 1.0.0.0 |
 | `veyl build f.vl --icon game.ico` | give a Windows executable the icon Explorer, the taskbar and shortcuts show; every size in the `.ico` is kept. A Linux or macOS build says it left the icon out, since those executables carry none |
 | `veyl asm f.vl` | print the generated assembly |
 | `veyl ir f.vl` | print the intermediate representation |
@@ -3960,6 +3961,31 @@ anything knows an x86 register exists.
 veyl ir hello.vl
 veyl asm hello.vl
 ```
+
+### Antivirus
+
+New compilers' output gets flagged by antivirus engines that have never
+seen it, mostly by the machine-learning ones, which score a file on how
+much it looks like what mainstream toolchains write. A Windows
+executable from Veyl is built to look like one:
+
+- the DOS stub every linker writes, and a real timestamp and checksum;
+- address space layout randomisation: the program loads wherever
+  Windows puts it, with a relocation table for anything that needs one;
+- version information (see `--product` and the rest above) and a
+  manifest asking for no elevation, which also stops Windows asking for
+  administrator rights for a program called `setup.exe`.
+
+What Veyl cannot do for you is sign the file. A signature is the
+strongest signal there is, and SmartScreen's "unrecognised app" warning
+only goes away once a signed file has built up reputation. Signing
+needs a code signing certificate; open-source projects can get one free
+through SignPath Foundation, and Azure Trusted Signing costs a few
+dollars a month. Sign with `signtool sign` after `veyl build`.
+
+A detection that still comes up is a false positive, and every vendor
+takes reports: Microsoft through its security intelligence submission
+page, the others through the address on their VirusTotal entry.
 
 ### Right-clicking a .vl file
 

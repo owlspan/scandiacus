@@ -142,7 +142,8 @@ func TestRdataMerge(t *testing.T) {
 		}
 	}
 
-	write := func(t *testing.T, obj *object) []byte {
+	// write gives the file and its section names in order.
+	write := func(t *testing.T, obj *object) ([]byte, string) {
 		t.Helper()
 		out := filepath.Join(t.TempDir(), "out.exe")
 		if err := writePE(obj, out, peOptions{}); err != nil {
@@ -152,12 +153,22 @@ func TestRdataMerge(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if f, err := pe.Open(out); err != nil {
+		f, err := pe.Open(out)
+		if err != nil {
 			t.Fatalf("the loader would not accept this either: %v", err)
-		} else {
-			f.Close()
 		}
-		return bs
+		defer f.Close()
+		var names []string
+		for _, s := range f.Sections {
+			names = append(names, s.Name)
+		}
+		return bs, strings.Join(names, " ")
+	}
+	// textAt is where .text starts in the file: right after the headers.
+	textAt := func(t *testing.T, bs []byte) int {
+		pe := int(binary.LittleEndian.Uint32(bs[0x3c:]))
+		n := int(binary.LittleEndian.Uint16(bs[pe+6:]))
+		return alignUp(pe+4+20+240+n*40, fileAlignment)
 	}
 
 	// Merged. The data starts eight bytes in, after padding for
@@ -165,28 +176,31 @@ func TestRdataMerge(t *testing.T) {
 	// is cleared first, so the test says what it checks rather than
 	// inheriting it from whatever ran it.
 	t.Setenv("VEYL_NOMERGE", "")
-	bs := write(t, build())
-	if got := binary.LittleEndian.Uint16(bs[0x46:]); got != 2 {
-		t.Fatalf("the merged image has %d sections, want text and idata", got)
+	bs, secs := write(t, build())
+	if secs != ".text .idata .reloc" {
+		t.Fatalf("the merged image has sections %s, want text and idata (and the relocations)", secs)
 	}
-	if got := binary.LittleEndian.Uint32(bs[512:516]); got != 0x1008-0x1004 {
+	text := textAt(t, bs)
+	if got := binary.LittleEndian.Uint32(bs[text : text+4]); got != 0x1008-0x1004 {
 		t.Fatalf("the merged reference points at %#x, want %#x", got, 4)
 	}
-	if string(bs[520:526]) != "hello!" {
-		t.Fatalf("the data did not land behind the code: %q", bs[520:526])
+	if string(bs[text+8:text+14]) != "hello!" {
+		t.Fatalf("the data did not land behind the code: %q", bs[text+8:text+14])
 	}
 
 	// Separate. The switch puts everything back exactly as it was:
 	// three sections, the data on its own page at RVA 0x2000.
 	t.Setenv("VEYL_NOMERGE", "1")
-	bs = write(t, build())
-	if got := binary.LittleEndian.Uint16(bs[0x46:]); got != 3 {
-		t.Fatalf("the separate image has %d sections, want three", got)
+	bs, secs = write(t, build())
+	if secs != ".text .rdata .idata .reloc" {
+		t.Fatalf("the separate image has sections %s, want text, rdata and idata", secs)
 	}
-	if got := binary.LittleEndian.Uint32(bs[512:516]); got != 0x2000-0x1004 {
+	text = textAt(t, bs)
+	if got := binary.LittleEndian.Uint32(bs[text : text+4]); got != 0x2000-0x1004 {
 		t.Fatalf("the separate reference points at %#x, want %#x", got, 0xFFC)
 	}
-	if string(bs[1024:1030]) != "hello!" {
-		t.Fatalf("the data did not land on its own page: %q", bs[1024:1030])
+	rdata := text + 512
+	if string(bs[rdata:rdata+6]) != "hello!" {
+		t.Fatalf("the data did not land on its own page: %q", bs[rdata:rdata+6])
 	}
 }

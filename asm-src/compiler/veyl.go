@@ -44,6 +44,10 @@ usage:
                           write the executable somewhere else
   veyl build <file.vl> --icon <file.ico>
                           give a Windows executable its icon
+  veyl build <file.vl> --product <name> --description <text>
+             --company <name> --copyright <text> --file-version <1.2.3>
+                          what Properties, Details shows; the product
+                          and description default to the file's name
   veyl run --linux <file.vl>, veyl build --windows <file.vl>
                           pick the system the program is for; the default
                           is the one veyl runs on (or VEYL_TARGET)
@@ -253,6 +257,20 @@ func main() {
 			outPath = value(opt, "--out")
 		case cmd == "build" && (opt == "--icon" || strings.HasPrefix(opt, "--icon=")):
 			iconPath = value(opt, "--icon")
+		case cmd == "build" && (opt == "--product" || strings.HasPrefix(opt, "--product=")):
+			buildVersion.product = value(opt, "--product")
+		case cmd == "build" && (opt == "--description" || strings.HasPrefix(opt, "--description=")):
+			buildVersion.description = value(opt, "--description")
+		case cmd == "build" && (opt == "--company" || strings.HasPrefix(opt, "--company=")):
+			buildVersion.company = value(opt, "--company")
+		case cmd == "build" && (opt == "--copyright" || strings.HasPrefix(opt, "--copyright=")):
+			buildVersion.copyright = value(opt, "--copyright")
+		case cmd == "build" && (opt == "--file-version" || strings.HasPrefix(opt, "--file-version=")):
+			v, err := parseVersion(value(opt, "--file-version"))
+			if err != nil {
+				fail("--file-version: %v", err)
+			}
+			buildVersion.version = v
 		case opt == "--dll" && cmd == "build":
 			dll = true
 		case opt == "--linux" || opt == "--target=linux":
@@ -544,6 +562,25 @@ func writeExecutable(mod *Module, out, root string) {
 // buildIcon is the icon --icon names, put in the next executable built.
 var buildIcon []icoImage
 
+// buildVersion is what --product, --description, --company, --copyright
+// and --file-version say; what they leave out comes from the file name.
+var buildVersion = versionInfo{version: [4]uint16{1, 0, 0, 0}}
+
+// versionFor fills in buildVersion for the file being written.
+func versionFor(out string, dll bool) *versionInfo {
+	v := buildVersion
+	v.fileName = filepath.Base(out)
+	v.dll = dll
+	name := strings.TrimSuffix(v.fileName, filepath.Ext(v.fileName))
+	if v.product == "" {
+		v.product = name
+	}
+	if v.description == "" {
+		v.description = v.product
+	}
+	return &v
+}
+
 func buildExe(mod *Module, out, root string) {
 	asmText := Emit(mod)
 	if !envOff("VEYL_NOPEEP") && !envOff("VEYL_NOOPT") {
@@ -564,7 +601,8 @@ func buildExe(mod *Module, out, root string) {
 		if err := linkStatic(obj, root, staticImports); err != nil {
 			fail("%v", err)
 		}
-		opt := peOptions{dll: mod.DLL, name: filepath.Base(out), exports: mod.Exports, icon: buildIcon}
+		opt := peOptions{dll: mod.DLL, name: filepath.Base(out), exports: mod.Exports, icon: buildIcon,
+			version: versionFor(out, mod.DLL)}
 		if err := writePE(obj, out, opt); err != nil {
 			fail("the executable could not be written. This is a compiler "+
 				"bug, not a mistake in your program.\n%v", err)

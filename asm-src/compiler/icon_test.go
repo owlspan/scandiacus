@@ -3,6 +3,7 @@ package main
 import (
 	"debug/pe"
 	"encoding/binary"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,14 +66,19 @@ func TestBuildIconAndOut(t *testing.T) {
 		e := o + 16 + 8*i
 		return le.Uint32(data[e:]), int(le.Uint32(data[e+4:]) &^ 0x80000000)
 	}
-	if count(0) != 2 {
-		t.Fatalf("root has %d types, want RT_ICON and RT_GROUP_ICON", count(0))
+	// The icon and its group, then the version information and the
+	// manifest every executable carries, in ascending order of type.
+	var types []uint32
+	byType := map[uint32]int{}
+	for i := 0; i < count(0); i++ {
+		id, sub := entry(0, i)
+		types = append(types, id)
+		byType[id] = sub
 	}
-	id0, icons := entry(0, 0)
-	id1, groups := entry(0, 1)
-	if id0 != rtIcon || id1 != rtGroupIcon {
-		t.Fatalf("types %d and %d, want %d and %d", id0, id1, rtIcon, rtGroupIcon)
+	if fmt.Sprint(types) != fmt.Sprint([]uint32{rtIcon, rtGroupIcon, rtVersion, rtManifest}) {
+		t.Fatalf("resource types %v, want icon, group, version and manifest", types)
 	}
+	icons, groups := byType[rtIcon], byType[rtGroupIcon]
 	if count(icons) != len(want) || count(groups) != 1 {
 		t.Fatalf("%d icons and %d groups, want %d and 1", count(icons), count(groups), len(want))
 	}

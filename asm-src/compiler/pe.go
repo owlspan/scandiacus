@@ -29,6 +29,8 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
+	"time"
 )
 
 const (
@@ -171,9 +173,10 @@ const (
 // peOptions is what differs between an executable and a DLL.
 type peOptions struct {
 	dll     bool
-	name    string     // the DLL's file name, as its export table records it
-	exports []Export   // what the export table lists
-	icon    []icoImage // the executable's icon, from --icon; nil for none
+	name    string       // the DLL's file name, as its export table records it
+	exports []Export     // what the export table lists
+	icon    []icoImage   // the executable's icon, from --icon; nil for none
+	version *versionInfo // Properties, Details; nil for none
 }
 
 func writePE(obj *object, out string, opt peOptions) error {
@@ -215,10 +218,9 @@ func writePE(obj *object, out string, opt peOptions) error {
 		next = alignUp(pdataRVA+len(pdata), sectionAlignment)
 	}
 
-	// A DLL's export table and its relocation block come next, each in
-	// a section of its own.
-	var edata, reloc []byte
-	edataRVA, relocRVA := 0, 0
+	// A DLL's export table comes next, in a section of its own.
+	var edata []byte
+	edataRVA := 0
 	if opt.dll {
 		edataRVA = next
 		var err error
@@ -226,9 +228,7 @@ func writePE(obj *object, out string, opt peOptions) error {
 		if err != nil {
 			return err
 		}
-		relocRVA = alignUp(edataRVA+len(edata), sectionAlignment)
-		reloc = emptyRelocations(textRVA)
-		next = alignUp(relocRVA+len(reloc), sectionAlignment)
+		next = alignUp(edataRVA+len(edata), sectionAlignment)
 	}
 
 	// Writable initialised data, present only when a static library was
@@ -238,14 +238,28 @@ func writePE(obj *object, out string, opt peOptions) error {
 		dataRVA = next
 		next = alignUp(next+len(obj.data), sectionAlignment)
 	}
+	var res []resource
+	if len(opt.icon) > 0 {
+		res = append(res, iconResources(opt.icon)...)
+	}
+	if opt.version != nil {
+		res = append(res, versionResource(*opt.version))
+		if !opt.dll {
+			res = append(res, manifestResource())
+		}
+	}
 	var rsrc []byte
 	rsrcRVA := 0
-	if len(opt.icon) > 0 {
+	if len(res) > 0 {
 		rsrcRVA = next
-		rsrc = buildResources(opt.icon, rsrcRVA)
+		rsrc = buildResourceTree(res, rsrcRVA)
 		next = alignUp(next+len(rsrc), sectionAlignment)
 	}
 	bssRVA := next
+	// The base relocations go last, after .bss, since what they list is
+	// only known once the code's own relocations have been applied.
+	relocRVA := alignUp(bssRVA+obj.bssLen, sectionAlignment)
+	var absolute []int // RVAs of the 64-bit addresses written below
 
 	// Where each section begins, so a symbol's offset becomes an RVA.
 	base := map[secID]int{
@@ -294,7 +308,12 @@ func writePE(obj *object, out string, opt peOptions) error {
 			// its relocations stripped, so the absolute value is written
 			// once here and never moved.
 			addend := int64(binary.LittleEndian.Uint64(buf[r.at : r.at+8]))
-			binary.LittleEndian.PutUint64(buf[r.at:r.at+8], uint64(int64(imageBase)+int64(target)+addend))
+			base := int64(imageBase)
+			if opt.dll {
+				base = dllBase
+			}
+			binary.LittleEndian.PutUint64(buf[r.at:r.at+8], uint64(base+int64(target)+addend))
+			absolute = append(absolute, secRVA+r.at)
 		case relAddr32NB:
 			// An image-relative 32-bit address.
 			addend := int32(binary.LittleEndian.Uint32(buf[r.at : r.at+4]))
@@ -342,10 +361,8 @@ func writePE(obj *object, out string, opt peOptions) error {
 	}
 	if opt.dll {
 		sections = append(sections,
-			peSection{".edata", edataRVA, len(edata), edata, scnData | scnRead},
-			peSection{".reloc", relocRVA, len(reloc), reloc, scnData | scnRead | scnDiscardable})
+			peSection{".edata", edataRVA, len(edata), edata, scnData | scnRead})
 		img.exportRVA, img.exportSize = edataRVA, len(edata)
-		img.relocRVA, img.relocSize = relocRVA, len(reloc)
 	}
 	if len(obj.data) > 0 {
 		sections = append(sections,
@@ -360,8 +377,47 @@ func writePE(obj *object, out string, opt peOptions) error {
 		sections = append(sections,
 			peSection{".bss", bssRVA, obj.bssLen, nil, scnBSS | scnRead | scnWrite})
 	}
+	// Every image can move: the compiler's code is all rip-relative, and
+	// the absolute addresses a static library brings are listed for the
+	// loader to adjust. Usually the list is empty.
+	reloc := baseRelocations(absolute, textRVA)
+	sections = append(sections,
+		peSection{".reloc", relocRVA, len(reloc), reloc, scnData | scnRead | scnDiscardable})
+	img.relocRVA, img.relocSize = relocRVA, len(reloc)
 
 	return writeImage(out, sections, img)
+}
+
+// baseRelocations lists the 64-bit addresses the loader adjusts when
+// the image does not load at its preferred base: one block per 4 KB
+// page, each entry type 10 (DIR64) and the offset in the page, padded
+// to four bytes with a type 0 entry. With nothing to list it is the
+// empty table below.
+func baseRelocations(rvas []int, firstPage int) []byte {
+	if len(rvas) == 0 {
+		return emptyRelocations(firstPage)
+	}
+	sort.Ints(rvas)
+	var out []byte
+	for i := 0; i < len(rvas); {
+		page := rvas[i] &^ 0xFFF
+		var entries []uint16
+		for i < len(rvas) && rvas[i]&^0xFFF == page {
+			entries = append(entries, uint16(10<<12|rvas[i]&0xFFF))
+			i++
+		}
+		if len(entries)%2 != 0 {
+			entries = append(entries, 0)
+		}
+		blk := make([]byte, 8+2*len(entries))
+		binary.LittleEndian.PutUint32(blk[0:], uint32(page))
+		binary.LittleEndian.PutUint32(blk[4:], uint32(len(blk)))
+		for k, e := range entries {
+			binary.LittleEndian.PutUint16(blk[8+2*k:], e)
+		}
+		out = append(out, blk...)
+	}
+	return out
 }
 
 // imageInfo is what the headers point at.
@@ -461,8 +517,19 @@ func buildImports(externs []string, rva int) (blob []byte, slots map[string]int,
 }
 
 // writeImage assembles the headers and the section bodies into a file.
+// dosStub is the sixteen-bit program every linker puts before the PE
+// header: run under DOS it prints the message and exits. Nothing runs
+// it now, but a file without one does not look like a linker made it.
+var dosStub = append([]byte{
+	0x0e, 0x1f, 0xba, 0x0e, 0x00, 0xb4, 0x09, 0xcd, 0x21, 0xb8, 0x01, 0x4c, 0xcd, 0x21,
+}, "This program cannot be run in DOS mode.\r\r\n$"...)
+
+// peHeaderAt is where the PE signature starts: after the DOS header and
+// the stub, rounded up to eight bytes.
+var peHeaderAt = alignUp(0x40+len(dosStub), 8)
+
 func writeImage(out string, sections []peSection, img imageInfo) error {
-	headerSize := alignUp(0x40+4+20+240+len(sections)*40, fileAlignment)
+	headerSize := alignUp(peHeaderAt+4+20+240+len(sections)*40, fileAlignment)
 
 	// File offsets. A section with no initialised data occupies none.
 	at := headerSize
@@ -493,19 +560,19 @@ func writeImage(out string, sections []peSection, img imageInfo) error {
 
 	buf := make([]byte, fileSize)
 
-	// The DOS header. Only the magic and the offset at 0x3c matter to
-	// Windows; the rest of the sixty-four bytes would be the stub's
-	// business, and there is no stub, so running this under DOS prints
-	// nothing rather than a message.
+	// The DOS header and stub. Only the magic and the offset at 0x3c
+	// matter to Windows; the rest are the values every linker writes.
 	copy(buf, "MZ")
 	binary.LittleEndian.PutUint16(buf[0x02:], 0x90)
 	binary.LittleEndian.PutUint16(buf[0x04:], 3)
 	binary.LittleEndian.PutUint16(buf[0x08:], 4)
 	binary.LittleEndian.PutUint16(buf[0x0c:], 0xffff)
+	binary.LittleEndian.PutUint16(buf[0x10:], 0xb8)
 	binary.LittleEndian.PutUint16(buf[0x18:], 0x40)
-	binary.LittleEndian.PutUint32(buf[0x3c:], 0x40)
+	binary.LittleEndian.PutUint32(buf[0x3c:], uint32(peHeaderAt))
+	copy(buf[0x40:], dosStub)
 
-	p := 0x40
+	p := peHeaderAt
 	copy(buf[p:], []byte{'P', 'E', 0, 0})
 	p += 4
 
@@ -513,12 +580,11 @@ func writeImage(out string, sections []peSection, img imageInfo) error {
 	binary.LittleEndian.PutUint16(buf[p+0:], 0x8664) // x86-64
 	binary.LittleEndian.PutUint16(buf[p+2:], uint16(len(sections)))
 	binary.LittleEndian.PutUint16(buf[p+16:], 240) // optional header size
-	// EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE | RELOCS_STRIPPED. A DLL
-	// swaps the last for the DLL flag: it has to be movable.
+	// EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE, and DLL for a DLL.
 	if img.dll {
 		binary.LittleEndian.PutUint16(buf[p+18:], 0x0002|0x0020|0x2000)
 	} else {
-		binary.LittleEndian.PutUint16(buf[p+18:], 0x0002|0x0020|0x0001)
+		binary.LittleEndian.PutUint16(buf[p+18:], 0x0002|0x0020)
 	}
 	p += 20
 
@@ -543,11 +609,12 @@ func writeImage(out string, sections []peSection, img imageInfo) error {
 	binary.LittleEndian.PutUint32(buf[o+56:], uint32(imageSize))
 	binary.LittleEndian.PutUint32(buf[o+60:], uint32(headerSize))
 	binary.LittleEndian.PutUint16(buf[o+68:], 3) // console subsystem
-	// NX_COMPAT | TERMINAL_SERVER_AWARE. No dynamic base: the image has
-	// no relocations to apply, so it has to load where it says it does.
-	binary.LittleEndian.PutUint16(buf[o+70:], 0x0100|0x8000)
+	// HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT: the image moves, to
+	// wherever address space layout randomisation puts it, as one from
+	// any current linker does. An executable is TERMINAL_SERVER_AWARE
+	// too.
+	binary.LittleEndian.PutUint16(buf[o+70:], 0x0020|0x0040|0x0100|0x8000)
 	if img.dll {
-		// HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT: a DLL moves.
 		binary.LittleEndian.PutUint16(buf[o+70:], 0x0020|0x0040|0x0100)
 	}
 	binary.LittleEndian.PutUint64(buf[o+72:], 0x100000) // stack reserve
@@ -584,5 +651,34 @@ func writeImage(out string, sections []peSection, img imageInfo) error {
 		binary.LittleEndian.PutUint32(buf[h+36:], s.chars)
 	}
 
+	// The build time, as MSVC records it, or SOURCE_DATE_EPOCH when that
+	// is set, the usual way to ask for the same bytes from the same
+	// source. Then the checksum over everything.
+	stamp := time.Now().Unix()
+	if e, err := strconv.ParseInt(os.Getenv("SOURCE_DATE_EPOCH"), 10, 64); err == nil {
+		stamp = e
+	}
+	binary.LittleEndian.PutUint32(buf[peHeaderAt+4+4:], uint32(stamp))
+	binary.LittleEndian.PutUint32(buf[o+64:], peChecksum(buf, o+64))
 	return os.WriteFile(out, buf, 0o755)
+}
+
+// peChecksum is the image checksum as imagehlp's CheckSumMappedFile
+// computes it: the file summed as 16-bit words with the carry folded
+// back in, the checksum field itself counted as zero, plus the length.
+func peChecksum(b []byte, field int) uint32 {
+	var sum uint64
+	for i := 0; i+1 < len(b); i += 2 {
+		if i == field || i == field+2 {
+			continue
+		}
+		sum += uint64(binary.LittleEndian.Uint16(b[i:]))
+		sum = (sum & 0xffff) + (sum >> 16)
+	}
+	if len(b)%2 == 1 {
+		sum += uint64(b[len(b)-1])
+		sum = (sum & 0xffff) + (sum >> 16)
+	}
+	sum = (sum & 0xffff) + (sum >> 16)
+	return uint32(sum) + uint32(len(b))
 }
