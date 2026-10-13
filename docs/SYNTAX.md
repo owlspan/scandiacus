@@ -1960,6 +1960,13 @@ http.serve(8080, fn(req: Request) -> Response {
 
 That is a complete program. Run it and open `http://localhost:8080`.
 
+`http.serve` answers one request at a time, so a handler can keep state
+in ordinary variables without locking. `http.serveWorkers(port, n,
+handler)` is the same with `n` threads answering at once, so a slow
+request holds up only one of them. The handler then runs on several
+threads together, and anything it changes that the others can see
+needs a mutex or `atomic` (see Threads).
+
 **What you are given.** A `Request` is a struct:
 
 | Field | Type | |
@@ -4108,8 +4115,9 @@ Honest list of what v1.75.0 does not do yet.
   and is untested, since there is no Mac to test on.
 - **SQL is SQLite only**, through the `sqlite` package. No Postgres,
   MySQL or anything over a network.
-- **The web server handles one request at a time.** Fine for a tool or
-  something on your own network, not a production server.
+- **The web server is HTTP/1.1, one request per connection**: no
+  keep-alive, no TLS, no chunked bodies. `http.serve` answers one
+  request at a time; `http.serveWorkers` answers on several threads.
 - **`upper` and `lower` cover the common alphabets, not all of
   Unicode**: ASCII, Latin-1, Latin Extended-A, Greek and Cyrillic.
   Letters elsewhere, and ones whose other case is a different length

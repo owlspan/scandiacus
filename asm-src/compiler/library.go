@@ -566,6 +566,8 @@ func (asmLibrary) Signature(name string) (front.Signature, bool) {
 		return front.Signature{Check: checkTaskAll}, true
 	case "http.serve":
 		return front.Signature{Check: checkHTTPServe}, true
+	case "http.serveWorkers":
+		return front.Signature{Check: checkHTTPServeWorkers}, true
 	case "stats.mean", "stats.median", "stats.var", "stats.stdev":
 		return front.Signature{Check: checkNumberList}, true
 	case "stats.percentile":
@@ -642,7 +644,7 @@ func (asmLibrary) Signature(name string) (front.Signature, bool) {
 var checkedBuiltins = []string{
 	"expectEq", "len", "push", "contains", "indexOf", "has", "find", "min", "max",
 	"map", "filter", "reduce", "sortBy", "any", "all", "each", "task.map",
-	"task.mapLimit", "task.each", "task.all", "http.serve", "stats.mean",
+	"task.mapLimit", "task.each", "task.all", "http.serve", "http.serveWorkers", "stats.mean",
 	"stats.median", "stats.var", "stats.stdev", "stats.percentile",
 	"json.decode", "json.decodeOr", "os.path.join", "toInt", "toFloat",
 	"input", "padLeft", "padRight", "first", "last", "pop", "sum",
@@ -1355,18 +1357,35 @@ func checkTaskEach(c *Checker, x *Call, args []*Type) *Type {
 // the way the task family's is, so a handler with the wrong shape is an
 // error naming what it should have been rather than a lowering failure.
 func checkHTTPServe(c *Checker, x *Call, args []*Type) *Type {
-	if len(args) != 2 {
-		c.ErrorAt(x, "http.serve takes 2 arguments, got %d", len(args))
+	return checkServe(c, x, args, "http.serve", 0)
+}
+
+// http.serveWorkers(port, workers, handler): http.serve with a count of
+// threads before the handler.
+func checkHTTPServeWorkers(c *Checker, x *Call, args []*Type) *Type {
+	return checkServe(c, x, args, "http.serveWorkers", 1)
+}
+
+func checkServe(c *Checker, x *Call, args []*Type, name string, extra int) *Type {
+	if len(args) != 2+extra {
+		c.ErrorAt(x, "%s takes %d arguments, got %d", name, 2+extra, len(args))
 		return ResultOf(Void)
 	}
-	if !args[0].IsUnknown() && args[0].Kind != KInt {
-		c.ErrorAt(x.Args[0], "http.serve needs an int port, got %s", args[0])
+	for i := 0; i <= extra; i++ {
+		if !args[i].IsUnknown() && args[i].Kind != KInt {
+			what := "port"
+			if i == 1 {
+				what = "worker count"
+			}
+			c.ErrorAt(x.Args[i], "%s needs an int %s, got %s", name, what, args[i])
+		}
 	}
-	hofCallback(c, x, 1, args, "http.serve", []*Type{StructOf("Request")})
-	if got := args[1]; got.IsFunc() && !got.Elem.IsUnknown() {
+	h := 1 + extra
+	hofCallback(c, x, h, args, name, []*Type{StructOf("Request")})
+	if got := args[h]; got.IsFunc() && !got.Elem.IsUnknown() {
 		if got.Elem.Kind != KStruct || got.Elem.Name != "Response" {
-			c.ErrorAt(x.Args[1],
-				"http.serve needs a handler returning Response, got one returning %s", got.Elem)
+			c.ErrorAt(x.Args[h],
+				"%s needs a handler returning Response, got one returning %s", name, got.Elem)
 		}
 	}
 	return ResultOf(Void)

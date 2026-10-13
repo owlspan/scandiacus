@@ -7,8 +7,9 @@ package main
 // plain int: the protocol is ordinary Veyl and reads like it.
 //
 // What it is: HTTP/1.1, one request per connection, Connection: close.
-// What it is not: keep-alive, chunked transfer, TLS, or concurrent
-// requests. A handler runs to completion before the next accept.
+// What it is not: keep-alive, chunked transfer, or TLS. http.serve runs
+// a handler to completion before the next accept; http.serveWorkers
+// runs several threads doing that on one socket.
 
 const preludeHTTP = `
 struct Request {
@@ -207,6 +208,45 @@ fn __vy_httpServe(port: int, handler: fn(Request) -> Response) -> void! {
         net.close(conn)
     }
     return ok()
+}
+
+// http.serve with a pool of threads, each accepting on the one listening
+// socket, so a slow client holds up only the thread serving it. The
+// handler runs on several threads at once: what it shares needs a mutex
+// or atomics, as anywhere else. Fewer than one worker means one.
+fn __vy_httpServeWorkers(port: int, workers: int, handler: fn(Request) -> Response) -> void! {
+    let sock = net.listen(port)?
+    let n = workers
+    if n < 1 {
+        n = 1
+    }
+    let pool: []int = []
+    for i in 0..n {
+        push(pool, thread.spawn(fn() {
+            __vy_httpWorker(sock, handler)
+        }))
+    }
+    for t in pool {
+        thread.join(t)
+    }
+    return ok()
+}
+
+// One worker: accept, answer, close, until the socket fails.
+fn __vy_httpWorker(sock: int, handler: fn(Request) -> Response) {
+    while true {
+        let accepted = net.accept(sock)
+        if !isOk(accepted) {
+            return
+        }
+        let conn = valueOr(accepted, 0)
+        let raw = valueOr(__vy_httpRead(conn), "")
+        if len(raw) > 0 {
+            let res = handler(__vy_httpParse(raw))
+            let sent = net.send(conn, __vy_httpFormat(res))
+        }
+        net.close(conn)
+    }
 }
 
 // A one-shot client. Enough to fetch a page, not a general HTTP client:
