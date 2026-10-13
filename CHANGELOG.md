@@ -3,6 +3,30 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.76.0
+
+**`s += t` is linear.** Building a string by appending in a loop was
+quadratic: each append made a new string and copied all of the old
+one. An append to a local now grows the string in place, in a block
+with room to spare, as long as nothing else has seen the string yet;
+reading the variable (other than in `len`) hands the value out, and
+the next append copies once before growing again. `s = s + t` takes
+the same path. 200000 appends building a 1.3 MB string went from 22
+seconds to 85 milliseconds.
+
+**Namespaced imports.** `import "geometry.vl" as geo` puts everything
+the file declares under `geo`: `geo.area(2.0)`, `geo.Vec{...}`,
+`let v: geo.Vec`, `geo.Kind.Round`, `geo.TAU`. Two files that export
+the same names no longer collide. Generics work across namespaces. A
+plain import is unchanged.
+
+**`http.serveWorkers(port, n, handler)`** answers on `n` threads, so a
+slow request holds up only one of them. `http.serve` still answers one
+at a time, which keeps a handler's plain variables safe.
+
+**`&` on a global.** A `var` at the top level has an address, which,
+since a global lives as long as the program, can be returned and kept.
+
 ## 1.75.0
 
 **`upper` and `lower` past ASCII.** Latin-1, Latin Extended-A, Greek
