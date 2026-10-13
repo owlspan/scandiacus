@@ -1429,7 +1429,7 @@ too. `pause` writes `Press Enter to continue...` first.
 | `str(x)`              | `str`   | any value as text                                |
 | `toInt(s)`            | `int`   | parses text; `0` if it isn't a number            |
 | `toInt(s, fallback)`  | `int`   | parses text; `fallback` if it isn't a number     |
-| `toFloat(s)`          | `float` | parses text; `0` if it isn't a number            |
+| `toFloat(s)`          | `float` | parses text, decimal or hex (`0x1.8p3`); `0` if it is not a number |
 | `toFloat(s, fallback)`| `float` | parses text; `fallback` if it isn't a number     |
 | `isInt(s)`            | `bool`  | whether the text parses as a whole number        |
 | `isFloat(s)`          | `bool`  | whether the text parses as a number              |
@@ -4110,9 +4110,6 @@ Honest list of what v1.74.0 does not do yet.
   Letters elsewhere, and ones whose other case is a different length
   (the German sharp s, the Turkish dotted and dotless i), are left as
   they are.
-- **`toFloat` and `isFloat` take decimal numbers only.** Go's parser
-  also accepts a hexadecimal mantissa with a `p` exponent, like
-  `0x1p-2`.
 
 ### Cross compiling
 

@@ -1,0 +1,13 @@
+0x1p-2 true 0.25
+0x1.8p3 true 12
+-0X1P+4 true -16
+0xA_Bp0 true 171
+0x1.p1 true 2
+0x.8p1 true 1
+0x1 false -1
+0x1p false -1
+0xp1 false -1
+0x1.8 false -1
+1e3 true 1000
+0x1p-1074 true 5e-324
+0x1p1024 false -1

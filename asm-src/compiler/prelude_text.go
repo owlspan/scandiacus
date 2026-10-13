@@ -442,8 +442,8 @@ fn __vy_skipDigits(t: str, p: int, n: int) -> int {
 
 // What strconv.ParseFloat would make of already-trimmed text: 0 if it
 // is not a number, 1 for a decimal, 2 and 3 for positive and negative
-// infinity, 4 for NaN. Go also takes hexadecimal mantissas with a p
-// exponent; those are not accepted here.
+// infinity, 4 for NaN. A hexadecimal mantissa with a p exponent, like
+// 0x1.8p3, is a 1 too, as in Go; strtod reads that form as well.
 //
 // A number that has an exponent but not the digits of one, like "1e",
 // is not a number, and neither is anything with text after it.
@@ -470,6 +470,9 @@ fn __vy_floatForm(t: str) -> int {
     }
     if word == "nan" && !signed {
         return 4
+    }
+    if p + 1 < n && __strByte(t, p) == 48 && (__strByte(t, p + 1) == 120 || __strByte(t, p + 1) == 88) {
+        return __vy_hexFloatForm(t, p + 2, n)
     }
     let start = p
     p = __vy_skipDigits(t, p, n)
@@ -504,6 +507,60 @@ fn __vy_floatForm(t: str) -> int {
         return 0
     }
     return 1
+}
+
+// The rest of a hexadecimal float after its 0x: hex digits with an
+// optional point, then the p exponent Go requires of that form.
+fn __vy_hexFloatForm(t: str, p: int, n: int) -> int {
+    let start = p
+    p = __vy_skipHex(t, p, n)
+    let digits = p - start
+    if p < n && __strByte(t, p) == 46 {
+        p += 1
+        let frac = p
+        p = __vy_skipHex(t, p, n)
+        digits += p - frac
+    }
+    if digits == 0 || p >= n {
+        return 0
+    }
+    let e = __strByte(t, p)
+    if e != 112 && e != 80 {
+        return 0
+    }
+    p += 1
+    if p < n {
+        let sign = __strByte(t, p)
+        if sign == 43 || sign == 45 {
+            p += 1
+        }
+    }
+    let expStart = p
+    p = __vy_skipDigits(t, p, n)
+    if p == expStart || p != n {
+        return 0
+    }
+    return 1
+}
+
+fn __vy_isHexByte(b: int) -> bool {
+    return __vy_isDigitByte(b) || (b >= 97 && b <= 102) || (b >= 65 && b <= 70)
+}
+
+// skipDigits for hex digits, underscores allowed the same way.
+fn __vy_skipHex(t: str, p: int, n: int) -> int {
+    let q = p
+    while q < n {
+        let b = __strByte(t, q)
+        if __vy_isHexByte(b) {
+            q += 1
+        } else if b == 95 && q > p && __vy_isHexByte(__strByte(t, q + 1)) {
+            q += 1
+        } else {
+            break
+        }
+    }
+    return q
 }
 
 // A decimal too large for a float64 is a range error in Go, so it takes
