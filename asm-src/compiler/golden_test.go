@@ -43,7 +43,7 @@ func TestGolden(t *testing.T) {
 		name := filepath.Base(filepath.Dir(src)) + "/" + filepath.Base(src)
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if targetLinux() && windowsOnlyProgram(filepath.Base(src)) {
+			if (targetLinux() || targetMac()) && windowsOnlyProgram(filepath.Base(src)) {
 				t.Skip("exercises a Windows-only facility (COM, the PE image, raw native calls, " +
 					"the Windows process APIs, or COFF static libraries)")
 			}

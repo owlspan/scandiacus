@@ -46,7 +46,9 @@ func macCC() []string {
 	if runtime.GOOS != "darwin" {
 		return crossCC(zigMacTarget, "macOS")
 	}
-	return []string{"cc"}
+	// The code is x86-64 on every Mac, so on Apple Silicon the system
+	// compiler is told so; the result runs through Rosetta.
+	return []string{"cc", "-arch", "x86_64"}
 }
 
 // buildMac turns a module into a macOS executable.

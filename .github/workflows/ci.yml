@@ -143,3 +143,21 @@ jobs:
             n=$((n+1))
           done
           [ "$n" = 2 ]
+
+  # The macOS target, built with the Mac's own compiler and run under
+  # Rosetta on the Apple Silicon runner.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: veyl
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: Golden programs
+        working-directory: veyl/asm-src
+        run: go test -count=1 -run TestGolden ./compiler
