@@ -3,6 +3,21 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.75.0
+
+**`upper` and `lower` past ASCII.** Latin-1, Latin Extended-A, Greek
+and Cyrillic letters change case now, with Go's mappings for those
+ranges (checked against Go for every code point from U+00A0 to
+U+045F). Letters whose other case is a different length, like the
+German sharp s, are left alone. ASCII text costs what it did.
+
+**`toFloat` and `isFloat` read hexadecimal floats**, like `0x1.8p3`,
+as Go does: a `0x` mantissa needs a `p` exponent.
+
+The limitations list had two stale entries - windows have had images,
+sound and text measuring for a while, and a Linux build no longer
+needs the system tools when zig is set up - and now says so.
+
 ## 1.74.0
 
 **macOS is tested.** Until now a macOS executable was built but never
