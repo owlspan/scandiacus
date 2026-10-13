@@ -21,9 +21,9 @@ import (
 // veylgo branch instead. Their .out files are that backend's output,
 // frozen when it was retired.
 func TestGolden(t *testing.T) {
-	// On Linux the programs are built for Linux and run directly; the
+	// On Linux and macOS the programs are built for that system and run directly; the
 	// Windows target needs wine anywhere but Windows.
-	if !targetLinux() && runtime.GOOS != "windows" {
+	if !targetLinux() && !targetMac() && runtime.GOOS != "windows" {
 		if _, err := exec.LookPath("wine"); err != nil {
 			t.Skip("the programs are Windows executables, and there is no wine to run them")
 		}
