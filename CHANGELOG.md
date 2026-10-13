@@ -3,6 +3,38 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 0.71.0
+
+**Fewer antivirus false positives.** A Windows executable from Veyl
+used to stand out from what mainstream linkers write: no DOS stub, no
+address space layout randomisation, a zero checksum and timestamp, no
+version information and no manifest. Engines that score a file on its
+shape flagged it for that alone. Now it has all of them:
+
+- the standard DOS stub, a real checksum, and the build time as its
+  timestamp (`SOURCE_DATE_EPOCH` when set);
+- ASLR, with a relocation table for the absolute addresses a static
+  library brings;
+- version information, set with `--product`, `--description`,
+  `--company`, `--copyright` and `--file-version`, defaulting to the
+  file's name and 1.0.0.0;
+- a manifest asking for no elevation, so a program called `setup.exe`
+  no longer makes Windows ask for administrator rights.
+
+It costs about 2.5 KB per executable. Signing is still up to you; see
+Antivirus in SYNTAX.md.
+
+**Floats print exactly.** The digits came from msvcrt, which rounds
+some values wrong: in 30,000 random doubles, 433 printed a wrong last
+digit and 18 printed a different number. They come from the Universal
+C Runtime now, with ties going to the even digit as Go and glibc do.
+Checked against Go on 300,000 doubles on Windows and 100,000 on Linux.
+
+**`zip`**: `zip.make`, `zip.list` and `zip.extract`, the last library
+the Go backend had. Archives are compressed, read by any zip tool, and
+read what any zip tool writes. Extraction refuses an entry that would
+land outside the destination, before writing anything.
+
 ## 0.70.0
 
 **A new logo.** A cube with its front corner carved out, in the
