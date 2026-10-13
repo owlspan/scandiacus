@@ -255,7 +255,7 @@ func (l *lowerer) netRecv(sock, max Reg) Reg {
 		l.failIfNegative(n, "recv", ret)
 		// A zero return is the peer closing cleanly, which is an empty
 		// string rather than a failure.
-		l.storeByte(buf, n, l.constant(0))
+		l.strEnd(buf, n)
 		l.emit(Instr{Op: OpRet, A: l.resOk(buf, ret), Dst: NoReg})
 	})
 	return l.callHelper(sym, []Reg{sock, max}, []vty{vInt, vInt}, ret)

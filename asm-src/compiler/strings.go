@@ -2,9 +2,18 @@ package main
 
 // The string library, lowered in the IR out of byte loads and stores.
 //
-// A Veyl string here is a pointer to NUL-terminated bytes, so everything
-// below is a loop over an index with a bounds condition of "not the
-// terminator". Writing these as IR rather than as assembly helpers means
+// A Veyl string is a pointer to its bytes, like a C string, and like a
+// C string they end in a zero byte, so any C function can take one as it
+// is. But the length is not found by looking for that zero: it is in
+// the object header in front of the bytes, the size word every heap
+// object has (the length plus the terminator), and string literals carry
+// the same header in .rdata. So len is one load, and a string can hold
+// zero bytes of its own - binary data reads back whole. Everything below
+// loops over an index up to strLen.
+//
+// The rule that follows: every str value must have that header. A
+// pointer to C memory is never a str until it is copied into one with
+// cstr. Writing these as IR rather than as assembly helpers means
 // the byte writer inherits them, and means each one is readable as
 // ordinary control flow rather than as a page of instructions.
 //
@@ -20,8 +29,83 @@ func (l *lowerer) strAlloc(n Reg) Reg {
 	return buf
 }
 
+// cstr copies NUL-terminated C memory - a buffer an API filled in, a
+// pointer a library returned - into a string with a header, measuring
+// it the C way, with strlen.
+func (l *lowerer) cstr(p Reg) Reg {
+	ps := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: p, Dst: NoReg, Imm: ps})
+	n := l.ccall("strlen", []Reg{l.load(ps, vInt)}, []vty{vInt}, vInt, false, false)
+	return l.strFromMem(l.load(ps, vInt), n)
+}
+
+// cstrOrNil is cstr with a null pointer passed through as 0, for an API
+// whose null means "there is none".
+func (l *lowerer) cstrOrNil(p Reg) Reg {
+	ps := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: p, Dst: NoReg, Imm: ps})
+	out := l.temp(vStr)
+	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: out})
+	skip := l.newLabel()
+	l.emit(Instr{Op: OpJumpIf, A: l.compare(OpEq, l.load(ps, vInt), l.constant(0)), Dst: NoReg, Imm: skip})
+	l.emit(Instr{Op: OpStore, A: l.cstr(l.load(ps, vInt)), Dst: NoReg, Imm: out})
+	l.mark(skip)
+	return l.load(out, vStr)
+}
+
+// strEnd finishes a string built in a buffer that may be bigger than
+// what was written into it: the terminator at n, and the header's size
+// brought down to n+1, so the length reads as n. The live-byte count
+// the collector keeps is moved by the same amount, since a sweep takes
+// the size off it from the header when the string is freed.
+func (l *lowerer) strEnd(buf, n Reg) {
+	bs := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: buf, Dst: NoReg, Imm: bs})
+	ns := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: n, Dst: NoReg, Imm: ns})
+	l.storeByte(l.load(bs, vInt), l.load(ns, vInt), l.constant(0))
+	at := l.arith(OpSub, l.load(bs, vInt), l.constant(objHeader))
+	old := l.peekWord(at, objTagOff)
+	olds := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: old, Dst: NoReg, Imm: olds})
+	size := l.arith(OpAdd, l.load(ns, vInt), l.constant(1))
+	hdr := l.arith(OpBOr, l.arith(OpShl, size, l.constant(tagShift)),
+		l.arith(OpBAnd, l.load(olds, vInt), l.constant(255)))
+	l.pokeWord(l.arith(OpSub, l.load(bs, vInt), l.constant(objHeader)), objTagOff, hdr)
+	delta := l.arith(OpSub, l.arith(OpAdd, l.load(ns, vInt), l.constant(1)),
+		l.arith(OpShr, l.load(olds, vInt), l.constant(tagShift)))
+	l.atomicAdd(l.rtSlot(gcBytesSlot), delta)
+}
+
+// strCmp orders two strings as Go does, byte by byte with a shorter
+// prefix first: below zero, zero or above. Zero bytes inside count like
+// any other, which strcmp could not do.
+func (l *lowerer) strCmp(a, b Reg) Reg {
+	sym := l.helperFunc("__strcmp", []vty{vStr, vStr}, vInt, func(p []Reg) {
+		as := l.temp(vStr)
+		l.emit(Instr{Op: OpStore, A: p[0], Dst: NoReg, Imm: as})
+		bs := l.temp(vStr)
+		l.emit(Instr{Op: OpStore, A: p[1], Dst: NoReg, Imm: bs})
+		la := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: l.strLen(l.load(as, vStr)), Dst: NoReg, Imm: la})
+		lb := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: l.strLen(l.load(bs, vStr)), Dst: NoReg, Imm: lb})
+		n := l.pick(l.compare(OpLt, l.load(la, vInt), l.load(lb, vInt)),
+			l.load(la, vInt), l.load(lb, vInt), vInt)
+		r := l.ccall("memcmp", []Reg{l.load(as, vStr), l.load(bs, vStr), n},
+			[]vty{vStr, vStr, vInt}, vInt, true, false)
+		rs := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: r, Dst: NoReg, Imm: rs})
+		tie := l.newLabel()
+		l.emit(Instr{Op: OpJumpIf, A: l.compare(OpEq, l.load(rs, vInt), l.constant(0)), Dst: NoReg, Imm: tie})
+		l.emit(Instr{Op: OpRet, A: l.load(rs, vInt), Dst: NoReg})
+		l.mark(tie)
+		l.emit(Instr{Op: OpRet, A: l.arith(OpSub, l.load(la, vInt), l.load(lb, vInt)), Dst: NoReg})
+	})
+	return l.callHelper(sym, []Reg{a, b}, []vty{vStr, vStr}, vInt)
+}
+
 func (l *lowerer) strLen(s Reg) Reg {
-	l.mod.needs("strlen")
 	d := l.newReg()
 	l.regTy[d] = vInt
 	l.emit(Instr{Op: OpStrLen, Dst: d, A: s, B: NoReg})

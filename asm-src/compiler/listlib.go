@@ -70,9 +70,7 @@ func orderable(t vty) bool {
 func (l *lowerer) lessValues(n Node, a, b Reg, t vty, what string) (Reg, bool) {
 	switch t.k {
 	case kStr:
-		// strcmp gives the same order Go's < on strings does: both
-		// compare bytes.
-		cmp := l.ccall("strcmp", []Reg{a, b}, []vty{vStr, vStr}, vInt, true, false)
+		cmp := l.strCmp(a, b)
 		return l.compare(OpLt, cmp, l.constant(0)), true
 	case kFloat:
 		return l.compare(OpFLt, a, b), true
@@ -380,7 +378,7 @@ func (l *lowerer) listJoin(c *Call, list Reg, t vty, sep Reg) Reg {
 		l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, l.load(at, vInt), n), Dst: NoReg, Imm: at})
 	})
 	res := l.load(outSlot, vStr)
-	l.storeByte(res, l.load(at, vInt), l.constant(0))
+	l.strEnd(res, l.load(at, vInt))
 	return res
 }
 

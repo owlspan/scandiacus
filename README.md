@@ -232,10 +232,9 @@ that calls an export is made known to it on the way in and parks on
 the way out (`dllgc.go`).
 `VEYL_GC=off` turns it off.
 
-**A string is NUL-terminated bytes**, with no length beside it. So a
-file holding a zero byte reads back short where the Go backend reads it
-whole, which is what the `bytes` type is for, and building a string by
-repeated appending is quadratic - push the pieces and `join` them.
+**Building a string by repeated appending is quadratic**: each `+`
+copies both sides into a new string. Push the pieces onto a list and
+`join` them once.
 
 ## Why assembly text and not machine code
 

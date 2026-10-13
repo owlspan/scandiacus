@@ -150,8 +150,7 @@ func (l *lowerer) sysMessage() Reg {
 	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
 
 	l.mark(done)
-	l.storeByte(buf, l.load(iSlot, vInt), l.constant(0))
-	return buf
+	return l.strFromMem(buf, l.load(iSlot, vInt))
 }
 
 // pathError is what Go's *PathError prints: the operation, the path,
@@ -244,7 +243,7 @@ func (l *lowerer) readFile(c *Call) Reg {
 	l.ccall("ReadFile",
 		[]Reg{h, buf, size, readOut, l.constant(0)},
 		[]vty{vInt, vStr, vInt, vInt, vInt}, vInt, true, false)
-	l.storeByte(buf, l.loadPtr(readOut), l.constant(0))
+	l.strEnd(buf, l.loadPtr(readOut))
 	l.closeHandle(h)
 
 	l.emit(Instr{Op: OpStore, A: l.resOk(buf, t), Dst: NoReg, Imm: out})

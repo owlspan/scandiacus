@@ -91,7 +91,7 @@ func (l *lowerer) tlsBuiltin(c *Call, name string) (Reg, bool) {
 			n := l.ccall("veyl_tls_recv", []Reg{a[0], buf, max}, []vty{vInt, vStr, vInt}, vInt, false, false)
 			bad := l.newLabel()
 			l.emit(Instr{Op: OpJumpIf, A: l.compare(OpLt, n, l.constant(0)), Dst: NoReg, Imm: bad})
-			l.storeByte(buf, n, l.constant(0))
+			l.strEnd(buf, n)
 			l.emit(Instr{Op: OpRet, A: l.resOk(buf, ret), Dst: NoReg})
 			l.mark(bad)
 			l.emit(Instr{Op: OpRet, A: l.tlsFail(ret), Dst: NoReg})
@@ -115,7 +115,6 @@ func (l *lowerer) tlsBuiltin(c *Call, name string) (Reg, bool) {
 // per thread so two threads fetching at once each get their own.
 func (l *lowerer) tlsFail(t vty) Reg {
 	msg := l.ccall("veyl_tls_error", nil, nil, vInt, false, false)
-	l.regTy[msg] = vStr
 	// Copied, since the runtime's buffer is reused by the next failure.
-	return l.resFail(l.concat(l.strLit(""), msg), t)
+	return l.resFail(l.cstr(msg), t)
 }

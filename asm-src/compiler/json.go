@@ -219,7 +219,7 @@ func (l *lowerer) jsonEscape(s Reg) Reg {
 		l.mark(done)
 	})
 
-	l.storeByte(buf, l.load(wSlot, vInt), l.constant(0))
+	l.strEnd(buf, l.load(wSlot, vInt))
 	return buf
 }
 

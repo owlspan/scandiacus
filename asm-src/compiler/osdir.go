@@ -44,17 +44,15 @@ func (l *lowerer) strEq(a, b Reg) Reg {
 // as a pointer into that buffer becomes whatever the following entry is
 // called. This was a bug before it was a comment: the listing came back
 // as the last filename repeated.
+// copyStr copies a name a C API wrote, which has no header.
 func (l *lowerer) copyStr(s Reg) Reg {
-	return l.substring(s, l.constant(0), l.strLen(s))
+	return l.cstr(s)
 }
 
-// findName is a pointer to the cFileName field of a find record, typed
-// as a string. It points into the record, so the caller copies it before
-// the next FindNextFile.
+// findName is the address of the cFileName field of a find record: C
+// memory, not a string, until copyStr makes one of it.
 func (l *lowerer) findName(data Reg) Reg {
-	p := l.arith(OpAdd, data, l.constant(findDataName))
-	l.regTy[p] = vStr
-	return p
+	return l.arith(OpAdd, data, l.constant(findDataName))
 }
 
 // findIsDir reports whether the current find record is a directory.
@@ -92,13 +90,17 @@ func (l *lowerer) listNames(path Reg, onFail int64) Reg {
 	done := l.newLabel()
 	l.mark(top)
 
-	name := l.findName(data)
-	isDot := l.strEq(name, l.strLit("."))
-	isDotDot := l.strEq(name, l.strLit(".."))
+	// Copied first: the name is C memory inside the find record, and a
+	// string compare reads the header a copy has.
+	name := l.copyStr(l.findName(data))
+	nameSlot := l.temp(vStr)
+	l.emit(Instr{Op: OpStore, A: name, Dst: NoReg, Imm: nameSlot})
+	isDot := l.strEq(l.load(nameSlot, vStr), l.strLit("."))
+	isDotDot := l.strEq(l.load(nameSlot, vStr), l.strLit(".."))
 	skip := l.logicalOr(isDot, isDotDot)
 	l.emit(Instr{Op: OpJumpIf, A: skip, Dst: NoReg, Imm: next})
 
-	l.insertSorted(names, l.copyStr(name))
+	l.insertSorted(names, l.load(nameSlot, vStr))
 
 	l.mark(next)
 	more := l.ccall("FindNextFileA", []Reg{h, data}, []vty{vInt, vInt},

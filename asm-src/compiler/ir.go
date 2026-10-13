@@ -2196,6 +2196,7 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 		// A nullable is the value or nil, unquoted, as interpolation
 		// shows it; the word it is held in is a box's address.
 		if t := l.regTy[a]; t.null && !t.res {
+			l.mod.needs("printstr")
 			l.emit(Instr{Op: OpPrintStr, A: l.strOfNull(c, a, t), Dst: NoReg, Comment: "print"})
 			return l.void()
 		}
@@ -2214,6 +2215,7 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 		case kBool:
 			l.emit(Instr{Op: OpPrintBool, A: a, Dst: NoReg, Comment: "print"})
 		case kStr:
+			l.mod.needs("printstr")
 			l.emit(Instr{Op: OpPrintStr, A: a, Dst: NoReg, Comment: "print"})
 			if l.gcOff && freshStr(c.Args[0]) {
 				l.freeObject(a) // a temporary; see gcoff.go
@@ -2989,7 +2991,7 @@ func (l *lowerer) binary(x *Binary) Reg {
 				l.errorAt(x, "cannot compare %s and %s", at, bt)
 				return l.junk()
 			}
-			cmp := l.ccall("strcmp", []Reg{a, b}, []vty{vStr, vStr}, vInt, true, false)
+			cmp := l.strCmp(a, b)
 			op := map[Kind]Op{LT: OpLt, GT: OpGt, LTE: OpLe, GTE: OpGe}[x.Op]
 			return l.compare(op, cmp, l.constant(0))
 		default:
@@ -3445,7 +3447,7 @@ func (l *lowerer) listLit(x *ListLit) Reg {
 // getenv lowers one environment lookup to the raw pointer, NULL and all.
 func (l *lowerer) getenv(arg Expr) Reg {
 	name := l.expr(arg)
-	return l.ccall("getenv", []Reg{name}, []vty{vStr}, vStr, false, false)
+	return l.cstrOrNil(l.ccall("getenv", []Reg{name}, []vty{vStr}, vInt, false, false))
 }
 
 // mapLit builds a map from its entries. The key and value types come

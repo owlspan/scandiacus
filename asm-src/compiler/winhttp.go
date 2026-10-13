@@ -224,10 +224,9 @@ func (l *lowerer) winhttpRead(req Reg) Reg {
 	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
 
 	l.mark(done)
-	buf := l.load(bufSlot, vInt)
-	l.storeByte(buf, l.load(lenSlot, vInt), l.constant(0))
-	l.regTy[buf] = vStr
-	return buf
+	// Copied at the length read, so a body with zero bytes in it - an
+	// image, an archive - comes back whole.
+	return l.strFromMem(l.load(bufSlot, vInt), l.load(lenSlot, vInt))
 }
 
 // intToStr renders an int, for the status code in a failure message.

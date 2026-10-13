@@ -155,7 +155,7 @@ func (l *lowerer) queryEscape(s Reg) Reg {
 		l.mark(next)
 	})
 
-	l.storeByte(buf, l.load(wSlot, vInt), l.constant(0))
+	l.strEnd(buf, l.load(wSlot, vInt))
 	return buf
 }
 
@@ -463,7 +463,7 @@ func (l *lowerer) pathBuiltin(c *Call, name string) (Reg, bool) {
 		l.emit(Instr{Op: OpStoreMem, A: size, B: l.constant(nameMax), Imm: 0})
 		l.ccall("GetComputerNameA", []Reg{buf, size},
 			[]vty{vStr, vInt}, vInt, true, false)
-		return buf, true
+		return l.cstr(buf), true
 
 	case "os.name":
 		// A build is for one system, so the answer is known at compile
@@ -479,7 +479,7 @@ func (l *lowerer) pathBuiltin(c *Call, name string) (Reg, bool) {
 		l.regTy[buf] = vStr
 		l.ccall("GetCurrentDirectoryA", []Reg{l.constant(pathMax), buf},
 			[]vty{vInt, vStr}, vInt, true, false)
-		return buf, true
+		return l.cstr(buf), true
 
 	case "os.dir.change":
 		if len(c.Args) != 1 {
@@ -499,7 +499,7 @@ func (l *lowerer) pathBuiltin(c *Call, name string) (Reg, bool) {
 		l.ccall("GetFullPathNameA",
 			[]Reg{l.expr(c.Args[0]), l.constant(pathMax), buf, l.constant(0)},
 			[]vty{vStr, vInt, vStr, vInt}, vInt, true, false)
-		return buf, true
+		return l.cstr(buf), true
 	}
 	return NoReg, false
 }

@@ -135,9 +135,14 @@ probe(3)
 		hasCopy := false
 		for i := range holder.Code {
 			if &holder.Code[i] == in {
-				// The copy is the strlen that walks the returned buffer,
-				// immediately after the call in the same function.
-				hasCopy = i+1 < len(holder.Code) && holder.Code[i+1].Op == OpStrLen
+				// The copy measures the returned buffer with C's strlen,
+				// right after the call in the same function: a char* has
+				// no header to read a length from.
+				for k := i + 1; k < len(holder.Code) && k <= i+4; k++ {
+					if holder.Code[k].Sym == "strlen" {
+						hasCopy = true
+					}
+				}
 				break
 			}
 		}

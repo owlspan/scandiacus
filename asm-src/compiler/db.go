@@ -100,8 +100,7 @@ func (l *lowerer) dbBuiltin(c *Call, name string) (Reg, bool) {
 
 	case "db.version":
 		v := l.ccall("sqlite3_libversion", nil, nil, vInt, false, false)
-		l.regTy[v] = vStr
-		return v, true
+		return l.cstr(v), true
 	}
 	return NoReg, false
 }
@@ -110,8 +109,7 @@ func (l *lowerer) dbBuiltin(c *Call, name string) (Reg, bool) {
 // than a code: "no such table: notes" beats "error 1".
 func (l *lowerer) dbFail(conn Reg, what string, t vty) Reg {
 	msg := l.ccall("sqlite3_errmsg", []Reg{conn}, []vty{vInt}, vInt, false, false)
-	l.regTy[msg] = vStr
-	return l.resFail(l.concatAll(l.strLit(what+": "), msg), t)
+	return l.resFail(l.concatAll(l.strLit(what+": "), l.cstr(msg)), t)
 }
 
 func (l *lowerer) dbOpen(path Reg) Reg {
@@ -271,10 +269,5 @@ func (l *lowerer) dbRun(conn, sql, args Reg, wantRows bool) Reg {
 // next step, so a row kept without copying reads as whatever the last
 // row happened to be.
 func (l *lowerer) dupStr(s Reg) Reg {
-	n := l.strLen(s)
-	buf := l.strAlloc(l.arith(OpAdd, n, l.constant(1)))
-	l.copyBytes(buf, s, n)
-	l.storeByte(buf, n, l.constant(0))
-	l.regTy[buf] = vStr
-	return buf
+	return l.cstr(s)
 }

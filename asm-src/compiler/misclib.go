@@ -22,9 +22,9 @@ func (l *lowerer) miscBuiltin(c *Call, name string) (Reg, bool) {
 			return l.junk(), true
 		}
 		// Two bytes: the character and the terminator every string here
-		// carries. A zero argument therefore makes an empty string
-		// rather than a one-byte one, which is the same thing a
-		// NUL-terminated representation can express of it.
+		// carries. A zero argument makes a one-byte string holding a
+		// zero, since the length is in the header and not found by
+		// looking for one.
 		buf := l.strAlloc(l.constant(1))
 		l.storeByte(buf, l.constant(0), v)
 		l.storeByte(buf, l.constant(1), l.constant(0))
@@ -63,11 +63,10 @@ func (l *lowerer) miscBuiltin(c *Call, name string) (Reg, bool) {
 			l.errorAt(c, "__cmdline takes no arguments")
 			return l.junk(), true
 		}
-		// The pointer belongs to Windows and lives as long as the
-		// process, so it is used in place rather than copied.
+		// The pointer belongs to Windows; it is copied so it has the
+		// header every string has.
 		p := l.ccall("GetCommandLineA", nil, nil, vInt, false, false)
-		l.regTy[p] = vStr
-		return p, true
+		return l.cstr(p), true
 	}
 
 	return NoReg, false

@@ -1041,6 +1041,13 @@ A string is UTF-8 bytes. `len` and `indexOf` count bytes; `charAt`,
 `substr`, `chars`, `padLeft` and `padRight` count characters. A byte
 that does not begin a valid character reads as one character, U+FFFD.
 
+A string knows its own length, so `len` costs nothing however long the
+string is, and a string can hold any byte, zero included: `"a\0b"` is
+three bytes, and a file or a network read with zeros in it comes back
+whole. It also ends in a zero byte just past its length, so it can be
+handed to a C function as it is - which, being C, stops at the first
+zero it finds.
+
 ### Raw strings
 
 Backticks give a string with **no escapes and no interpolation**, which
@@ -2040,9 +2047,8 @@ while true {
 
 Two things to know. `net.recv` reads **once** and gives you whatever
 had arrived - TCP is a stream, so a message may come back in pieces and
-deciding where one ends is yours to do. And a string here is
-NUL-terminated, so binary data with a zero byte in it reads back short;
-that is what `bytes` is for.
+deciding where one ends is yours to do. A string holds any byte, zero
+included, so binary data comes back whole either way.
 
 ---
 
@@ -4094,10 +4100,9 @@ Honest list of what v0.72.0 does not do yet.
   MySQL or anything over a network.
 - **The web server handles one request at a time.** Fine for a tool or
   something on your own network, not a production server.
-- **A string is NUL-terminated bytes.** Binary data containing a zero
-  byte reads back short - use `bytes` for that - and building a string
-  by repeated appending is quadratic: push the pieces onto a list and
-  `join` them once, which is linear.
+- **Building a string by repeated appending is quadratic**: each `+`
+  copies both sides. Push the pieces onto a list and `join` them once,
+  which is linear.
 - **`upper` and `lower` change ASCII letters only**, where the Go
   backend also changes accented and non-Latin ones.
 - **`toFloat` and `isFloat` take decimal numbers only.** Go's parser

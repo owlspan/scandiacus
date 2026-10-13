@@ -206,10 +206,14 @@ func Emit(m *Module) string {
 	e.b.WriteString("    .asciz \"runtime error: index %lld is out of range for a list of length %lld\\n\"\n")
 	e.label("__fmt_must")
 	e.b.WriteString("    .asciz \"runtime error: %s\\n\"\n")
-	e.label("__str_true")
-	e.b.WriteString("    .asciz \"true\"\n")
-	e.label("__str_false")
-	e.b.WriteString("    .asciz \"false\"\n")
+	e.strLiteral("__str_true", "true")
+	e.strLiteral("__str_false", "false")
+	e.label("__fmt_s")
+	e.b.WriteString("    .asciz \"%s\"\n")
+	e.label("__fmt_c")
+	e.b.WriteString("    .asciz \"%c\"\n")
+	e.label("__fmt_nl")
+	e.b.WriteString("    .asciz \"\\n\"\n")
 
 	if e.mod.Helpers["floatfmt"] {
 		e.label("__fmt_star_e")
@@ -219,8 +223,7 @@ func Emit(m *Module) string {
 	}
 
 	for i, s := range m.Strings {
-		e.label(fmt.Sprintf("__str%d", i))
-		e.b.WriteString("    .asciz \"" + escapeAsm(s) + "\"\n")
+		e.strLiteral(fmt.Sprintf("__str%d", i), s)
 	}
 	if e.mod.Helpers["rodata"] {
 		e.label("__rodata_end")
@@ -340,16 +343,19 @@ func (e *Emitter) externs() []string {
 		out = append(out, sym)
 	}
 	if e.mod.Helpers["concat"] {
-		out = append(out, "malloc", "strlen", "strcpy", "strcat")
+		out = append(out, "malloc", "memmove")
 	}
 	if e.mod.Helpers["streq"] {
-		out = append(out, "strcmp")
+		out = append(out, "memcmp")
+	}
+	if e.mod.Helpers["printstr"] {
+		out = append(out, "printf", "strlen")
 	}
 	if e.mod.Helpers["strlen"] {
 		out = append(out, "strlen")
 	}
 	if e.mod.Helpers["inttostr"] {
-		out = append(out, "malloc", "_snprintf")
+		out = append(out, "malloc", "_snprintf", "memmove")
 	}
 	if e.mod.Helpers["alloc"] {
 		out = append(out, "malloc")
@@ -380,6 +386,19 @@ func (e *Emitter) externs() []string {
 }
 
 // escapeAsm renders a Veyl string as a GNU as .asciz operand.
+// strLiteral writes a string constant with the two-word header every
+// heap object has in front of it, so its length is read from the header
+// like any other string's: the size word is the length plus the
+// terminator, shifted past the tag (tagBytes, zero), and the link is
+// zero. The collector never meets one on its list, so never frees it.
+func (e *Emitter) strLiteral(label, s string) {
+	e.b.WriteString("    .align 8\n")
+	e.b.WriteString(fmt.Sprintf("    .quad %d\n", (len(s)+1)<<tagShift))
+	e.b.WriteString("    .quad 0\n")
+	e.label(label)
+	e.b.WriteString("    .asciz \"" + escapeAsm(s) + "\"\n")
+}
+
 func escapeAsm(s string) string {
 	var b strings.Builder
 	for _, r := range []byte(s) {
@@ -902,9 +921,8 @@ func (e *Emitter) instr(in Instr) {
 		e.line("call printf")
 
 	case OpPrintStr:
-		e.line("lea rcx, __fmt_str[rip]")
-		e.line("mov rdx, %s", e.loc(in.A))
-		e.line("call printf")
+		e.line("mov rcx, %s", e.loc(in.A))
+		e.line("call __vy_printstr")
 
 	case OpPrintBool:
 		// cmov rather than a branch: it picks between the two string
@@ -933,8 +951,12 @@ func (e *Emitter) instr(in Instr) {
 		e.put(in.Dst, "rax")
 
 	case OpStrLen:
+		// The length is in the header, not found by scanning: O(1), and
+		// a zero byte inside the string does not end it.
 		e.line("mov rcx, %s", e.loc(in.A))
-		e.line("call strlen")
+		e.line("mov rax, qword ptr [rcx-16]")
+		e.line("shr rax, %d", tagShift)
+		e.line("sub rax, 1")
 		e.put(in.Dst, "rax")
 
 	case OpIntToStr:
@@ -1386,6 +1408,8 @@ __vy_talloc_out:
 	}
 
 	if e.mod.Helpers["concat"] {
+		// Both lengths come from the headers and the bytes are copied
+		// by count, so a zero byte inside either string is carried over.
 		e.b.WriteString(`
 __vy_concat:
     push rbp
@@ -1393,11 +1417,14 @@ __vy_concat:
     sub rsp, 64
     mov qword ptr [rbp-8], rcx
     mov qword ptr [rbp-16], rdx
-    mov rcx, qword ptr [rbp-8]
-    call strlen
+    mov rax, qword ptr [rcx-16]
+    shr rax, 8
+    sub rax, 1
     mov qword ptr [rbp-24], rax
-    mov rcx, qword ptr [rbp-16]
-    call strlen
+    mov rax, qword ptr [rdx-16]
+    shr rax, 8
+    sub rax, 1
+    mov qword ptr [rbp-40], rax
     mov rcx, qword ptr [rbp-24]
     add rcx, rax
     add rcx, 1
@@ -1407,10 +1434,18 @@ __vy_concat:
     mov qword ptr [rbp-32], rax
     mov rcx, rax
     mov rdx, qword ptr [rbp-8]
-    call strcpy
+    mov r8, qword ptr [rbp-24]
+    call memmove
     mov rcx, qword ptr [rbp-32]
+    add rcx, qword ptr [rbp-24]
     mov rdx, qword ptr [rbp-16]
-    call strcat
+    mov r8, qword ptr [rbp-40]
+    call memmove
+    mov rcx, qword ptr [rbp-32]
+    add rcx, qword ptr [rbp-24]
+    add rcx, qword ptr [rbp-40]
+    xor edx, edx
+    mov byte ptr [rcx], dl
     mov rax, qword ptr [rbp-32]
     mov rsp, rbp
     pop rbp
@@ -1419,15 +1454,83 @@ __vy_concat:
 	}
 
 	if e.mod.Helpers["streq"] {
+		// Equal headers mean equal lengths (both are plain bytes); then
+		// the bytes, all of them, zero or not.
 		e.b.WriteString(`
 __vy_streq:
     push rbp
     mov rbp, rsp
     sub rsp, 32
-    call strcmp
+    mov rax, qword ptr [rcx-16]
+    mov r8, qword ptr [rdx-16]
+    cmp rax, r8
+    jne .Lstreq_differ
+    shr r8, 8
+    sub r8, 1
+    call memcmp
     test eax, eax
     mov eax, 0
     sete al
+    mov rsp, rbp
+    pop rbp
+    ret
+.Lstreq_differ:
+    xor eax, eax
+    mov rsp, rbp
+    pop rbp
+    ret
+`)
+	}
+
+	if e.mod.Helpers["printstr"] {
+		// One printf when the string has no zero byte in it, which is
+		// nearly always; otherwise the pieces between them, each zero
+		// written with %c, which printf passes through.
+		e.b.WriteString(`
+__vy_printstr:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 64
+    mov qword ptr [rbp-8], rcx
+    mov rax, qword ptr [rcx-16]
+    shr rax, 8
+    sub rax, 1
+    mov qword ptr [rbp-16], rax
+    call strlen
+    mov rcx, qword ptr [rbp-16]
+    cmp rax, rcx
+    jne .Lps_pieces
+    lea rcx, __fmt_str[rip]
+    mov rdx, qword ptr [rbp-8]
+    call printf
+    mov rsp, rbp
+    pop rbp
+    ret
+.Lps_pieces:
+    mov qword ptr [rbp-24], 0
+.Lps_loop:
+    lea rcx, __fmt_s[rip]
+    mov rdx, qword ptr [rbp-8]
+    add rdx, qword ptr [rbp-24]
+    call printf
+    mov rcx, qword ptr [rbp-8]
+    add rcx, qword ptr [rbp-24]
+    call strlen
+    add rax, qword ptr [rbp-24]
+    mov qword ptr [rbp-24], rax
+    mov rcx, qword ptr [rbp-16]
+    cmp rax, rcx
+    jge .Lps_end
+    lea rcx, __fmt_c[rip]
+    xor edx, edx
+    call printf
+    mov rax, qword ptr [rbp-24]
+    add rax, 1
+    mov qword ptr [rbp-24], rax
+    jmp .Lps_loop
+.Lps_end:
+    lea rcx, __fmt_nl[rip]
+    call printf
     mov rsp, rbp
     pop rbp
     ret
@@ -1515,17 +1618,25 @@ __vy_must:
 __vy_inttostr:
     push rbp
     mov rbp, rsp
-    sub rsp, 64
+    sub rsp, 96
     mov qword ptr [rbp-8], rcx
-    mov rcx, 24
-    mov rdx, 6144
-    call __vy_talloc
-    mov qword ptr [rbp-16], rax
-    mov rcx, rax
-    mov rdx, 24
+    lea rcx, [rbp-64]
+    mov rdx, 32
     lea r8, __fmt_int_raw[rip]
     mov r9, qword ptr [rbp-8]
     call _snprintf
+    mov qword ptr [rbp-24], rax
+    mov rcx, rax
+    add rcx, 1
+    mov rdx, rcx
+    shl rdx, 8
+    call __vy_talloc
+    mov qword ptr [rbp-16], rax
+    mov rcx, rax
+    lea rdx, [rbp-64]
+    mov r8, qword ptr [rbp-24]
+    add r8, 1
+    call memmove
     mov rax, qword ptr [rbp-16]
     mov rsp, rbp
     pop rbp
@@ -1535,17 +1646,25 @@ __vy_inttostr:
 __vy_uinttostr:
     push rbp
     mov rbp, rsp
-    sub rsp, 64
+    sub rsp, 96
     mov qword ptr [rbp-8], rcx
-    mov rcx, 24
-    mov rdx, 6144
-    call __vy_talloc
-    mov qword ptr [rbp-16], rax
-    mov rcx, rax
-    mov rdx, 24
+    lea rcx, [rbp-64]
+    mov rdx, 32
     lea r8, __fmt_uint_raw[rip]
     mov r9, qword ptr [rbp-8]
     call _snprintf
+    mov qword ptr [rbp-24], rax
+    mov rcx, rax
+    add rcx, 1
+    mov rdx, rcx
+    shl rdx, 8
+    call __vy_talloc
+    mov qword ptr [rbp-16], rax
+    mov rcx, rax
+    lea rdx, [rbp-64]
+    mov r8, qword ptr [rbp-24]
+    add r8, 1
+    call memmove
     mov rax, qword ptr [rbp-16]
     mov rsp, rbp
     pop rbp

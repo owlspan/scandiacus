@@ -333,7 +333,7 @@ func (l *lowerer) parseString(c *jsonCursor) Reg {
 
 	l.mark(done)
 	l.advance(c) // the closing quote
-	l.storeByte(buf, l.load(wSlot, vInt), l.constant(0))
+	l.strEnd(buf, l.load(wSlot, vInt))
 	return buf
 }
 

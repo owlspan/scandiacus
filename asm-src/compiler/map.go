@@ -78,12 +78,10 @@ func (l *lowerer) newMap(t vty, capacity int64) Reg {
 }
 
 // keyCmp emits a three-way comparison of two keys, negative, zero or
-// positive like strcmp. Integer keys subtract; string keys go through
-// strcmp itself, which is already linked for string equality.
+// positive. Integer keys subtract; string keys go through strCmp.
 func (l *lowerer) keyCmp(a, b Reg, kk vkind) Reg {
 	if kk == kStr {
-		// strcmp returns a C int, so only eax is meaningful.
-		return l.ccall("strcmp", []Reg{a, b}, []vty{vStr, vStr}, vInt, true, false)
+		return l.strCmp(a, b)
 	}
 	return l.arith(OpSub, a, b)
 }
