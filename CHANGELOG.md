@@ -3,6 +3,20 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.74.0
+
+**macOS is tested.** Until now a macOS executable was built but never
+run anywhere. CI now runs every golden program that is not Windows-only
+on a Mac (GitHub's Apple Silicon runner, under Rosetta) and compares
+its output, the same way Linux and Windows are checked. They all pass.
+The window, input and sound backends are still unrun, since a CI
+machine has no screen.
+
+**Building on an Apple Silicon Mac works.** The system compiler was
+handed x86-64 assembly without being told the architecture, and on an
+ARM Mac it assembles for ARM by default, so every native build failed
+there. It now gets `-arch x86_64`.
+
 ## 1.73.0
 
 **Cross compiling.** Each of the three systems now builds for the other
