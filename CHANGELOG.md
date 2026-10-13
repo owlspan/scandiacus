@@ -3,6 +3,32 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.72.0
+
+**Strings know their length.** Until now a string was a bare pointer to
+bytes ending in a zero byte, with its length found by scanning for that
+zero. That one decision was behind three limitations: a string could
+not hold a zero byte, so binary data read as text came back cut short;
+`len` was a scan of the whole string, so a loop like
+`while i < len(s)` was quadratic without looking it; and every
+concatenation and comparison scanned both sides first.
+
+Now the length is in the header every heap object already has in front
+of it, and string literals carry the same header in the executable. A
+string still ends in a zero byte past its length, so it is passed to C
+functions as it is. What changed:
+
+- `len(s)` is one load. A loop over a 200 KB string with `len` in its
+  condition went from 4.8 seconds to 2 milliseconds.
+- A string can hold any byte. `"a\0b"` is three bytes; a file, a socket
+  read or an HTTP body with zeros in it comes back whole; `+`, `==`,
+  `<`, sorting, map keys, `split`, `indexOf` and the rest count every
+  byte, and `print` writes them all.
+- Concatenation and comparison copy and compare by length.
+
+Building a string with `+=` in a loop is still quadratic, since each
+`+` makes a new string: push the pieces and `join` them.
+
 ## 0.72.0
 
 **A DLL collects its garbage.** It used to keep everything it ever
