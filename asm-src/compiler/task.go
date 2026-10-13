@@ -143,7 +143,7 @@ func (l *lowerer) taskRun(xs, f Reg, elem, ret vty, limit Reg, wantResults bool)
 	// One for the batch rather than one per thread: main waits for all
 	// of them before it touches the count again. Atomic, since threads
 	// from thread.spawn may be changing it at the same moment.
-	if !l.gcOff && !lowerForDLL {
+	if !l.gcOff {
 		l.gcSelf()
 	}
 	l.atomicAdd(l.rtSlot(gcTasksSlot), l.constant(1))
@@ -237,7 +237,7 @@ func (l *lowerer) taskEntry(elem, ret vty, hasArg bool) string {
 	return l.helperFunc(name, []vty{vInt}, vInt, func(args []Reg) {
 		jobSlot := l.temp(vInt)
 		l.emit(Instr{Op: OpStore, A: args[0], Dst: NoReg, Imm: jobSlot})
-		if !l.gcOff && !lowerForDLL {
+		if !l.gcOff {
 			l.gcSelf()
 		}
 		job := l.load(jobSlot, vInt)
@@ -253,7 +253,7 @@ func (l *lowerer) taskEntry(elem, ret vty, hasArg bool) string {
 		if r != NoReg {
 			l.emit(Instr{Op: OpStoreMem, A: l.load(jobSlot, vInt), B: r, Imm: jobResOff})
 		}
-		if !l.gcOff && !lowerForDLL {
+		if !l.gcOff {
 			l.gcThreadDone()
 		}
 		l.emit(Instr{Op: OpRet, A: l.constant(0), Dst: NoReg})

@@ -38,9 +38,9 @@ import (
 	"strings"
 )
 
-// lowerForDLL is set when the program being compiled is a DLL, which
-// changes one thing in lowering: nothing collects automatically, since
-// the host may call exports on threads the collector cannot see.
+// lowerForDLL is set when the program being compiled is a DLL, whose
+// exports are entered through wrappers that tell the collector about
+// the host's threads; see dllgc.go.
 var lowerForDLL bool
 
 // dllBase is where a DLL asks to be loaded, the conventional spot for a
@@ -71,22 +71,32 @@ func exportOf(fd *FnDecl) Export {
 	}
 	return Export{
 		Name:  fd.Name,
-		Thunk: Thunk{Sym: "__vy_export_" + sanitizeSym(fd.Name), Target: fnSym(fd.Name), Widen: widen},
+		Thunk: Thunk{Sym: "__vy_export_" + sanitizeSym(fd.Name), Target: fnSym(dllCallName(fd.Name)), Widen: widen},
 	}
 }
 
 // dllStart is the entry point Windows calls with the reason in edx:
-// 1 is DLL_PROCESS_ATTACH, the load.
+// 1 is DLL_PROCESS_ATTACH, the load, which runs the top-level code and
+// parks the loading thread; 3 is DLL_THREAD_DETACH, a thread ending,
+// whose record the collector must stop reading. See dllgc.go.
 func (e *Emitter) dllStart() {
 	e.b.WriteString("\n")
 	e.label(dllEntrySymbol)
 	e.comment("the entry point Windows calls on load, unload and thread start")
 	e.line("cmp edx, 1")
+	e.line("je .Ldll_attach")
+	e.line("cmp edx, 3")
 	e.line("jne .Ldll_done")
 	// At entry rsp is 8 past a multiple of 16; 40 makes it a multiple
-	// again and leaves main its 32 bytes of shadow space.
+	// again and leaves the callee its 32 bytes of shadow space.
+	e.line("sub rsp, 40")
+	e.line("call %s", fnSym(dllGoneName))
+	e.line("add rsp, 40")
+	e.line("jmp .Ldll_done")
+	e.b.WriteString(".Ldll_attach:\n")
 	e.line("sub rsp, 40")
 	e.line("call main")
+	e.line("call %s", fnSym(dllParkName))
 	e.line("add rsp, 40")
 	e.b.WriteString(".Ldll_done:\n")
 	e.line("mov eax, 1")

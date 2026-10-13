@@ -991,7 +991,7 @@ func Lower(p *Program, file string) (*Module, []string) {
 		globalTy:  map[int64]vty{},
 		buf:       -1,
 		gcStress:  os.Getenv("VEYL_GC_STRESS") != "" && p.GC != "off",
-		autoGC:    !lowerForDLL && os.Getenv("VEYL_GC") != "off" && p.GC != "off",
+		autoGC:    os.Getenv("VEYL_GC") != "off" && p.GC != "off",
 		gcOff:     p.GC == "off",
 	}
 
@@ -1108,6 +1108,8 @@ func Lower(p *Program, file string) (*Module, []string) {
 	l.stmtList(p.Main)
 	l.popScope()
 	l.seal()
+
+	l.dllCollector(p)
 
 	// Before the crash handler, which lists every function by name.
 	l.stripCollector()

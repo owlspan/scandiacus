@@ -36,7 +36,11 @@ var crashNames = []struct {
 // installCrashHandler is the first thing main does.
 func (l *lowerer) installCrashHandler() {
 	if lowerForDLL {
-		return // a guest does not take over its host's crashes
+		// A guest does not take over its host's crashes. It does count
+		// itself as threaded, since any host thread may call in: every
+		// collection stops the world. See dllgc.go.
+		l.atomicAdd(l.rtSlot(gcTasksSlot), l.constant(1))
+		return
 	}
 	l.mod.needs("crash")
 	// A vectored handler, called before Windows looks for a handler up

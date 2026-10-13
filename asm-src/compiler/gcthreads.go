@@ -7,13 +7,14 @@ package main
 // thread was alive. Now every thread that runs Veyl code is known, and a
 // collection stops them all, reads every stack, and lets them go.
 //
-// Each thread has a record, four words of malloc'd memory reached
+// Each thread has a record, five words of malloc'd memory reached
 // through a thread-local slot:
 //
 //	next   the next record; the runtime word gcThreadsSlot is the first
 //	state  0 running, 1 parked, 2 held by the collector, 3 finished
 //	sp     where its stack was when it parked
 //	high   the top of its stack
+//	keep   a value kept alive for the host, in a DLL
 //
 // A thread parks in two places. At a collection check, when one has been
 // asked for: the collector sets the threshold the check compares against
@@ -48,7 +49,8 @@ const (
 	recState = wordSize
 	recSP    = 2 * wordSize
 	recHigh  = 3 * wordSize
-	recBytes = 4 * wordSize
+	recKeep  = 4 * wordSize // what a DLL export last returned; see dllgc.go
+	recBytes = 5 * wordSize
 
 	stRunning = 0
 	stParked  = 1
@@ -168,7 +170,7 @@ func (l *lowerer) gcPark() {
 // a word; with some, the thread is parked for the length of the call,
 // so a collection can go ahead without waiting for it.
 func (l *lowerer) gcEnter() Reg {
-	if l.gcOff || lowerForDLL {
+	if l.gcOff {
 		return NoReg
 	}
 	sym := l.helperFunc("__gc_enter", nil, vInt, func([]Reg) {
@@ -330,8 +332,18 @@ func (l *lowerer) unlinkFinished() {
 }
 
 // scanThreadStacks marks from every held thread's stack, the roots a
-// collection with the world stopped has besides its own.
+// collection with the world stopped has besides its own, and from the
+// kept word of every thread still alive.
 func (l *lowerer) scanThreadStacks(table, mask, work, workLen Reg) {
+	l.eachRecord(func(r Reg) {
+		skip := l.newLabel()
+		rSlot := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: r, Dst: NoReg, Imm: rSlot})
+		l.emit(Instr{Op: OpJumpIf, A: l.compare(OpEq, l.peekWord(r, recState), l.constant(stDone)), Dst: NoReg, Imm: skip})
+		keep := l.arith(OpAdd, l.load(rSlot, vInt), l.constant(recKeep))
+		l.scanRange(keep, l.arith(OpAdd, keep, l.constant(wordSize)), table, mask, work, workLen)
+		l.mark(skip)
+	})
 	l.eachRecord(func(r Reg) {
 		skip := l.newLabel()
 		rSlot := l.temp(vInt)

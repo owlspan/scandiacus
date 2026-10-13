@@ -227,8 +227,9 @@ a global there - the register allocator never takes one - and the test
 suite runs with `VEYL_GC=eager`, which collects at nearly every
 statement, to hold it to that. With threads running it stops all of
 them, each at a statement or while it waits in a blocking call, and
-scans every thread's stack (`gcthreads.go`). It does not run in a DLL,
-whose exports the host may call on threads of its own.
+scans every thread's stack (`gcthreads.go`). In a DLL, each host thread
+that calls an export is made known to it on the way in and parks on
+the way out (`dllgc.go`).
 `VEYL_GC=off` turns it off.
 
 **A string is NUL-terminated bytes**, with no length beside it. So a

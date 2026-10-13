@@ -35,12 +35,12 @@ func (l *lowerer) emitCollector() {
 		alone := l.newLabel()
 		l.emit(Instr{Op: OpJumpIf, A: l.compare(OpEq, l.rtLoad(gcTasksSlot), l.constant(0)),
 			Dst: NoReg, Imm: alone})
-		if !l.gcOff && !lowerForDLL {
+		if !l.gcOff {
 			l.stopWorld(stopped)
 		}
 		l.mark(alone)
 		l.collectBody()
-		if !l.gcOff && !lowerForDLL {
+		if !l.gcOff {
 			l.startWorld(stopped)
 		}
 		l.setThreshold()

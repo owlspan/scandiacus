@@ -3311,6 +3311,12 @@ For code calling an export, a Veyl `int` is a 64-bit `int64_t`, a
 `float` is a `double`, a `str` is a `const char*`, a `bool` is read as a
 C `BOOL`, and an extern struct is a pointer to it.
 
+A DLL collects its garbage like a program does, whichever of the
+host's threads call in, as many at once as the host likes. What an
+export returns - a `str`, an extern struct - stays alive until the
+same thread calls into the DLL again, so the host can read it in the
+meantime but should copy what it wants to keep.
+
 The top-level statements run while Windows holds its loader lock, so
 they should set up and return; the work belongs in what the host calls.
 A DLL does not change the host's console, and a failed `must` or an
@@ -4130,9 +4136,6 @@ Honest list of what v0.71.0 does not do yet.
   collection waits for every thread to stop. One that is in the middle
   of an `extern fn` call, or any C function not in the waiting list
   under Threads and the collector, stops only once that call returns.
-- **A DLL never collects by itself.** Its exports may be called on the
-  host's threads, which the collector cannot see. Call `mem.collect()`
-  from an export when the host is known to be single-threaded.
 
 
 

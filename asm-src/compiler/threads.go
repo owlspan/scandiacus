@@ -109,7 +109,7 @@ func (l *lowerer) threadBuiltin(c *Call, name string) (Reg, bool) {
 		addr := l.newReg()
 		l.regTy[addr] = vInt
 		l.emit(Instr{Op: OpSymAddr, Dst: addr, A: NoReg, B: NoReg, Sym: fnSym(entry), Comment: entry})
-		if !l.gcOff && !lowerForDLL {
+		if !l.gcOff {
 			l.gcSelf() // known before any thread exists that could stop it
 		}
 		l.atomicAdd(l.rtSlot(gcTasksSlot), l.constant(1))
@@ -252,7 +252,7 @@ func (l *lowerer) threadEntry() string {
 	return l.helperFunc("threadentry", []vty{vInt}, vInt, func(args []Reg) {
 		job := l.temp(vInt)
 		l.emit(Instr{Op: OpStore, A: args[0], Dst: NoReg, Imm: job})
-		if !l.gcOff && !lowerForDLL {
+		if !l.gcOff {
 			l.gcSelf()
 		}
 		clo := l.field(l.load(job, vInt), 0, vFuncOf(nil, vVoid))
@@ -261,7 +261,7 @@ func (l *lowerer) threadEntry() string {
 		// The closure is on this stack now; the spawner can let go.
 		l.atomicSwap(l.arith(OpAdd, l.load(job, vInt), l.constant(wordSize)), l.constant(1))
 		l.callClosure(l.load(cloSlot, vFuncOf(nil, vVoid)), nil, nil, vVoid)
-		if !l.gcOff && !lowerForDLL {
+		if !l.gcOff {
 			l.gcThreadDone()
 		}
 		l.atomicAdd(l.rtSlot(gcTasksSlot), l.constant(-1))
