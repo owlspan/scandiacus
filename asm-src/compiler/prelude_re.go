@@ -103,7 +103,14 @@ fn __vy_reCatRaw(a: []int, b: []int, shift: int) -> []int {
     return out
 }
 
+// x* - but when x can match nothing it is (x+)?, which is how Go
+// compiles it: with one split doing both the entry and the going round
+// again, an x that matches nothing would bring the search back to that
+// split at once, and the order Go tries things in would be different.
 fn __vy_reStar(a: []int, greedy: bool) -> []int {
+    if __vy_reNullable(a) {
+        return __vy_reOpt(__vy_rePlus(a, greedy), greedy)
+    }
     let la = __vy_reLen(a)
     let first = 1
     let second = la + 2
@@ -137,6 +144,35 @@ fn __vy_reOpt(a: []int, greedy: bool) -> []int {
         second = 1
     }
     return __vy_reCatRaw(__vy_reFrag(__vy_reSPLIT(), first, second), a, 1)
+}
+
+// Whether a fragment can match without consuming anything: a path from
+// its start to its end through jumps, splits, saves and anchors only.
+fn __vy_reNullable(f: []int) -> bool {
+    let n = __vy_reLen(f)
+    let seen: []bool = []
+    let i = 0
+    while i <= n {
+        push(seen, false)
+        i = i + 1
+    }
+    let todo: []int = [0]
+    while len(todo) > 0 {
+        let pc = pop(todo)
+        if pc >= n { return true }
+        if seen[pc] { continue }
+        seen[pc] = true
+        let op = f[pc * 3]
+        if op == __vy_reSPLIT() {
+            push(todo, f[pc * 3 + 1])
+            push(todo, f[pc * 3 + 2])
+        } else if op == __vy_reJMP() {
+            push(todo, f[pc * 3 + 1])
+        } else if op == __vy_reSAVE() || op == __vy_reBOL() || op == __vy_reEOL() {
+            push(todo, pc + 1)
+        }
+    }
+    return false
 }
 
 // st holds the parser position, the next group number and an error flag.
@@ -412,69 +448,135 @@ fn __vy_reWord(ch: int) -> bool {
     return ch == 95
 }
 
-// One step of the VM. Returns the end position of a match, or -1.
-// Recursive, so the split points are the machine's own stack.
-fn __vy_reStep(prog: []int, pat: str, text: str, pc: int, sp: int, caps: []int) -> int {
-    let at = 1 + pc * 3
-    let op = prog[at]
-    let x = prog[at + 1]
-    let y = prog[at + 2]
-
-    if op == __vy_reMATCH() { return sp }
-
-    if op == __vy_reCHAR() {
-        if sp >= len(text) { return -1 }
-        if __strAt(text, sp) != x { return -1 }
-        return __vy_reStep(prog, pat, text, pc + 1, sp + 1, caps)
+// The VM, run from pc at sp. Returns the end position of a match, or
+// -1. It is a loop over a stack of jobs rather than a recursion, as Go's
+// backtracker is: a split pushes its second way and goes on with the
+// first, and a save pushes the old value to put back if the path fails.
+// Recursing once per character ran out of stack on a few thousand.
+//
+// A search never takes the same split twice at the same position: the
+// second arrival fails, whichever path it comes by, and the mark stays
+// for the rest of the search. That too is Go's backtracker. It ends a
+// loop whose body matched nothing - (a*)* went round forever - it makes
+// the work at most the program's size times the text's, where
+// (a+)+b on a line of a's was exponential, and it decides which paths
+// are cut the way Go does, so matches and captures come out the same.
+// Only splits are marked: every other instruction has one way on.
+// seen is a byte for each split at each position, ord the split number
+// of each instruction, set the marks made, which the next search clears.
+fn __vy_reStep(prog: []int, pat: str, text: str, pc0: int, sp0: int, caps: []int, seen: bytes, ord: []int, set: []int) -> int {
+    let n = len(text)
+    // Jobs are three words: 0, pc, sp to try a path; 1, slot, value to
+    // put a capture back.
+    let jobs: []int = [0, pc0, sp0]
+    while len(jobs) > 0 {
+        let b = pop(jobs)
+        let a = pop(jobs)
+        let kind = pop(jobs)
+        if kind == 1 {
+            caps[a] = b
+            continue
+        }
+        let pc = a
+        let sp = b
+        let going = true
+        while going {
+            let at = 1 + pc * 3
+            let op = prog[at]
+            let x = prog[at + 1]
+            if op == __vy_reMATCH() { return sp }
+            if op == __vy_reCHAR() {
+                if sp >= n || __strAt(text, sp) != x {
+                    going = false
+                } else {
+                    pc = pc + 1
+                    sp = sp + 1
+                }
+            } else if op == __vy_reANY() {
+                if sp >= n || __strAt(text, sp) == 10 {
+                    going = false
+                } else {
+                    pc = pc + 1
+                    sp = sp + 1
+                }
+            } else if op == __vy_reCLASS() {
+                if sp >= n || !__vy_reClassHas(pat, x, prog[at + 2], __strAt(text, sp)) {
+                    going = false
+                } else {
+                    pc = pc + 1
+                    sp = sp + 1
+                }
+            } else if op == __vy_reESC() {
+                if sp >= n || !__vy_reEscHas(x, __strAt(text, sp)) {
+                    going = false
+                } else {
+                    pc = pc + 1
+                    sp = sp + 1
+                }
+            } else if op == __vy_reSPLIT() {
+                let mark = ord[pc] * (n + 1) + sp
+                if __byteAt(seen, mark) != 0 {
+                    going = false
+                } else {
+                    __bytePut(seen, mark, 1)
+                    push(set, mark)
+                    push(jobs, 0)
+                    push(jobs, prog[at + 2])
+                    push(jobs, sp)
+                    pc = x
+                }
+            } else if op == __vy_reJMP() {
+                pc = x
+            } else if op == __vy_reSAVE() {
+                push(jobs, 1)
+                push(jobs, x)
+                push(jobs, caps[x])
+                caps[x] = sp
+                pc = pc + 1
+            } else if op == __vy_reBOL() {
+                if sp != 0 {
+                    going = false
+                } else {
+                    pc = pc + 1
+                }
+            } else if op == __vy_reEOL() {
+                if sp != n {
+                    going = false
+                } else {
+                    pc = pc + 1
+                }
+            } else {
+                going = false
+            }
+        }
     }
-
-    if op == __vy_reANY() {
-        if sp >= len(text) { return -1 }
-        if __strAt(text, sp) == 10 { return -1 }
-        return __vy_reStep(prog, pat, text, pc + 1, sp + 1, caps)
-    }
-
-    if op == __vy_reCLASS() {
-        if sp >= len(text) { return -1 }
-        if !__vy_reClassHas(pat, x, y, __strAt(text, sp)) { return -1 }
-        return __vy_reStep(prog, pat, text, pc + 1, sp + 1, caps)
-    }
-
-    if op == __vy_reESC() {
-        if sp >= len(text) { return -1 }
-        if !__vy_reEscHas(x, __strAt(text, sp)) { return -1 }
-        return __vy_reStep(prog, pat, text, pc + 1, sp + 1, caps)
-    }
-
-    if op == __vy_reSPLIT() {
-        let r = __vy_reStep(prog, pat, text, x, sp, caps)
-        if r >= 0 { return r }
-        return __vy_reStep(prog, pat, text, y, sp, caps)
-    }
-
-    if op == __vy_reJMP() {
-        return __vy_reStep(prog, pat, text, x, sp, caps)
-    }
-
-    if op == __vy_reSAVE() {
-        let old = caps[x]
-        caps[x] = sp
-        let r = __vy_reStep(prog, pat, text, pc + 1, sp, caps)
-        if r < 0 { caps[x] = old }
-        return r
-    }
-
-    if op == __vy_reBOL() {
-        if sp != 0 { return -1 }
-        return __vy_reStep(prog, pat, text, pc + 1, sp, caps)
-    }
-
-    if op == __vy_reEOL() {
-        if sp != len(text) { return -1 }
-        return __vy_reStep(prog, pat, text, pc + 1, sp, caps)
-    }
-
     return -1
+}
+
+// The split number of each instruction, -1 for the rest.
+fn __vy_reOrd(prog: []int) -> []int {
+    let out: []int = []
+    let n = 0
+    let pc = 1
+    while pc < len(prog) {
+        if prog[pc] == __vy_reSPLIT() {
+            push(out, n)
+            n = n + 1
+        } else {
+            push(out, -1)
+        }
+        pc = pc + 3
+    }
+    return out
+}
+
+// A byte for every split at every position of text.
+fn __vy_reSeen(ord: []int, text: str) -> bytes {
+    let splits = 0
+    for o in ord {
+        if o >= 0 { splits = splits + 1 }
+    }
+    return __bytesMake(splits * (len(text) + 1) + 1)
 }
 
 fn __vy_reCaps(prog: []int) -> []int {
@@ -489,7 +591,13 @@ fn __vy_reCaps(prog: []int) -> []int {
 
 // The leftmost match at or after start. caps comes back filled in;
 // the result is the start position, or -1.
-fn __vy_reSearch(prog: []int, pat: str, text: str, start: int, caps: []int) -> int {
+fn __vy_reSearch(prog: []int, pat: str, text: str, start: int, caps: []int, seen: bytes, ord: []int, set: []int) -> int {
+    // What the last search marked is cleared. Within this one the marks
+    // stay, across start positions too, as in Go: a split that failed
+    // from one start fails from the next.
+    while len(set) > 0 {
+        __bytePut(seen, pop(set), 0)
+    }
     let at = start
     while at <= len(text) {
         let i = 0
@@ -497,7 +605,7 @@ fn __vy_reSearch(prog: []int, pat: str, text: str, start: int, caps: []int) -> i
             caps[i] = -1
             i = i + 1
         }
-        if __vy_reStep(prog, pat, text, 0, at, caps) >= 0 { return at }
+        if __vy_reStep(prog, pat, text, 0, at, caps, seen, ord, set) >= 0 { return at }
         at = at + 1
     }
     return -1
@@ -513,14 +621,20 @@ fn __vy_reMatches(pat: str, text: str) -> bool {
     let prog = __vy_reCompile(pat)
     if len(prog) == 0 { __vy_reBadPattern(pat) }
     let caps = __vy_reCaps(prog)
-    return __vy_reSearch(prog, pat, text, 0, caps) >= 0
+    let ord = __vy_reOrd(prog)
+    let seen = __vy_reSeen(ord, text)
+    let set: []int = []
+    return __vy_reSearch(prog, pat, text, 0, caps, seen, ord, set) >= 0
 }
 
 fn __vy_reFind(pat: str, text: str) -> str {
     let prog = __vy_reCompile(pat)
     if len(prog) == 0 { __vy_reBadPattern(pat) }
     let caps = __vy_reCaps(prog)
-    if __vy_reSearch(prog, pat, text, 0, caps) < 0 { return "" }
+    let ord = __vy_reOrd(prog)
+    let seen = __vy_reSeen(ord, text)
+    let set: []int = []
+    if __vy_reSearch(prog, pat, text, 0, caps, seen, ord, set) < 0 { return "" }
     return __substrB(text, caps[0], caps[1])
 }
 
@@ -529,11 +643,14 @@ fn __vy_reFindAll(pat: str, text: str) -> []str {
     if len(prog) == 0 { __vy_reBadPattern(pat) }
     let out: []str = []
     let caps = __vy_reCaps(prog)
+    let ord = __vy_reOrd(prog)
+    let seen = __vy_reSeen(ord, text)
+    let set: []int = []
 
     let at = 0
     let prevEnd = -1
     while at <= len(text) {
-        if __vy_reSearch(prog, pat, text, at, caps) < 0 { return out }
+        if __vy_reSearch(prog, pat, text, at, caps, seen, ord, set) < 0 { return out }
         let s = caps[0]
         let e = caps[1]
         let empty = e == s
@@ -558,7 +675,10 @@ fn __vy_reGroups(pat: str, text: str) -> []str {
     if len(prog) == 0 { __vy_reBadPattern(pat) }
     let out: []str = []
     let caps = __vy_reCaps(prog)
-    if __vy_reSearch(prog, pat, text, 0, caps) < 0 { return out }
+    let ord = __vy_reOrd(prog)
+    let seen = __vy_reSeen(ord, text)
+    let set: []int = []
+    if __vy_reSearch(prog, pat, text, 0, caps, seen, ord, set) < 0 { return out }
 
     let g = 1
     while g < prog[0] {
@@ -576,27 +696,34 @@ fn __vy_reCount(pat: str, text: str) -> int {
     return len(__vy_reFindAll(pat, text))
 }
 
+// Go's Split exactly: the matches FindAll finds; the text before each,
+// except before an empty match at the very start; and what follows the
+// last, unless the last began at the end of the text.
 fn __vy_reSplit(pat: str, text: str) -> []str {
     let prog = __vy_reCompile(pat)
     if len(prog) == 0 { __vy_reBadPattern(pat) }
     let out: []str = []
+    if len(text) == 0 {
+        if len(pat) > 0 { push(out, "") }
+        return out
+    }
     let caps = __vy_reCaps(prog)
-
+    let ord = __vy_reOrd(prog)
+    let seen = __vy_reSeen(ord, text)
+    let set: []int = []
     let beg = 0
+    let end = 0
     let at = 0
     let prevEnd = -1
     while at <= len(text) {
-        if __vy_reSearch(prog, pat, text, at, caps) < 0 {
-            push(out, __substrB(text, beg, len(text)))
-            return out
-        }
+        if __vy_reSearch(prog, pat, text, at, caps, seen, ord, set) < 0 { break }
         let s = caps[0]
         let e = caps[1]
         let empty = e == s
         if !empty || s != prevEnd {
-            // a separator ending at 0 makes no leading piece
+            end = s
             if e != 0 {
-                push(out, __substrB(text, beg, s))
+                push(out, __substrB(text, beg, end))
             }
             beg = e
         }
@@ -607,7 +734,9 @@ fn __vy_reSplit(pat: str, text: str) -> []str {
             at = e
         }
     }
-    push(out, __substrB(text, beg, len(text)))
+    if end != len(text) {
+        push(out, __substrB(text, beg, len(text)))
+    }
     return out
 }
 
@@ -616,11 +745,14 @@ fn __vy_reReplace(pat: str, text: str, repl: str) -> str {
     if len(prog) == 0 { __vy_reBadPattern(pat) }
     let out = ""
     let caps = __vy_reCaps(prog)
+    let ord = __vy_reOrd(prog)
+    let seen = __vy_reSeen(ord, text)
+    let set: []int = []
 
     let lastEnd = 0
     let at = 0
     while at <= len(text) {
-        if __vy_reSearch(prog, pat, text, at, caps) < 0 {
+        if __vy_reSearch(prog, pat, text, at, caps, seen, ord, set) < 0 {
             return out + __substrB(text, lastEnd, len(text))
         }
         let s = caps[0]

@@ -2381,8 +2381,16 @@ almost always literals the author wrote, so a bad one is a bug rather
 than a runtime condition, and `must(...)` on every call would be noise.
 Use `re.valid` for a pattern that came from input.
 
-Compiled patterns are cached, so using one inside a loop does not
-recompile it each time.
+Matches are the ones Go's `regexp` finds - leftmost, and among those
+the one Go prefers - captures included, and no pattern takes more than
+time proportional to its length times the text's: `(a+)+b` against a
+line of `a`s, which makes most backtracking engines hang, answers at
+once. Each call compiles its pattern, which is quick next to matching
+it, so there is nothing to keep between calls.
+
+What it does not do: non-capturing and named groups, lookaround,
+backreferences, flags such as `(?i)`, and Unicode classes - it matches
+bytes.
 
 ---
 
