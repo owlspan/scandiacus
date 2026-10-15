@@ -292,3 +292,65 @@ let bad: int = "no"
 
 	c.call("shutdown", nil)
 }
+
+// TestLanguageServerNamespaces: a file imported with `as` - no false
+// errors, and definition, hover and completion through the namespace.
+func TestLanguageServerNamespaces(t *testing.T) {
+	dir := t.TempDir()
+	helper := filepath.Join(dir, "geo.vl")
+	geo := "pub struct Vec {\n    x: float\n}\n\n// The area of a circle.\npub fn area(r: float) -> float {\n    return 3.0 * r * r\n}\n"
+	if err := os.WriteFile(helper, []byte(geo), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	main := filepath.Join(dir, "main.vl")
+	uri := pathToURI(main)
+	src := "import \"geo.vl\" as geo\n\nlet v = geo.Vec{x: 1.0}\nprint(geo.area(v.x))\n"
+	c := startLSP(t)
+	c.call("initialize", map[string]any{"capabilities": map[string]any{}})
+	c.write(map[string]any{"method": "initialized", "params": map[string]any{}})
+	c.write(map[string]any{"method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "languageId": "veyl", "version": 1, "text": src}}})
+	if d := c.diagnostics(); len(d) != 0 {
+		t.Fatalf("diagnostics: %v", d)
+	}
+	pos := func(line, char int) map[string]any {
+		return map[string]any{"textDocument": map[string]any{"uri": uri},
+			"position": map[string]any{"line": line - 1, "character": char}}
+	}
+	var l lspLocation
+	json.Unmarshal(c.call("textDocument/definition", pos(4, 12)), &l)
+	if filepath.Base(uriToPath(l.URI)) != "geo.vl" || l.Range.Start.Line+1 != 6 {
+		t.Errorf("definition of geo.area: %+v", l)
+	}
+	json.Unmarshal(c.call("textDocument/definition", pos(3, 13)), &l)
+	if filepath.Base(uriToPath(l.URI)) != "geo.vl" || l.Range.Start.Line+1 != 1 {
+		t.Errorf("definition of geo.Vec: %+v", l)
+	}
+	var h struct {
+		Contents struct {
+			Value string `json:"value"`
+		} `json:"contents"`
+	}
+	json.Unmarshal(c.call("textDocument/hover", pos(4, 12)), &h)
+	if !strings.Contains(h.Contents.Value, "area(r: float) -> float") || !strings.Contains(h.Contents.Value, "The area of a circle.") {
+		t.Errorf("hover on geo.area: %q", h.Contents.Value)
+	}
+
+	edit := src + "geo.\n"
+	c.write(map[string]any{"method": "textDocument/didChange", "params": map[string]any{
+		"textDocument":   map[string]any{"uri": uri, "version": 2},
+		"contentChanges": []map[string]any{{"text": edit}}}})
+	c.diagnostics()
+	var items []struct {
+		Label string `json:"label"`
+	}
+	json.Unmarshal(c.call("textDocument/completion", pos(5, 4)), &items)
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.Label] = true
+	}
+	if !got["area"] || !got["Vec"] {
+		t.Errorf("after geo.: %v", got)
+	}
+	c.call("shutdown", nil)
+}

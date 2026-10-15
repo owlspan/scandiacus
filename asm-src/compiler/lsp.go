@@ -927,6 +927,11 @@ func (d *lspDoc) definition(pos lspPos) *lspLocation {
 		return nil
 	}
 	line := pos.Line + 1
+	// geo.area, from a file imported as geo, is the one name geo.area.
+	shown, inNS := word, false
+	if qual != "" && idx.namespaced(qual) {
+		word, qual, inNS = qual+"."+word, "", true
+	}
 	if qual != "" {
 		if e, ok := idx.enums[qual]; ok {
 			return idx.loc(e.File, e.Line, e.Col, word)
@@ -945,25 +950,52 @@ func (d *lspDoc) definition(pos lspPos) *lspLocation {
 		}
 		return nil
 	}
-	if l := idx.localAt(word, line); l != nil {
+	if l := idx.localAt(word, line); l != nil && !inNS {
 		return idx.loc(l.file, l.line, l.col, word)
 	}
 	if g := idx.global(word); g != nil {
-		return idx.loc(g.File, g.Line, g.Col, word)
+		return idx.loc(g.File, g.Line, g.Col, shown)
 	}
 	if f := idx.fn(word, ""); f != nil {
-		return idx.loc(f.File, f.Line, f.Col, word)
+		return idx.loc(f.File, f.Line, f.Col, shown)
 	}
 	if sd, ok := idx.structs[word]; ok && sd.Enum == nil {
-		return idx.loc(sd.File, sd.Line, sd.Col, word)
+		return idx.loc(sd.File, sd.Line, sd.Col, shown)
 	}
 	if e, ok := idx.enums[word]; ok {
-		return idx.loc(e.File, e.Line, e.Col, word)
+		return idx.loc(e.File, e.Line, e.Col, shown)
 	}
 	if it, ok := idx.ifaces[word]; ok {
-		return idx.loc(it.File, it.Line, it.Col, word)
+		return idx.loc(it.File, it.Line, it.Col, shown)
 	}
 	return nil
+}
+
+// namespaced reports whether q is the name of a file imported with
+// `as`: something declared is named q.x.
+func (idx *lspIndex) namespaced(q string) bool {
+	p := q + "."
+	for _, f := range idx.funcs {
+		if f.Recv == "" && strings.HasPrefix(f.Name, p) {
+			return true
+		}
+	}
+	for n := range idx.structs {
+		if strings.HasPrefix(n, p) {
+			return true
+		}
+	}
+	for n := range idx.enums {
+		if strings.HasPrefix(n, p) {
+			return true
+		}
+	}
+	for _, g := range idx.globals {
+		if strings.HasPrefix(g.Name, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *lspDoc) hover(pos lspPos) (string, string) {
@@ -976,6 +1008,10 @@ func (d *lspDoc) hover(pos lspPos) (string, string) {
 		return "", ""
 	}
 	line := pos.Line + 1
+	inNS := false
+	if qual != "" && idx.namespaced(qual) {
+		word, qual, inNS = qual+"."+word, "", true
+	}
 	if qual != "" {
 		if sig := builtinSig(qual + "." + word); sig != "" {
 			return sig, ""
@@ -1001,7 +1037,7 @@ func (d *lspDoc) hover(pos lspPos) (string, string) {
 		}
 		return "", ""
 	}
-	if l := idx.localAt(word, line); l != nil {
+	if l := idx.localAt(word, line); l != nil && !inNS {
 		if t := idx.typeOf(word, line); t != nil {
 			return word + ": " + t.String(), ""
 		}
@@ -1081,8 +1117,31 @@ func (d *lspDoc) complete(pos lspPos) []map[string]any {
 	sort.Strings(builtins)
 
 	if qual != "" {
-		// A library namespace: the next part of every name under it.
+		// A library namespace, or a file imported with `as`: the next
+		// part of every name under it.
 		prefix := qual + "."
+		if idx != nil {
+			for _, g := range idx.globals {
+				if strings.HasPrefix(g.Name, prefix) {
+					add(g.Name[len(prefix):], ciConstant, g.Type)
+				}
+			}
+			for _, f := range idx.funcs {
+				if f.Recv == "" && strings.HasPrefix(f.Name, prefix) {
+					add(f.Name[len(prefix):], ciFunction, fnSig(f))
+				}
+			}
+			for n, sd := range idx.structs {
+				if sd.Enum == nil && strings.HasPrefix(n, prefix) {
+					add(n[len(prefix):], ciStruct, "")
+				}
+			}
+			for n := range idx.enums {
+				if strings.HasPrefix(n, prefix) {
+					add(n[len(prefix):], ciEnum, "")
+				}
+			}
+		}
 		for _, n := range builtins {
 			if strings.HasPrefix(n, prefix) {
 				rest := n[len(prefix):]
@@ -1128,8 +1187,17 @@ func (d *lspDoc) complete(pos lspPos) []map[string]any {
 				add(l.name, ciVariable, detail)
 			}
 		}
+		// A name under an import's namespace is offered as the
+		// namespace, the way a library's are.
+		addTop := func(name string, kind int, detail string) {
+			if i := strings.Index(name, "."); i >= 0 {
+				add(name[:i], ciModule, "")
+				return
+			}
+			add(name, kind, detail)
+		}
 		for _, g := range idx.globals {
-			add(g.Name, ciConstant, g.Type)
+			addTop(g.Name, ciConstant, g.Type)
 		}
 		for _, f := range idx.funcs {
 			if f.Recv == "" && f.File != "" {
@@ -1137,17 +1205,17 @@ func (d *lspDoc) complete(pos lspPos) []map[string]any {
 				if i := strings.Index(name, "<"); i >= 0 {
 					name = name[:i]
 				}
-				add(name, ciFunction, fnSig(f))
+				addTop(name, ciFunction, fnSig(f))
 			}
 		}
 		for n, sd := range idx.structs {
 			if sd.Enum == nil && sd.File != "" {
-				add(n, ciStruct, "")
+				addTop(n, ciStruct, "")
 			}
 		}
 		for n, e := range idx.enums {
 			if e.File != "" {
-				add(n, ciEnum, "")
+				addTop(n, ciEnum, "")
 			}
 		}
 	}
