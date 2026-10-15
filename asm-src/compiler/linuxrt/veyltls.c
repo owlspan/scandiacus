@@ -17,6 +17,14 @@
  * Certificates are verified against the system's trust store, and the
  * name in the certificate must match the host asked for. A failure says
  * which check failed, in OpenSSL's words.
+ *
+ * On a Mac with no OpenSSL that this process can load - which is every
+ * Apple Silicon Mac, since a Veyl program runs there as x86-64 under
+ * Rosetta and Homebrew's OpenSSL is arm64 only - the system's own TLS,
+ * SecureTransport in Security.framework, is used instead. It is on every
+ * Mac and built for both architectures. It is deprecated in favour of
+ * Network.framework, which has no plain C socket API to wrap, and it
+ * stops at TLS 1.2, which is why OpenSSL is still tried first.
  */
 
 #include <sys/socket.h>
@@ -73,6 +81,119 @@ static struct {
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 static __thread char why[512];
 
+#ifdef __APPLE__
+/* SecureTransport, from Security.framework, and the one CoreFoundation
+ * call it needs. The types are opaque pointers and OSStatus an int. */
+typedef int OSStatus;
+typedef OSStatus (*st_io)(const void *conn, void *data, size_t *len);
+static struct {
+	int on;
+	void *(*create)(const void *alloc, int side, int type);
+	OSStatus (*set_io)(void *ctx, st_io read, st_io write);
+	OSStatus (*set_conn)(void *ctx, const void *conn);
+	OSStatus (*set_peer)(void *ctx, const char *name, size_t len);
+	OSStatus (*set_min)(void *ctx, int version);
+	OSStatus (*handshake)(void *ctx);
+	OSStatus (*write)(void *ctx, const void *data, size_t len, size_t *done);
+	OSStatus (*read)(void *ctx, void *data, size_t len, size_t *done);
+	OSStatus (*close)(void *ctx);
+	void (*release)(const void *);
+} ST;
+
+#define ST_CLIENT 1
+#define ST_STREAM 0
+#define ST_TLS12 8
+#define ST_CLOSED_GRACEFUL (-9805)
+#define ST_CLOSED_ABORT (-9806)
+#define ST_CLOSED_NO_NOTIFY (-9816)
+
+/* The socket is the connection; it rides in the pointer. */
+static OSStatus st_read(const void *conn, void *data, size_t *len)
+{
+	int fd = (int)(long)conn;
+	size_t want = *len, got = 0;
+	while (got < want) {
+		ssize_t r = recv(fd, (char *)data + got, want - got, 0);
+		if (r == 0) {
+			*len = got;
+			return ST_CLOSED_GRACEFUL;
+		}
+		if (r < 0) {
+			*len = got;
+			return ST_CLOSED_ABORT;
+		}
+		got += (size_t)r;
+	}
+	*len = got;
+	return 0;
+}
+
+static OSStatus st_write(const void *conn, void *data, size_t *len)
+{
+	int fd = (int)(long)conn;
+	size_t want = *len, put = 0;
+	while (put < want) {
+		ssize_t w = send(fd, (const char *)data + put, want - put, 0);
+		if (w <= 0) {
+			*len = put;
+			return ST_CLOSED_ABORT;
+		}
+		put += (size_t)w;
+	}
+	*len = put;
+	return 0;
+}
+
+static int st_load(void)
+{
+	void *sec = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_NOW);
+	void *cf = dlopen("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", RTLD_NOW);
+	if (!sec || !cf)
+		return 0;
+	ST.create = dlsym(sec, "SSLCreateContext");
+	ST.set_io = dlsym(sec, "SSLSetIOFuncs");
+	ST.set_conn = dlsym(sec, "SSLSetConnection");
+	ST.set_peer = dlsym(sec, "SSLSetPeerDomainName");
+	ST.set_min = dlsym(sec, "SSLSetProtocolVersionMin");
+	ST.handshake = dlsym(sec, "SSLHandshake");
+	ST.write = dlsym(sec, "SSLWrite");
+	ST.read = dlsym(sec, "SSLRead");
+	ST.close = dlsym(sec, "SSLClose");
+	ST.release = dlsym(cf, "CFRelease");
+	ST.on = ST.create && ST.set_io && ST.set_conn && ST.set_peer && ST.set_min &&
+		ST.handshake && ST.write && ST.read && ST.close && ST.release;
+	return ST.on;
+}
+
+/* What an OSStatus from SecureTransport means, for the ones a fetch
+ * meets; the rest are given by number. A certificate failure names the
+ * host, as the OpenSSL path does. */
+static void st_reason(const char *what, OSStatus e, const char *host)
+{
+	const char *m = 0;
+	int cert = 1;
+	switch (e) {
+	case -9807: m = "the certificate chain is not trusted"; break;
+	case -9808: m = "the certificate is bad"; break;
+	case -9812: m = "the certificate is signed by an unknown authority"; break;
+	case -9813: m = "there is no root certificate for it"; break;
+	case -9814: m = "the certificate has expired"; break;
+	case -9815: m = "the certificate is not valid yet"; break;
+	case -9843: m = "the certificate is not for this host"; break;
+	default:
+		cert = 0;
+		if (e == ST_CLOSED_GRACEFUL || e == ST_CLOSED_ABORT)
+			m = "the connection was closed";
+	}
+	if (cert && host)
+		snprintf(why, sizeof why, "the certificate of %s was not accepted: %s", host, m);
+	else if (m)
+		snprintf(why, sizeof why, "%s: %s", what, m);
+	else
+		snprintf(why, sizeof why, "%s: SecureTransport error %d", what, e);
+}
+#endif
+
 static void *open_ssl(void)
 {
 	static const char *names[] = {
@@ -107,7 +228,12 @@ static void load(void)
 	void *h = open_ssl();
 	if (!h) {
 #ifdef __APPLE__
-		snprintf(why, sizeof why, "HTTPS needs OpenSSL, which was not found - install it with: brew install openssl@3");
+		if (st_load()) {
+			signal(SIGPIPE, SIG_IGN);
+			T.ok = 1;
+			return;
+		}
+		snprintf(why, sizeof why, "HTTPS needs Security.framework or OpenSSL, and neither could be loaded");
 #else
 		snprintf(why, sizeof why, "HTTPS needs OpenSSL (libssl), which was not found - install the libssl3 package");
 #endif
@@ -189,6 +315,28 @@ MS i64 __vyw_veyl_tls_open(i64 sock, const char *host)
 	pthread_once(&once, load);
 	if (!T.ok)
 		return 0;
+#ifdef __APPLE__
+	if (ST.on) {
+		void *c = ST.create(0, ST_CLIENT, ST_STREAM);
+		if (!c) {
+			snprintf(why, sizeof why, "TLS: SecureTransport could not create a session");
+			return 0;
+		}
+		ST.set_io(c, st_read, st_write);
+		ST.set_conn(c, (const void *)(long)sock);
+		ST.set_min(c, ST_TLS12);
+		/* The name is what the certificate is checked against, and is
+		 * sent as SNI. */
+		ST.set_peer(c, host, strlen(host));
+		OSStatus e = ST.handshake(c);
+		if (e != 0) {
+			st_reason("TLS handshake failed", e, host);
+			ST.release(c);
+			return 0;
+		}
+		return (i64)c;
+	}
+#endif
 	T.err_clear();
 	void *s = T.ssl_new(T.ctx);
 	if (!s) {
@@ -222,6 +370,17 @@ MS i64 __vyw_veyl_tls_open(i64 sock, const char *host)
 /* Like send: how many bytes were written, or -1. */
 MS i64 __vyw_veyl_tls_send(i64 s, const char *buf, i64 n)
 {
+#ifdef __APPLE__
+	if (ST.on) {
+		size_t done = 0;
+		OSStatus e = ST.write((void *)s, buf, (size_t)n, &done);
+		if (e != 0 && done == 0) {
+			st_reason("TLS send", e, 0);
+			return -1;
+		}
+		return (i64)done;
+	}
+#endif
 	T.err_clear();
 	int w = T.write((void *)s, buf, (int)n);
 	if (w <= 0) {
@@ -234,6 +393,20 @@ MS i64 __vyw_veyl_tls_send(i64 s, const char *buf, i64 n)
 /* Like recv: bytes read, 0 at the end of the stream, or -1. */
 MS i64 __vyw_veyl_tls_recv(i64 s, char *buf, i64 cap)
 {
+#ifdef __APPLE__
+	if (ST.on) {
+		size_t done = 0;
+		OSStatus e = ST.read((void *)s, buf, (size_t)cap, &done);
+		if (done > 0)
+			return (i64)done;
+		/* A server that just closes the connection, with or without the
+		 * TLS goodbye, has ended the body under Connection: close. */
+		if (e == 0 || e == ST_CLOSED_GRACEFUL || e == ST_CLOSED_NO_NOTIFY || e == ST_CLOSED_ABORT)
+			return 0;
+		st_reason("TLS recv", e, 0);
+		return -1;
+	}
+#endif
 	T.err_clear();
 	int r = T.read((void *)s, buf, (int)cap);
 	if (r > 0)
@@ -250,6 +423,13 @@ MS void __vyw_veyl_tls_close(i64 s)
 {
 	if (!s)
 		return;
+#ifdef __APPLE__
+	if (ST.on) {
+		ST.close((void *)s);
+		ST.release((void *)s);
+		return;
+	}
+#endif
 	T.shutdown((void *)s);
 	T.ssl_free((void *)s);
 }

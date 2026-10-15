@@ -161,3 +161,27 @@ jobs:
       - name: Golden programs
         working-directory: veyl/asm-src
         run: go test -count=1 -run TestGolden ./compiler
+
+      # HTTPS on a real Mac: a site with a good certificate and one with
+      # an expired one. It needs the network, so a failure here is shown
+      # but does not fail the run.
+      - name: HTTPS
+        working-directory: veyl/asm-src
+        continue-on-error: true
+        run: |
+          go build -o veylc ./compiler
+          printf '%s\n' \
+            'let r = http.get("https://example.com/")' \
+            'if isOk(r) {' \
+            '    print(contains(valueOr(r, ""), "Example Domain"))' \
+            '} else {' \
+            '    print("error: " + errorOf(r))' \
+            '}' \
+            'let bad = http.get("https://expired.badssl.com/")' \
+            'print(isOk(bad))' \
+            'if !isOk(bad) {' \
+            '    print(errorOf(bad))' \
+            '}' > https.vl
+          ./veylc run https.vl | tee out.txt
+          head -1 out.txt | grep -qx true
+          sed -n 2p out.txt | grep -qx false
