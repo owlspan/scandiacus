@@ -24,7 +24,14 @@ func (l *lowerer) bytesBuiltin(c *Call, name string) (Reg, bool) {
 		if !arity(1) {
 			return l.junk(), true
 		}
-		return l.bytesAlloc(l.intArg(c, 0)), true
+		// Zeroed: malloc's memory is whatever was there, and the prelude
+		// treats a fresh buffer as all zeros (the regex marks do).
+		ns := l.temp(vInt)
+		l.setSlot(ns, l.intArg(c, 0))
+		bs := l.temp(vBytes)
+		l.setSlot(bs, l.bytesAlloc(l.load(ns, vInt)))
+		l.copyZero(l.load(bs, vInt), l.load(ns, vInt))
+		return l.load(bs, vBytes), true
 
 	case "__byteAt":
 		if !arity(2) {
@@ -122,6 +129,14 @@ func (l *lowerer) strFromMem(src, n Reg) Reg {
 	l.copyBytes(out, src, n)
 	l.storeByte(out, n, l.constant(0))
 	return out
+}
+
+// copyZero clears n bytes at dst; a count of zero or less clears none.
+func (l *lowerer) copyZero(dst, n Reg) {
+	skip := l.newLabel()
+	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpGt, n, l.constant(0)), Dst: NoReg, Imm: skip})
+	l.ccall("memset", []Reg{dst, l.constant(0), n}, []vty{vInt, vInt, vInt}, vInt, false, false)
+	l.mark(skip)
 }
 
 // copyBytes moves n bytes from src to dst, with memmove: one pass over
