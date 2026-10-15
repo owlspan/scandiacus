@@ -510,10 +510,9 @@ type" has to go through `eq()`.
 
 **8. `str()` of a container. Done.** The printing code with its output
 redirected into a buffer, so `print(xs)` and `str(xs)` cannot disagree
-about a character - there is one renderer, not two kept in step. It
-allocates per piece appended, so a long list is quadratic and, with no
-collector, permanent. That is an argument for a growable buffer, not
-for a second renderer.
+about a character - there is one renderer, not two kept in step. The
+buffer it writes into grows in place (`strappend.go`), so a long list
+costs what its text costs.
 
 **9. The os library. Done.** Files, directories and the environment, in
 `os.go` and `osdir.go`, entirely through the foreign call op - no new
