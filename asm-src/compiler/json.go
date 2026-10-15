@@ -52,7 +52,7 @@ func (l *lowerer) jsonOf(n Node, v Reg, t vty, indent bool) Reg {
 	l.jsonWrite(n, v, t, indent, 0)
 	l.buf = saved
 
-	return l.load(slot, vStr)
+	return l.bufResult(slot)
 }
 
 // newline writes a line break and the indentation for a nesting depth,
@@ -132,7 +132,7 @@ func (l *lowerer) jsonComposite(n Node, v Reg, t vty, indent bool, depth int) {
 		l.buf = slot
 		l.inlineOnce = key
 		l.jsonComposite(n, a[0], t, indent, depth)
-		l.emit(Instr{Op: OpRet, A: l.load(slot, vStr), Dst: NoReg})
+		l.emit(Instr{Op: OpRet, A: l.bufResult(slot), Dst: NoReg})
 	})
 	l.emitStr(l.callHelper(sym, []Reg{v}, []vty{t}, vStr))
 }

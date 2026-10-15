@@ -449,7 +449,7 @@ func (l *lowerer) renderOutlined(n Node, v Reg, t vty) bool {
 		l.emit(Instr{Op: OpStore, A: l.emptyStr(), Dst: NoReg, Imm: slot})
 		l.buf = slot
 		l.writeValue(n, a[0], t)
-		l.emit(Instr{Op: OpRet, A: l.load(slot, vStr), Dst: NoReg})
+		l.emit(Instr{Op: OpRet, A: l.bufResult(slot), Dst: NoReg})
 	})
 	out := l.callHelper(sym, []Reg{v}, []vty{t}, ret)
 	if !toStdout {
@@ -559,17 +559,16 @@ func (l *lowerer) emitStr(v Reg) {
 		l.emit(Instr{Op: OpWriteStr, A: v, Dst: NoReg})
 		return
 	}
-	// Append by concatenation, reloading the buffer each time, because
-	// the writes happen inside loops whose bodies run an unknown number
-	// of times and a register cannot carry a value across that.
-	l.mod.needs("concat")
+	// Appended in place (strappend.go): the buffer is the only thing
+	// holding its string until str() hands it out, so a long list costs
+	// what its text costs rather than a copy of it per element. The
+	// buffer is reloaded each time, because the writes happen inside
+	// loops whose bodies run an unknown number of times and a register
+	// cannot carry a value across that.
 	cur := l.newReg()
 	l.regTy[cur] = vStr
 	l.emit(Instr{Op: OpLoad, Dst: cur, A: NoReg, B: NoReg, Imm: l.buf})
-	d := l.newReg()
-	l.regTy[d] = vStr
-	l.emit(Instr{Op: OpConcat, Dst: d, A: cur, B: v})
-	l.emit(Instr{Op: OpStore, A: d, Dst: NoReg, Imm: l.buf})
+	l.emit(Instr{Op: OpStore, A: l.appendCall(cur, v), Dst: NoReg, Imm: l.buf})
 }
 
 func (l *lowerer) emitInt(v Reg) {
@@ -599,9 +598,7 @@ func (l *lowerer) emitFloat(v Reg) {
 // strOf renders a list, map or struct into a string.
 //
 // It is the printing code with its output redirected, so the two cannot
-// disagree. The cost is one allocation per piece appended, which for a
-// long list is quadratic and, with nothing freed, permanent. A rope or
-// a growable buffer is the fix when that matters; correctness first.
+// disagree. The buffer grows in place, so a long list is linear.
 func (l *lowerer) strOf(n Node, v Reg, t vty) Reg {
 	slot := l.temp(vStr)
 	l.emit(Instr{Op: OpStore, A: l.emptyStr(), Dst: NoReg, Imm: slot})
@@ -610,11 +607,7 @@ func (l *lowerer) strOf(n Node, v Reg, t vty) Reg {
 	l.buf = slot
 	l.writeValue(n, v, t)
 	l.buf = saved
-
-	d := l.newReg()
-	l.regTy[d] = vStr
-	l.emit(Instr{Op: OpLoad, Dst: d, A: NoReg, B: NoReg, Imm: slot})
-	return d
+	return l.bufResult(slot)
 }
 
 // forList lowers `for x in xs`.

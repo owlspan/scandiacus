@@ -144,11 +144,25 @@ func (l *lowerer) disown(d Reg) {
 
 // appendInPlace lowers `name += v` for an ownable slot.
 func (l *lowerer) appendInPlace(slot int64, v Reg) {
+	l.storeLocal(slot, l.appendCall(l.loadLocal(slot), v))
+}
+
+// appendCall is cur + v through the in-place append: cur is the one
+// reference to its string, so an owned one grows where it is.
+func (l *lowerer) appendCall(cur, v Reg) Reg {
 	sym := l.helperFunc("__vy_append", []vty{vStr, vStr}, vStr, func(a []Reg) {
 		l.appendBody(a[0], a[1])
 	})
-	r := l.callHelper(sym, []Reg{l.loadLocal(slot), v}, []vty{vStr, vStr}, vStr)
-	l.storeLocal(slot, r)
+	return l.callHelper(sym, []Reg{cur, v}, []vty{vStr, vStr}, vStr)
+}
+
+// bufResult is the text a str() or json buffer built, let go of: the
+// buffer was appended to in place, and the value is about to be
+// anybody's.
+func (l *lowerer) bufResult(slot int64) Reg {
+	d := l.load(slot, vStr)
+	l.disown(d)
+	return l.load(slot, vStr)
 }
 
 // strCapFor is the block an owned string of size bytes (terminator
