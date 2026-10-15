@@ -227,6 +227,93 @@ fn __vy_lowerRune(c: int) -> int {
     return c
 }
 
+// fixed(x, places). The places are held to 0..40, and an infinity or a
+// NaN is written the way str writes it rather than as the C runtime's.
+//
+// The rounding is done here, half to even, on the exact decimal
+// expansion: a double has at most 1074 digits after the point, and every
+// C runtime prints them exactly when asked, but they round an exact tie
+// differently - UCRT writes -0.5 to no places as -1, glibc and Go as -0.
+fn __vy_fixed(x: float, places: int) -> str {
+    if ((__bits(x) >> 52) & 2047) == 2047 {
+        return str(x)
+    }
+    let p = places
+    if p < 0 {
+        p = 0
+    }
+    if p > 40 {
+        p = 40
+    }
+    let raw = __fixedRaw(__bits(x), p + 1100)
+    let sign = ""
+    if startsWith(raw, "-") {
+        sign = "-"
+        raw = __substrB(raw, 1, len(raw))
+    }
+    let dot = indexOf(raw, ".")
+    let digits = __substrB(raw, 0, dot) + __substrB(raw, dot + 1, dot + 1 + p)
+    let rest = __substrB(raw, dot + 1 + p, len(raw))
+    let up = false
+    let first = __strByte(rest, 0)
+    if first > 53 {
+        up = true
+    } else if first == 53 {
+        let i = 1
+        while i < len(rest) && __strByte(rest, i) == 48 {
+            i += 1
+        }
+        if i < len(rest) {
+            up = true
+        } else {
+            up = (__strByte(digits, len(digits) - 1) - 48) % 2 == 1
+        }
+    }
+    if up {
+        digits = __vy_decIncrement(digits)
+    }
+    let whole = __substrB(digits, 0, len(digits) - p)
+    if p == 0 {
+        return sign + whole
+    }
+    return sign + whole + "." + __substrB(digits, len(digits) - p, len(digits))
+}
+
+// One more in the last place of a string of decimal digits.
+fn __vy_decIncrement(d: str) -> str {
+    let b = bytes.of(d)
+    let i = len(d) - 1
+    while i >= 0 {
+        let c = __byteAt(b, i)
+        if c < 57 {
+            __bytePut(b, i, c + 1)
+            return bytes.str(b)
+        }
+        __bytePut(b, i, 48)
+        i -= 1
+    }
+    return "1" + bytes.str(b)
+}
+
+// The width part of an interpolation's format spec: "{x:8}" pads on the
+// left, "{x:<8}" on the right, and "{x:08}" with zeros after any sign.
+fn __vy_fmtPad(s: str, width: int, left: bool, zero: bool) -> str {
+    let n = len(chars(s))
+    if n >= width {
+        return s
+    }
+    if left {
+        return s + repeat(" ", width - n)
+    }
+    if zero {
+        if startsWith(s, "-") || startsWith(s, "+") {
+            return __substrB(s, 0, 1) + repeat("0", width - n) + __substrB(s, 1, len(s))
+        }
+        return repeat("0", width - n) + s
+    }
+    return repeat(" ", width - n) + s
+}
+
 fn __vy_charAt(s: str, i: int) -> str {
     if i < 0 {
         return ""

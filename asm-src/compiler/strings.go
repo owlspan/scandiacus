@@ -339,6 +339,30 @@ func (l *lowerer) stringBuiltin(c *Call, name string) (Reg, bool) {
 	}
 
 	switch name {
+	// The digits of a float to a fixed number of places, by the C
+	// runtime's %.*f. __vy_fixed asks for every digit the value has and
+	// rounds them itself, since C runtimes disagree on a tie.
+	// The float arrives as its bits and goes in the va_list as them.
+	case "__fixedRaw":
+		if !need(2) {
+			return l.junk(), true
+		}
+		bits, places := l.expr(c.Args[0]), l.expr(c.Args[1])
+		va := l.allocObj(l.constant(2*wordSize), tagWords)
+		vs := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: va, Dst: NoReg, Imm: vs})
+		l.pokeWord(l.load(vs, vInt), 0, places)
+		l.pokeWord(l.load(vs, vInt), wordSize, bits)
+		const room = 1600 // 309 digits of 1e308, the point, 1140 places, a sign
+		buf := l.strAlloc(l.constant(room))
+		bs := l.temp(vStr)
+		l.emit(Instr{Op: OpStore, A: buf, Dst: NoReg, Imm: bs})
+		n := l.ccall("__stdio_common_vsprintf",
+			[]Reg{l.constant(2), l.load(bs, vInt), l.constant(room + 1), l.strLit("%.*f"), l.constant(0), l.load(vs, vInt)},
+			[]vty{vInt, vInt, vInt, vInt, vInt, vInt}, vInt, true, false)
+		l.strEnd(l.load(bs, vStr), n)
+		return l.load(bs, vStr), true
+
 	// ASCII only; upper and lower themselves are __vy_upper and
 	// __vy_lower in the prelude, which call these first.
 	case "__upperA":

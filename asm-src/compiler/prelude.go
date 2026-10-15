@@ -215,6 +215,8 @@ var preludeOf = map[string]string{
 	"isFloat":  "__vy_isFloat",
 	"count":    "__vy_count",
 	"padLeft":  "__vy_padLeft",
+	"fixed":    "__vy_fixed",
+	"__fmtPad": "__vy_fmtPad",
 	"padRight": "__vy_padRight",
 	"substr":   "__vy_substr",
 	"charAt":   "__vy_charAt",
@@ -320,6 +322,10 @@ func addPrelude(prog *Program, sources []string) []string {
 				}
 			}
 		}
+	}
+	if prog.FormatSpecs {
+		wanted["__vy_fixed"] = true
+		wanted["__vy_fmtPad"] = true
 	}
 	if len(wanted) == 0 {
 		return nil

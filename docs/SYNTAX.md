@@ -1099,6 +1099,29 @@ For a literal brace, double it:
 print("{{literal braces}}")     // {literal braces}
 ```
 
+### Format specs
+
+A colon after the expression formats it: `.N` for that many places
+after the point, a width to pad to, `<` to pad on the right instead of
+the left, and a `0` to pad a number with zeros.
+
+```veyl
+let pi = 3.14159
+print("{pi:.2}")          // 3.14
+print("[{pi:8.3}]")       // [   3.142]
+print("[{name:<10}]")     // [ada       ]
+print("{minutes:02}:{seconds:02}")   // 07:05
+for i in 0..len(items) {
+    print("{items[i]:<8}{prices[i]:7.2}")   // a column of prices
+}
+```
+
+The places are rounded from the exact value, half to even, so
+`{2.675:.2}` is `2.67` (the double is just under 2.675) and `{0.125:.2}`
+is `0.12`, the same on every system. A width counts characters and
+never cuts anything off. The same rounding is `fixed(x, places)` as a
+function.
+
 Interpolation compiles to a formatting call, so a bare `%` in a string
 is safe - it needs no escaping.
 
@@ -1442,6 +1465,7 @@ too. `pause` writes `Press Enter to continue...` first.
 | `isInt(s)`            | `bool`  | whether the text parses as a whole number        |
 | `isFloat(s)`          | `bool`  | whether the text parses as a number              |
 | `int(x)` `float(x)`   | `int`, `float` | any number, converted                     |
+| `fixed(x, places)`    | `str`   | `x` with exactly that many places (0 to 40), rounded half to even |
 | `i8(x)` ... `u64(x)`, `f32(x)` | that type | any number, wrapped like a C cast - see [Fixed-width numbers](#fixed-width-numbers) |
 
 Surrounding whitespace is ignored, so `toInt(" 7 ")` gives `7`.

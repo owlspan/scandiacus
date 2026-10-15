@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -30,6 +31,9 @@ type Parser struct {
 	// `as`, so that `geo.Vec` can be read as a type and `geo.Vec{...}`
 	// as a struct literal.
 	aliases map[string]bool
+
+	// formats is whether any interpolation had a format spec.
+	formats bool
 
 	Errors []string
 }
@@ -310,6 +314,7 @@ func (p *Parser) ParseProgram() *Program {
 		}
 		p.skipNewlines()
 	}
+	prog.FormatSpecs = p.formats
 	return prog
 }
 
@@ -1575,6 +1580,14 @@ func (p *Parser) parseStringLit(t Token) Expr {
 			continue
 		}
 
+		if expr, spec, ok := splitFormatSpec(inner); ok {
+			p.formats = true
+			if x := p.parseSubExpr(expr, t); x != nil {
+				flush()
+				parts = append(parts, InterpPart{X: applyFormatSpec(x, spec, at(t))})
+			}
+			continue
+		}
 		if x := p.parseSubExpr(inner, t); x != nil {
 			flush()
 			parts = append(parts, InterpPart{X: x})
@@ -1586,6 +1599,57 @@ func (p *Parser) parseStringLit(t Token) Expr {
 		return &StrLit{Span: at(t), Val: parts[0].Lit}
 	}
 	return &Interp{Span: at(t), Parts: parts}
+}
+
+// A format spec after a colon in an interpolation: "{price:.2}",
+// "{name:<12}", "{n:5}", "{m:02}". Align (< left, > right, the default),
+// a 0 to pad a number with zeros, a width, and a count of places.
+var formatSpecRe = regexp.MustCompile(`^([<>])?(0)?([0-9]+)?(?:\.([0-9]+))?$`)
+
+// splitFormatSpec finds "expr:spec" in the text of an interpolation. The
+// colon has to be outside any quotes and brackets, and what follows it
+// has to be a whole format spec, so no expression that parsed before
+// reads differently now.
+func splitFormatSpec(inner string) (expr, spec string, ok bool) {
+	depth, quoted := 0, false
+	for i := 0; i < len(inner); i++ {
+		switch c := inner[i]; {
+		case c == '"':
+			quoted = !quoted
+		case quoted:
+		case c == '(' || c == '[' || c == '{':
+			depth++
+		case c == ')' || c == ']' || c == '}':
+			depth--
+		case c == ':' && depth == 0:
+			spec = strings.TrimSpace(inner[i+1:])
+			m := formatSpecRe.FindStringSubmatch(spec)
+			if spec == "" || m == nil || (m[3] == "" && m[4] == "") {
+				return "", "", false
+			}
+			return strings.TrimSpace(inner[:i]), spec, true
+		}
+	}
+	return "", "", false
+}
+
+// applyFormatSpec is the value an interpolation with a spec shows:
+// fixed(x, places) for a precision, then padded to the width.
+func applyFormatSpec(x Expr, spec string, sp Span) Expr {
+	m := formatSpecRe.FindStringSubmatch(spec)
+	call := func(name string, args ...Expr) Expr {
+		return &Call{Span: sp, Callee: &Ident{Span: sp, Name: name}, Args: args}
+	}
+	if m[4] != "" {
+		x = call("fixed", x, &IntLit{Span: sp, Val: m[4]})
+	} else {
+		x = call("str", x)
+	}
+	if m[3] != "" {
+		x = call("__fmtPad", x, &IntLit{Span: sp, Val: m[3]},
+			&BoolLit{Span: sp, Val: m[1] == "<"}, &BoolLit{Span: sp, Val: m[2] == "0"})
+	}
+	return x
 }
 
 // parseSubExpr runs a nested lexer+parser over the text inside {}.

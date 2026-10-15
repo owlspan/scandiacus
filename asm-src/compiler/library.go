@@ -85,7 +85,15 @@ var sigs = map[string]front.Signature{
 	// checker like any other code; nothing stops a user program calling
 	// one, and nothing needs to - the names are reserved by the same
 	// convention every compiler-generated name here follows.
-	"__bits":     {Params: []*Type{Float}, Ret: Int},
+	"__bits": {Params: []*Type{Float}, Ret: Int},
+
+	// fixed(x, places): x with exactly that many digits after the point,
+	// rounded correctly. __fixedRaw takes the float's bits, so the
+	// lowering only moves words; __fmtPad is the width of an
+	// interpolation's format spec.
+	"fixed":      {Params: []*Type{Numeric, Int}, Ret: Str},
+	"__fixedRaw": {Params: []*Type{Int, Int}, Ret: Str},
+	"__fmtPad":   {Params: []*Type{Str, Int, Bool, Bool}, Ret: Str},
 	"__frombits": {Params: []*Type{Int}, Ret: Float},
 
 	// Also private to the prelude: stop with a message. It is declared

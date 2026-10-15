@@ -56,6 +56,11 @@ type Program struct {
 	// and delete frees a value by hand. "" is the default, collected.
 	GC   string
 	GCAt Span
+
+	// FormatSpecs is set when an interpolation has a format spec,
+	// "{x:.2}", which becomes calls to library functions the source text
+	// never names; the backend uses it to bring them in.
+	FormatSpecs bool
 }
 
 // EnumDecl is `enum State { Idle, Running, Done }`. A variant is
