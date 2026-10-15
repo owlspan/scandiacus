@@ -617,7 +617,13 @@ func writeImage(out string, sections []peSection, img imageInfo) error {
 	if img.dll {
 		binary.LittleEndian.PutUint16(buf[o+70:], 0x0020|0x0040|0x0100)
 	}
-	binary.LittleEndian.PutUint64(buf[o+72:], 0x100000) // stack reserve
+	// 8 MB of stack, as Linux gives, rather than Windows' usual 1 MB:
+	// a frame has a slot for every value the function computes, so one
+	// very long function - a big table written as a literal - needs a
+	// big frame, and recursion gets the same depth on both systems. It
+	// is reserved address space; pages are committed as they are used.
+	// Threads started with a size of 0 take this too.
+	binary.LittleEndian.PutUint64(buf[o+72:], 0x800000) // stack reserve
 	binary.LittleEndian.PutUint64(buf[o+80:], 0x1000)   // stack commit
 	binary.LittleEndian.PutUint64(buf[o+88:], 0x100000) // heap reserve
 	binary.LittleEndian.PutUint64(buf[o+96:], 0x1000)   // heap commit
