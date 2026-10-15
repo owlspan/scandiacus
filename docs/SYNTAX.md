@@ -1,6 +1,6 @@
 # Veyl Language Reference
 
-**Version 1.76.0** - the language as currently implemented.
+**Version 1.76.1** - the language as currently implemented.
 
 Veyl compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -2043,8 +2043,12 @@ not need OpenSSL at all. A 4xx or 5xx is a failure carrying the code.
 cannot fetch "https://localhost/": the certificate of localhost was not accepted: hostname mismatch
 ```
 
-OpenSSL is on every Linux distribution (`libssl3`). On macOS it is not
-part of the system; install it with `brew install openssl@3`.
+OpenSSL is on every Linux distribution (`libssl3`). A Mac needs nothing
+installed: when there is no OpenSSL the program can load - and on Apple
+Silicon there is none, since a Veyl program runs there as x86-64 and
+Homebrew's OpenSSL is arm64 - the system's own TLS, SecureTransport, is
+used. It goes up to TLS 1.2, so a server that only speaks TLS 1.3 needs
+an x86-64 OpenSSL (Homebrew in `/usr/local`).
 
 Redirects are followed up to ten deep. A 301, 302 or 303 turns a POST
 into a GET with no body, as browsers do; a 307 or 308 repeats the
@@ -4100,7 +4104,7 @@ hello.vl:6:7: undefined function "lenn" - did you mean "len"?
 
 ## Known limitations
 
-Honest list of what v1.76.0 does not do yet.
+Honest list of what v1.76.1 does not do yet.
 
 **The language**
 
@@ -4142,10 +4146,9 @@ Honest list of what v1.76.0 does not do yet.
 **The library**
 
 - **`net` is plain TCP with no TLS.** `http.get` and friends speak
-  HTTPS everywhere - WinHTTP on Windows, the system OpenSSL on Linux and
-  macOS - but a socket opened with `net.connect` is unencrypted, and
-  the `http` server has no TLS. On macOS HTTPS needs a Homebrew OpenSSL
-  and is untested, since there is no Mac to test on.
+  HTTPS everywhere - WinHTTP on Windows, the system OpenSSL on Linux,
+  SecureTransport or OpenSSL on macOS - but a socket opened with
+  `net.connect` is unencrypted, and the `http` server has no TLS.
 - **SQL is SQLite only**, through the `sqlite` package. No Postgres,
   MySQL or anything over a network.
 - **The web server is HTTP/1.1, one request per connection**: no

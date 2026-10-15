@@ -3,6 +3,16 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.76.1
+
+**HTTPS works on Apple Silicon Macs.** A Veyl program runs there as
+x86-64 under Rosetta, and the OpenSSL Homebrew installs on those Macs
+is arm64, so it could not be loaded and every `https://` fetch failed.
+When no OpenSSL loads, the program now uses the system's own TLS,
+SecureTransport, which every Mac has; nothing needs installing. The
+certificate is checked against the system keychain and the host name.
+CI fetches a good and an expired certificate on a Mac each run.
+
 ## 1.76.0
 
 **`s += t` is linear.** Building a string by appending in a loop was
