@@ -203,43 +203,12 @@ func (l *lowerer) hofReduce(xs, init, f Reg, elem, acc vty) Reg {
 // than the asymptotics.
 func (l *lowerer) hofSortBy(xs, f Reg, lt, elem vty) Reg {
 	out := l.listSlice(xs, lt, l.constant(0), l.field(xs, listLenOff, vInt))
-	n := l.field(out, listLenOff, vInt)
-
-	i := l.temp(vInt)
-	l.emit(Instr{Op: OpStore, A: l.constant(1), Dst: NoReg, Imm: i})
-	outer := l.newLabel()
-	outerDone := l.newLabel()
-	l.mark(outer)
-	iv := l.newReg()
-	l.regTy[iv] = vInt
-	l.emit(Instr{Op: OpLoad, Dst: iv, A: NoReg, B: NoReg, Imm: i})
-	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpLt, iv, n), Dst: NoReg, Imm: outerDone})
-
-	j := l.temp(vInt)
-	l.emit(Instr{Op: OpStore, A: iv, Dst: NoReg, Imm: j})
-	inner := l.newLabel()
-	innerDone := l.newLabel()
-	l.mark(inner)
-	jv := l.newReg()
-	l.regTy[jv] = vInt
-	l.emit(Instr{Op: OpLoad, Dst: jv, A: NoReg, B: NoReg, Imm: j})
-	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpGt, jv, l.constant(0)), Dst: NoReg, Imm: innerDone})
-
-	prev := l.arith(OpSub, jv, l.constant(1))
-	a := l.listGet(out, jv, elem)
-	b := l.listGet(out, prev, elem)
-	// less(out[j], out[j-1]) - only a strict yes moves it, which is what
-	// keeps equal elements where they were.
-	swap := l.callClosure(f, []Reg{a, b}, []vty{elem, elem}, vBool)
-	l.emit(Instr{Op: OpJumpNot, A: swap, Dst: NoReg, Imm: innerDone})
-	l.listSet(out, jv, b)
-	l.listSet(out, prev, a)
-	l.emit(Instr{Op: OpStore, A: prev, Dst: NoReg, Imm: j})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: inner})
-	l.mark(innerDone)
-
-	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, iv, l.constant(1)), Dst: NoReg, Imm: i})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: outer})
-	l.mark(outerDone)
+	fs := l.temp(l.regTy[f])
+	l.setSlot(fs, f)
+	// less(a, b) - only a strict yes puts b's element first, which is
+	// what keeps equal elements where they were.
+	l.mergeSortList(out, lt, func(a, b Reg) Reg {
+		return l.callClosure(l.load(fs, l.regTy[f]), []Reg{a, b}, []vty{elem, elem}, vBool)
+	})
 	return out
 }

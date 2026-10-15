@@ -446,44 +446,55 @@ func (l *lowerer) stringBuiltin(c *Call, name string) (Reg, bool) {
 	return NoReg, false
 }
 
-// repeatStr joins n copies of s. It concatenates in a loop rather than
-// sizing the result once, which allocates n times instead of once and is
-// the obvious thing to improve when there is a reason to.
+// repeatStr joins n copies of s: the result sized once, then filled by
+// doubling - the first copy, then the filled part copied onto its own
+// end - so it is a handful of memmoves however large n is. It was a loop
+// of concatenations, which was quadratic and, since nothing collects in
+// the middle of a builtin, could allocate gigabytes on the way to a few
+// megabytes.
 func (l *lowerer) repeatStr(s, n Reg) Reg {
-	l.mod.needs("concat")
+	srcS := l.temp(vStr)
+	l.emit(Instr{Op: OpStore, A: s, Dst: NoReg, Imm: srcS})
+	countS := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: n, Dst: NoReg, Imm: countS})
+	lenS := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: l.strLen(l.load(srcS, vStr)), Dst: NoReg, Imm: lenS})
 
-	accSlot := l.temp(vStr)
-	empty := l.newReg()
-	l.regTy[empty] = vStr
-	l.emit(Instr{Op: OpStr, Dst: empty, A: NoReg, B: NoReg, Imm: l.mod.intern("")})
-	l.emit(Instr{Op: OpStore, A: empty, Dst: NoReg, Imm: accSlot})
+	// A count of zero or less, or an empty string, is the empty string.
+	totalS := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: totalS})
+	sized := l.newLabel()
+	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpGt, l.load(countS, vInt), l.constant(0)), Dst: NoReg, Imm: sized})
+	l.emit(Instr{Op: OpStore, A: l.arith(OpMul, l.load(lenS, vInt), l.load(countS, vInt)), Dst: NoReg, Imm: totalS})
+	l.mark(sized)
 
-	srcSlot := l.temp(vStr)
-	l.emit(Instr{Op: OpStore, A: s, Dst: NoReg, Imm: srcSlot})
-	nSlot := l.temp(vInt)
-	l.emit(Instr{Op: OpStore, A: n, Dst: NoReg, Imm: nSlot})
+	out := l.strAlloc(l.load(totalS, vInt))
+	outS := l.temp(vStr)
+	l.emit(Instr{Op: OpStore, A: out, Dst: NoReg, Imm: outS})
+	doneS := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: doneS})
 
-	iSlot := l.temp(vInt)
-	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: iSlot})
-
-	top := l.newLabel()
-	done := l.newLabel()
-	l.mark(top)
-	i := l.load(iSlot, vInt)
-	more := l.compare(OpLt, i, l.load(nSlot, vInt))
-	l.emit(Instr{Op: OpJumpNot, A: more, Dst: NoReg, Imm: done})
-
-	joined := l.newReg()
-	l.regTy[joined] = vStr
-	l.emit(Instr{Op: OpConcat, Dst: joined, A: l.load(accSlot, vStr),
-		B: l.load(srcSlot, vStr)})
-	l.emit(Instr{Op: OpStore, A: joined, Dst: NoReg, Imm: accSlot})
-
-	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, i, l.constant(1)), Dst: NoReg, Imm: iSlot})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
-	l.mark(done)
-
-	return l.load(accSlot, vStr)
+	fill := l.newLabel()
+	finish := l.newLabel()
+	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpGt, l.load(totalS, vInt), l.constant(0)), Dst: NoReg, Imm: finish})
+	l.copyBytes(l.load(outS, vInt), l.load(srcS, vInt), l.load(lenS, vInt))
+	l.emit(Instr{Op: OpStore, A: l.load(lenS, vInt), Dst: NoReg, Imm: doneS})
+	l.mark(fill)
+	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpLt, l.load(doneS, vInt), l.load(totalS, vInt)), Dst: NoReg, Imm: finish})
+	// Copy as much of what is already there as still fits.
+	chunk := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: l.load(doneS, vInt), Dst: NoReg, Imm: chunk})
+	left := l.arith(OpSub, l.load(totalS, vInt), l.load(doneS, vInt))
+	small := l.newLabel()
+	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpGt, l.load(chunk, vInt), left), Dst: NoReg, Imm: small})
+	l.emit(Instr{Op: OpStore, A: l.arith(OpSub, l.load(totalS, vInt), l.load(doneS, vInt)), Dst: NoReg, Imm: chunk})
+	l.mark(small)
+	l.copyBytes(l.arith(OpAdd, l.load(outS, vInt), l.load(doneS, vInt)), l.load(outS, vInt), l.load(chunk, vInt))
+	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, l.load(doneS, vInt), l.load(chunk, vInt)), Dst: NoReg, Imm: doneS})
+	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: fill})
+	l.mark(finish)
+	l.storeByte(l.load(outS, vStr), l.load(totalS, vInt), l.constant(0))
+	return l.load(outS, vStr)
 }
 
 // isSpaceByte is the set strings.TrimSpace strips, for the bytes that

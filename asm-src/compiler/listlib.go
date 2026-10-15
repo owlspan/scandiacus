@@ -256,48 +256,12 @@ func (l *lowerer) listSort(c *Call, list Reg, t vty) Reg {
 		return l.junk()
 	}
 
-	out := l.newList(t, initialCap)
-	l.eachElement(list, t, func(_, v Reg) {
-		l.insertInOrder(c, out, v, elem)
+	out := l.listSlice(list, t, l.constant(0), l.field(list, listLenOff, vInt))
+	l.mergeSortList(out, t, func(x, y Reg) Reg {
+		less, _ := l.lessValues(c, x, y, elem, "sort")
+		return less
 	})
 	return out
-}
-
-// insertInOrder places one value into an already-sorted list.
-func (l *lowerer) insertInOrder(n Node, list, v Reg, elem vty) {
-	l.listPush(list, v)
-
-	iSlot := l.temp(vInt)
-	l.emit(Instr{Op: OpStore,
-		A:   l.arith(OpSub, l.field(list, listLenOff, vInt), l.constant(1)),
-		Dst: NoReg, Imm: iSlot})
-
-	top := l.newLabel()
-	done := l.newLabel()
-	l.mark(top)
-
-	i := l.load(iSlot, vInt)
-	notFirst := l.compare(OpGt, i, l.constant(0))
-	l.emit(Instr{Op: OpJumpNot, A: notFirst, Dst: NoReg, Imm: done})
-
-	prev := l.arith(OpSub, i, l.constant(1))
-	before := l.listGet(list, prev, elem)
-	here := l.listGet(list, i, elem)
-	// Stop as soon as the one in front is not greater, which keeps equal
-	// values in the order they arrived.
-	less, ok := l.lessValues(n, here, before, elem, "sort")
-	if !ok {
-		l.mark(done)
-		return
-	}
-	l.emit(Instr{Op: OpJumpNot, A: less, Dst: NoReg, Imm: done})
-
-	l.listSet(list, prev, here)
-	l.listSet(list, i, before)
-	l.emit(Instr{Op: OpStore, A: prev, Dst: NoReg, Imm: iSlot})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
-
-	l.mark(done)
 }
 
 // listSlice is xs[start:end] with the indexes clamped rather than fatal,
@@ -532,8 +496,7 @@ func (l *lowerer) splitStr(s, sep Reg) Reg {
 	more := l.compare(OpLe, l.arith(OpAdd, i, sepLen), n)
 	l.emit(Instr{Op: OpJumpNot, A: more, Dst: NoReg, Imm: tail})
 
-	here := l.substring(s, i, l.arith(OpAdd, i, sepLen))
-	hit := l.strEq(here, sep)
+	hit := l.bytesMatchAt(s, i, sep, sepLen)
 	l.emit(Instr{Op: OpJumpNot, A: hit, Dst: NoReg, Imm: next})
 
 	l.listPush(out, l.substring(s, l.load(startSlot, vInt), i))

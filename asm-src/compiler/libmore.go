@@ -336,60 +336,89 @@ func (l *lowerer) pathExt(s Reg) Reg {
 }
 
 // replaceAll is strings.ReplaceAll: every occurrence, left to right.
+// Two passes: count the matches, which sizes the result, then copy the
+// pieces in. It used to append to the result once per match, which is
+// quadratic, and to cut a substring out at every position to compare
+// it, which allocated once per byte of the input.
 func (l *lowerer) replaceAll(s, old, with Reg) Reg {
+	sS, oldS, withS := l.temp(vStr), l.temp(vStr), l.temp(vStr)
+	l.setSlot(sS, s)
+	l.setSlot(oldS, old)
+	l.setSlot(withS, with)
+	n, oldLen, withLen := l.temp(vInt), l.temp(vInt), l.temp(vInt)
+	l.setSlot(n, l.strLen(l.load(sS, vStr)))
+	l.setSlot(oldLen, l.strLen(l.load(oldS, vStr)))
+	l.setSlot(withLen, l.strLen(l.load(withS, vStr)))
+	ld := func(slot int64) Reg { return l.load(slot, vInt) }
 	out := l.temp(vStr)
-	l.emit(Instr{Op: OpStore, A: l.emptyStr(), Dst: NoReg, Imm: out})
-
-	n := l.strLen(s)
-	oldLen := l.strLen(old)
 
 	// An empty needle would match forever. Go inserts the replacement
 	// between every character in that case; this hands the string back
 	// untouched, which is a documented difference rather than a hang.
 	done := l.newLabel()
 	notEmpty := l.newLabel()
-	empty := l.compare(OpEq, oldLen, l.constant(0))
-	l.emit(Instr{Op: OpJumpNot, A: empty, Dst: NoReg, Imm: notEmpty})
-	l.emit(Instr{Op: OpStore, A: s, Dst: NoReg, Imm: out})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: done})
+	l.jumpNot(l.compare(OpEq, ld(oldLen), l.constant(0)), notEmpty)
+	l.setSlot(out, l.load(sS, vStr))
+	l.jump(done)
 	l.mark(notEmpty)
 
-	iSlot := l.temp(vInt)
-	startSlot := l.temp(vInt)
-	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: iSlot})
-	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: startSlot})
+	// scan visits every match left to right, not overlapping, calling
+	// at with its position; it is run twice.
+	scan := func(at func(pos Reg)) {
+		i := l.temp(vInt)
+		l.setSlot(i, l.constant(0))
+		top, next, end := l.newLabel(), l.newLabel(), l.newLabel()
+		l.mark(top)
+		l.jumpNot(l.compare(OpLe, l.arith(OpAdd, ld(i), ld(oldLen)), ld(n)), end)
+		l.jumpNot(l.bytesMatchAt(l.load(sS, vStr), ld(i), l.load(oldS, vStr), ld(oldLen)), next)
+		at(ld(i))
+		l.setSlot(i, l.arith(OpAdd, ld(i), ld(oldLen)))
+		l.jump(top)
+		l.mark(next)
+		l.setSlot(i, l.arith(OpAdd, ld(i), l.constant(1)))
+		l.jump(top)
+		l.mark(end)
+	}
 
-	top := l.newLabel()
-	next := l.newLabel()
-	tail := l.newLabel()
-	l.mark(top)
+	count := l.temp(vInt)
+	l.setSlot(count, l.constant(0))
+	scan(func(Reg) { l.setSlot(count, l.arith(OpAdd, ld(count), l.constant(1))) })
+	// No match: the string itself, as before.
+	some := l.newLabel()
+	l.jumpNot(l.compare(OpEq, ld(count), l.constant(0)), some)
+	l.setSlot(out, l.load(sS, vStr))
+	l.jump(done)
+	l.mark(some)
 
-	i := l.load(iSlot, vInt)
-	fits := l.compare(OpLe, l.arith(OpAdd, i, oldLen), n)
-	l.emit(Instr{Op: OpJumpNot, A: fits, Dst: NoReg, Imm: tail})
-
-	here := l.substring(s, i, l.arith(OpAdd, i, oldLen))
-	l.emit(Instr{Op: OpJumpNot, A: l.strEq(here, old), Dst: NoReg, Imm: next})
-
-	l.emit(Instr{Op: OpStore,
-		A: l.concatAll(l.load(out, vStr),
-			l.substring(s, l.load(startSlot, vInt), i), with),
-		Dst: NoReg, Imm: out})
-	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, i, oldLen), Dst: NoReg, Imm: startSlot})
-	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, i, oldLen), Dst: NoReg, Imm: iSlot})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
-
-	l.mark(next)
-	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, i, l.constant(1)), Dst: NoReg, Imm: iSlot})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
-
-	l.mark(tail)
-	l.emit(Instr{Op: OpStore,
-		A:   l.concat(l.load(out, vStr), l.substring(s, l.load(startSlot, vInt), n)),
-		Dst: NoReg, Imm: out})
+	total := l.arith(OpAdd, ld(n), l.arith(OpMul, ld(count), l.arith(OpSub, ld(withLen), ld(oldLen))))
+	l.setSlot(out, l.strAlloc(total))
+	from, to := l.temp(vInt), l.temp(vInt) // read position in s, write position in out
+	l.setSlot(from, l.constant(0))
+	l.setSlot(to, l.constant(0))
+	scan(func(pos Reg) {
+		ps := l.temp(vInt)
+		l.setSlot(ps, pos)
+		gap := l.arith(OpSub, ld(ps), ld(from))
+		l.copyBytes(l.arith(OpAdd, l.load(out, vInt), ld(to)), l.arith(OpAdd, l.load(sS, vInt), ld(from)), gap)
+		l.setSlot(to, l.arith(OpAdd, ld(to), l.arith(OpSub, ld(ps), ld(from))))
+		l.copyBytes(l.arith(OpAdd, l.load(out, vInt), ld(to)), l.load(withS, vInt), ld(withLen))
+		l.setSlot(to, l.arith(OpAdd, ld(to), ld(withLen)))
+		l.setSlot(from, l.arith(OpAdd, ld(ps), ld(oldLen)))
+	})
+	rest := l.arith(OpSub, ld(n), ld(from))
+	l.copyBytes(l.arith(OpAdd, l.load(out, vInt), ld(to)), l.arith(OpAdd, l.load(sS, vInt), ld(from)), rest)
+	l.storeByte(l.load(out, vStr), l.arith(OpAdd, ld(to), l.arith(OpSub, ld(n), ld(from))), l.constant(0))
 
 	l.mark(done)
 	return l.load(out, vStr)
+}
+
+// bytesMatchAt reports whether the m bytes of needle occur in s at i,
+// compared in place. The caller has checked that they fit.
+func (l *lowerer) bytesMatchAt(s, i, needle, m Reg) Reg {
+	r := l.ccall("memcmp", []Reg{l.arith(OpAdd, s, i), needle, m},
+		[]vty{vInt, vInt, vInt}, vInt, true, false)
+	return l.compare(OpEq, r, l.constant(0))
 }
 
 // pathBuiltin lowers the path helpers, replace, and the three questions
