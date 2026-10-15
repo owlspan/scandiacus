@@ -3,6 +3,29 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.78.0
+
+**`re` finds what Go's `regexp` finds.** Compared on 27000 random
+patterns and texts, it now agrees on every match, every capture and
+every split. On the way it stopped crashing and stopped hanging:
+
+- A loop whose body can match nothing, like `(a*)*`, went round until
+  the stack ran out.
+- `(a+)+b` against a line of `a`s took exponential time, as it does in
+  most backtracking engines. No pattern takes longer now than its
+  length times the text's; that one answers at once.
+- Matching recursed once per character, so a few thousand characters
+  overflowed the stack. It is a loop now; a megabyte is fine.
+- `re.split` gave an extra empty piece after a match at the end.
+
+**`proc` reads names in any script.** Process names, and module names
+and paths, came through the system code page and lost the characters
+it lacks.
+
+**`abs(-0.0)` is `0`**, as `math.Abs` and C give it. Found by comparing
+random float expressions against Go; integer and fixed-width arithmetic
+compared the same way, 9000 expressions, all agreed already.
+
 ## 1.77.0
 
 **Format specs.** `"{price:.2}"`, `"{name:<10}"`, `"{n:5}"`,
