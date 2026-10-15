@@ -3,6 +3,39 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.77.0
+
+**Format specs.** `"{price:.2}"`, `"{name:<10}"`, `"{n:5}"`,
+`"{minutes:02}"`: a colon after an interpolated expression gives places
+after the point, a width, left alignment, or zero padding. `fixed(x,
+places)` does the rounding as a function. Exact ties round half to
+even from the exact binary value, so the result is the same on every
+system - checked against Go on 2000 values.
+
+**`for c in s`** walks a string's characters, UTF-8 decoded, the same
+as `chars(s)`; `for i, c in s` gives the index too.
+
+**Nothing common is quadratic any more.** A benchmark of everyday
+operations found several that were, and two that crashed:
+
+- `sort` and `sortBy` were insertion sorts: a million ints took
+  minutes. They are stable merge sorts now - 113 ms.
+- `repeat`, `str()` of a long list, and `json.encode` of one appended
+  piece by piece; with nothing collected inside a builtin, a big enough
+  one ran out of memory and crashed. All three are linear now.
+- `split` and `replace` cut out a substring at every byte to compare
+  it, and `replace` appended once per match. Both compare in place
+  now, and `replace` sizes its result once.
+- The compiler itself: a 2000-element list literal took 13 seconds to
+  compile, from two quadratic passes; 0.75 seconds now.
+
+**8 MB of stack on Windows**, as on Linux, rather than 1 MB: a very
+long function overflowed the old one, and recursion now goes as deep
+on both.
+
+**The language server** follows `import ... as` namespaces: go to
+definition, hover and completion work on `geo.area`.
+
 ## 1.76.1
 
 **HTTPS works on Apple Silicon Macs.** A Veyl program runs there as
