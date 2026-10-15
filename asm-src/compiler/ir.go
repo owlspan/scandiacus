@@ -2552,11 +2552,14 @@ func (l *lowerer) numMath(c *Call, name string) Reg {
 			l.errorAt(c, "abs takes 1 argument, got %d", len(c.Args))
 			return l.junk()
 		}
+		// 0 - x for x <= 0, so -0 comes out as 0 the way math.Abs gives
+		// it: a negation of x < 0 alone left -0 as it was. A NaN fails
+		// the compare and passes through.
 		a := l.numeric(c.Args[0])
 		neg := l.newReg()
 		l.regTy[neg] = vFloat
-		l.emit(Instr{Op: OpFNeg, Dst: neg, A: a, B: NoReg})
-		isNeg := l.compare(OpFLt, a, l.floatConst(0))
+		l.emit(Instr{Op: OpFSub, Dst: neg, A: l.floatConst(0), B: a})
+		isNeg := l.compare(OpFLe, a, l.floatConst(0))
 		return l.pick(isNeg, neg, a, vFloat)
 	}
 
