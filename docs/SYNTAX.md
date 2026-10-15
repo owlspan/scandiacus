@@ -4160,10 +4160,10 @@ Honest list of what v1.77.0 does not do yet.
   reaches any method of any interface; an API that wants to call back
   through an interface the program supplies has nothing to be given
   yet.
-- **`proc` names are in the system code page.** A process or module
-  name with characters outside it comes back altered. There is also no
-  call yet to suspend a thread or read its registers; those still go
-  through `extern`.
+- **`proc` cannot suspend a thread or read its registers yet**; those
+  still go through `extern`. A module name in another process that the
+  program may not open reads as Windows keeps it, with a character
+  outside the system code page as `?`.
 - **A missing map key is silent.** `m["absent"]` returns the zero
   value. `has()` and `find()` distinguish it; the bare index was left
   alone because making every map read return `?V` would mean a nil

@@ -168,15 +168,16 @@ fn __vy_procScan(h: int, start: int, size: int, pattern: str) -> int {
 // offsets, which is what lets this stay on mem.call with nothing
 // declared:
 //
-//   PROCESSENTRY32  304 bytes: pid at 8, parent pid at 32, name at 44
-//   MODULEENTRY32   568 bytes: base at 24, size at 32, name at 48,
-//                              path at 304
+//   PROCESSENTRY32W  568 bytes: pid at 8, parent pid at 32, name at 44
+//   MODULEENTRY32W  1080 bytes: base at 24, size at 32, name at 48,
+//                               path at 560
 //   THREADENTRY32    28 bytes: thread id at 8, owner pid at 12
 //   MEMORY_BASIC_INFORMATION 48 bytes: base at 0, size at 24,
 //                              state at 32, protect at 36, type at 40
 //
-// The names are the ANSI ones, so a name outside the system code page
-// comes back with its odd characters replaced.
+// The W forms, whose names are UTF-16 and come back as UTF-8, so a
+// name in any script reads as it is. The A forms went through the
+// system code page and replaced what it lacked.
 
 struct ProcModule {
     name: str
@@ -228,10 +229,10 @@ fn __vy_procPids() -> []int {
     if snap == -1 {
         return out
     }
-    let next = mem.symbol("kernel32.dll", "Process32Next")
-    let e = mem.alloc(304)
-    mem.write32(e, 304)
-    let more = __vy_procTrue(mem.call(mem.symbol("kernel32.dll", "Process32First"), snap, e))
+    let next = mem.symbol("kernel32.dll", "Process32NextW")
+    let e = mem.alloc(568)
+    mem.write32(e, 568)
+    let more = __vy_procTrue(mem.call(mem.symbol("kernel32.dll", "Process32FirstW"), snap, e))
     while more {
         push(out, mem.readU32(e + 8))
         more = __vy_procTrue(mem.call(next, snap, e))
@@ -247,14 +248,14 @@ fn __vy_procName(pid: int) -> str {
     if snap == -1 {
         return ""
     }
-    let next = mem.symbol("kernel32.dll", "Process32Next")
-    let e = mem.alloc(304)
-    mem.write32(e, 304)
+    let next = mem.symbol("kernel32.dll", "Process32NextW")
+    let e = mem.alloc(568)
+    mem.write32(e, 568)
     let found = ""
-    let more = __vy_procTrue(mem.call(mem.symbol("kernel32.dll", "Process32First"), snap, e))
+    let more = __vy_procTrue(mem.call(mem.symbol("kernel32.dll", "Process32FirstW"), snap, e))
     while more {
         if mem.readU32(e + 8) == pid {
-            found = mem.str(e + 44)
+            found = __vy_memWstr(e + 44)
             break
         }
         more = __vy_procTrue(mem.call(next, snap, e))
@@ -273,15 +274,15 @@ fn __vy_procWalk(byName: bool, pid: int, name: str) -> int {
         return 0
     }
     let want = lower(name)
-    let next = mem.symbol("kernel32.dll", "Process32Next")
-    let e = mem.alloc(304)
-    mem.write32(e, 304)
+    let next = mem.symbol("kernel32.dll", "Process32NextW")
+    let e = mem.alloc(568)
+    mem.write32(e, 568)
     let found = 0
-    let more = __vy_procTrue(mem.call(mem.symbol("kernel32.dll", "Process32First"), snap, e))
+    let more = __vy_procTrue(mem.call(mem.symbol("kernel32.dll", "Process32FirstW"), snap, e))
     while more {
         let id = mem.readU32(e + 8)
         if byName {
-            if lower(mem.str(e + 44)) == want {
+            if lower(__vy_memWstr(e + 44)) == want {
                 found = id
                 break
             }
@@ -318,17 +319,49 @@ fn __vy_procModules(pid: int) -> []ProcModule {
     if snap == -1 {
         return out
     }
-    let next = mem.symbol("kernel32.dll", "Module32Next")
-    let e = mem.alloc(568)
-    mem.write32(e, 568)
-    let more = __vy_procTrue(mem.call(mem.symbol("kernel32.dll", "Module32First"), snap, e))
+    let next = mem.symbol("kernel32.dll", "Module32NextW")
+    let e = mem.alloc(1080)
+    mem.write32(e, 1080)
+    // The snapshot's own names come through the system code page even
+    // in the W form, so a character outside it reads as "?". The path
+    // the process itself has for the module is UTF-16 all the way, and
+    // is asked for when the process can be opened to read it.
+    let ph = -1
+    if pid != 0 {
+        ph = mem.call(mem.symbol("kernel32.dll", "OpenProcess"), 0x1010, 0, pid)
+    }
+    let fileName = mem.symbol("kernel32.dll", "K32GetModuleFileNameExW")
+    let buf = mem.alloc(65536)
+    let more = __vy_procTrue(mem.call(mem.symbol("kernel32.dll", "Module32FirstW"), snap, e))
     while more {
-        push(out, ProcModule{name: mem.str(e + 48), path: mem.str(e + 304), base: mem.readI64(e + 24), size: mem.readU32(e + 32)})
+        let name = __vy_memWstr(e + 48)
+        let path = __vy_memWstr(e + 560)
+        if ph != 0 && (mem.call(fileName, ph, mem.readI64(e + 40), buf, 32768) & 0xFFFFFFFF) > 0 {
+            path = __vy_memWstr(buf)
+            name = __vy_procBaseName(path)
+        }
+        push(out, ProcModule{name: name, path: path, base: mem.readI64(e + 24), size: mem.readU32(e + 32)})
         more = __vy_procTrue(mem.call(next, snap, e))
+    }
+    mem.free(buf)
+    if pid != 0 && ph != 0 {
+        __vy_procClose(ph)
     }
     mem.free(e)
     __vy_procClose(snap)
     return out
+}
+
+// The last part of a Windows path.
+fn __vy_procBaseName(path: str) -> str {
+    let i = len(path) - 1
+    while i >= 0 {
+        if __strByte(path, i) == 92 || __strByte(path, i) == 47 {
+            return __substrB(path, i + 1, len(path))
+        }
+        i -= 1
+    }
+    return path
 }
 
 // Where a module is loaded in a process, or 0. An empty name means the
