@@ -653,14 +653,19 @@ func (e *Emitter) fuseRMW(ld, op, st Instr, uses map[Reg]int) bool {
 // nextReal is the index of the next instruction after i that emits
 // anything, or -1. Constants folded away emit nothing.
 func (e *Emitter) nextReal(f *Func, i int) int {
-	for j := i + 1; j < len(f.Code); j++ {
-		in := f.Code[j]
-		if in.Op == OpConst && e.dropConst[in.Dst] || in.Op == OpFConst && e.dropFC[in.Dst] {
-			continue
+	if e.nextFor != f || len(e.next) != len(f.Code) {
+		e.next = make([]int, len(f.Code))
+		after := -1
+		for j := len(f.Code) - 1; j >= 0; j-- {
+			e.next[j] = after
+			in := f.Code[j]
+			if !(in.Op == OpConst && e.dropConst[in.Dst] || in.Op == OpFConst && e.dropFC[in.Dst]) {
+				after = j
+			}
 		}
-		return j
+		e.nextFor = f
 	}
-	return -1
+	return e.next[i]
 }
 
 // aliasLoad skips a load whose one reader is the very next instruction,

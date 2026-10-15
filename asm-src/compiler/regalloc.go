@@ -148,29 +148,27 @@ func allocateRegs(f *Func) map[Reg]string {
 	// definition point is free again: both mentions sit in the same
 	// instruction, the read happens before the write, and every shape
 	// the emitter produces reads its inputs first.
-	type held struct {
-		until int
-		home  string
-	}
-	var busy []held
+	//
+	// Only the last holder of each register can still be holding it:
+	// candidates come in order of definition, so any earlier holder of
+	// a register given out since had died before that. One "busy until"
+	// per register is the whole state - a list of every holder made
+	// this quadratic, and a long list literal took seconds to compile.
+	until := make(map[string]int, len(raIntRegs))
 	homes := make(map[Reg]string)
-next:
 	for _, c := range cands {
 		if c.param {
 			continue // parameters arrive in fixed registers; moving them buys nothing
 		}
-	free:
 		for _, name := range raIntRegs[:] {
-			for _, b := range busy {
-				if b.home == name && b.until >= c.def {
-					continue free
-				}
+			if u, taken := until[name]; taken && u >= c.def {
+				continue
 			}
 			homes[c.r] = name
-			busy = append(busy, held{until: c.last, home: name})
-			continue next
+			until[name] = c.last
+			break
 		}
-		// Nothing free. The value keeps its slot; nothing already
+		// Nothing free: the value keeps its slot; nothing already
 		// holding a register is evicted over it.
 	}
 	if len(homes) == 0 {

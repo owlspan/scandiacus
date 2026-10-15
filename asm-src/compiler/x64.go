@@ -65,6 +65,12 @@ type Emitter struct {
 	alias     map[Reg]string // a load read straight from its slot; see aliasLoad
 	fconsts   map[Reg]int64  // float constants, by pool index
 	dropFC    map[Reg]bool
+
+	// next is nextReal's answer for every instruction of nextFor, worked
+	// out in one pass, since scanning for it each time was quadratic
+	// over a long run of dropped constants (a long list literal).
+	next    []int
+	nextFor *Func
 }
 
 // Windows x64 calling convention.
