@@ -323,6 +323,9 @@ func addPrelude(prog *Program, sources []string) []string {
 			}
 		}
 	}
+	if prog.ForIn {
+		wanted["__vy_chars"] = true
+	}
 	if prog.FormatSpecs {
 		wanted["__vy_fixed"] = true
 		wanted["__vy_fmtPad"] = true

@@ -61,6 +61,11 @@ type Program struct {
 	// "{x:.2}", which becomes calls to library functions the source text
 	// never names; the backend uses it to bring them in.
 	FormatSpecs bool
+
+	// ForIn is set when a `for` walks a collection rather than a range.
+	// One that walks a str is chars(s) underneath, which the source text
+	// never names either.
+	ForIn bool
 }
 
 // EnumDecl is `enum State { Idle, Running, Done }`. A variant is

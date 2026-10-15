@@ -112,6 +112,7 @@ func (l *importLoader) resolve(prog *Program, from string) {
 		prog.Enums = append(prog.Enums, sub.Enums...)
 		prog.Ifaces = append(prog.Ifaces, sub.Ifaces...)
 		prog.FormatSpecs = prog.FormatSpecs || sub.FormatSpecs
+		prog.ForIn = prog.ForIn || sub.ForIn
 	}
 }
 

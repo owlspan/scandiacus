@@ -32,8 +32,10 @@ type Parser struct {
 	// as a struct literal.
 	aliases map[string]bool
 
-	// formats is whether any interpolation had a format spec.
+	// formats is whether any interpolation had a format spec, and forIn
+	// whether any for walks a collection.
 	formats bool
+	forIn   bool
 
 	Errors []string
 }
@@ -315,6 +317,7 @@ func (p *Parser) ParseProgram() *Program {
 		p.skipNewlines()
 	}
 	prog.FormatSpecs = p.formats
+	prog.ForIn = p.forIn
 	return prog
 }
 
@@ -989,6 +992,7 @@ func (p *Parser) parseFor() Stmt {
 	case p.match(DOTDOT):
 	default:
 		st.Coll = first
+		p.forIn = true
 		if p.check(STEP) {
 			p.errorAt(p.cur(), "'step' only applies to a range, as in: for i in 0..10 step 2")
 		}

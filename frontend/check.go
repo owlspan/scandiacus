@@ -904,8 +904,21 @@ func (c *Checker) forEach(st *ForStmt) {
 		}
 
 	case collT.Kind == KStr:
-		c.ErrorAt(st, "cannot iterate a str directly - use chars(...) or split(...)")
-		keyT, valT = Unknown, Unknown
+		// for c in s: the characters, as chars(s) gives them - one
+		// string each, decoded as UTF-8. Two names are the index and
+		// the character, counted in characters.
+		arg := st.Coll
+		sp := Span{}
+		sp.Line, sp.Col = arg.Pos()
+		st.Coll = &Call{Span: sp, Callee: &Ident{Span: sp, Name: "chars"}, Args: []Expr{arg},
+			ArgT: []*Type{Str}, T: ListOf(Str)}
+		collT = ListOf(Str)
+		st.CollT = collT
+		if st.Var2 != "" {
+			keyT, valT = Int, Str
+		} else {
+			keyT = Str
+		}
 
 	default:
 		c.ErrorAt(st, "cannot iterate %s", collT)

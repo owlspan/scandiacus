@@ -1270,7 +1270,16 @@ loop whose output changes between runs is a bad thing to hand a
 beginner, so the keys are sorted first. `keys()` and `values()` are
 sorted for the same reason.
 
-A `str` is not directly iterable - use `chars(s)` or `split(s, sep)`.
+A string walks its characters - one string each, decoded as UTF-8,
+the same as `chars(s)` - and with two names, the character index too:
+
+```veyl
+for c in "caf\u{e9}" { print(c) }
+for i, c in word { print("{i}: {c}") }
+```
+
+That is linear. A loop of `charAt(s, i)` is not, since finding the
+i-th character means walking the bytes before it every time.
 
 ---
 
