@@ -22,6 +22,11 @@ fn __vy_csvErr(startLine: int, line: int, col: int, why: str) -> str {
 fn __vy_csvParse(text: str) -> [][]str! {
     let rows: [][]str = []
     let n = len(text)
+    // A carriage return as the very last byte is dropped before parsing,
+    // as Go's reader does for backwards compatibility.
+    if n > 0 && __strAt(text, n - 1) == 13 {
+        n = n - 1
+    }
     let i = 0
     let line = 1
 
@@ -44,7 +49,6 @@ fn __vy_csvParse(text: str) -> [][]str! {
 
         while !done {
             let field = ""
-            let col = 1
 
             if __strAt(text, i) == 34 {
                 // Quoted. Two quotes inside are one quote.
@@ -65,6 +69,10 @@ fn __vy_csvParse(text: str) -> [][]str! {
                             i = i + 1
                             closed = true
                         }
+                    } else if c == 13 && i + 1 < n && __strAt(text, i + 1) == 10 {
+                        // A CR LF inside quotes is a plain line feed, however the
+                        // file ends its lines, as Go reads it.
+                        i = i + 1
                     } else {
                         if c == 10 { line = line + 1 }
                         field = field + __charAtB(text, i)
@@ -75,7 +83,9 @@ fn __vy_csvParse(text: str) -> [][]str! {
                 // follow the closing quote.
                 if i < n {
                     let c = __strAt(text, i)
-                    if c != 44 && c != 10 && c != 13 {
+                    // A carriage return counts only as half of CR LF.
+                    let lineEnd = c == 10 || c == 13 && i + 1 < n && __strAt(text, i + 1) == 10
+                    if c != 44 && !lineEnd {
                         // the column of the closing quote, not of what
                         // wrongly follows it
                         return fail(__vy_csvErr(startLine, line, __vy_csvCol(text, i - 1), __vy_csvExtraQuote()))
