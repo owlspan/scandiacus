@@ -3,6 +3,27 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.81.0
+
+**Live audio.** `audio.input` and `audio.output` open the microphone
+and the speakers as streams of float samples, read and written a block
+at a time, which is what a voice changer, a tuner or a synthesizer
+needs:
+
+```veyl
+let mic = must(audio.input(48000, 1, 480))
+let out = must(audio.output(48000, 1, 480))
+while true {
+    audio.write(out, audio.read(mic))
+}
+```
+
+`examples/audio/robot.vl` is a working voice changer - a robot voice or
+an echo. To use it in Discord or a game, route the output through a
+virtual audio cable such as VB-Audio Cable. Windows uses winmm; Linux
+uses PulseAudio and works, but its delay has not been measured on real
+hardware yet. macOS is not done.
+
 ## 1.80.0
 
 **Dates before 1970 work on Windows.** `time.format` of any date before
