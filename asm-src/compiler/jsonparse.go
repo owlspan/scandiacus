@@ -301,19 +301,41 @@ func (l *lowerer) parseString(c *jsonCursor) Reg {
 		l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: next})
 		l.mark(skip)
 	}
-	// \uXXXX: only the ASCII range is decoded, which is what the encoder
-	// ever produces. A higher code point would need UTF-8 encoding, and
-	// a string here is bytes with no length, so that is the same gap
-	// `bytes` exists to close.
+	// \uXXXX: the code point, as UTF-8. A high surrogate followed by an
+	// escaped low one is the pair's code point; a surrogate on its own
+	// is U+FFFD, as Go's decoder has it. This used to keep only the low
+	// byte of the four digits, so \u00e9 came out as a lone byte and
+	// \u4e2d as "-".
 	notU := l.newLabel()
 	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpEq, e, l.constant('u')), Dst: NoReg, Imm: notU})
-	hi := l.arith(OpAdd,
-		l.arith(OpMul, l.hexValue(l.peekAt(c, 2)), l.constant(16)),
-		l.hexValue(l.peekAt(c, 3)))
-	put(hi)
+	cp := l.temp(vInt)
+	l.setSlot(cp, l.hex4(c, 0))
 	for i := 0; i < 4; i++ {
 		l.advance(c)
 	}
+	ld := func() Reg { return l.load(cp, vInt) }
+	between := func(v Reg, lo, hi int64) Reg {
+		return l.logicalAnd(l.compare(OpGe, v, l.constant(lo)), l.compare(OpLe, v, l.constant(hi)))
+	}
+	noPair := l.newLabel()
+	l.jumpNot(between(ld(), 0xD800, 0xDBFF), noPair)
+	l.jumpNot(l.compare(OpEq, l.peekAt(c, 0), l.constant('\\')), noPair)
+	l.jumpNot(l.compare(OpEq, l.peekAt(c, 1), l.constant('u')), noPair)
+	low := l.temp(vInt)
+	l.setSlot(low, l.hex4(c, 2))
+	l.jumpNot(between(l.load(low, vInt), 0xDC00, 0xDFFF), noPair)
+	l.setSlot(cp, l.arith(OpAdd, l.constant(0x10000), l.arith(OpAdd,
+		l.arith(OpShl, l.arith(OpSub, ld(), l.constant(0xD800)), l.constant(10)),
+		l.arith(OpSub, l.load(low, vInt), l.constant(0xDC00)))))
+	for i := 0; i < 6; i++ {
+		l.advance(c)
+	}
+	l.mark(noPair)
+	lone := l.newLabel()
+	l.jumpNot(between(ld(), 0xD800, 0xDFFF), lone)
+	l.setSlot(cp, l.constant(0xFFFD))
+	l.mark(lone)
+	l.putUTF8(ld, put)
 	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: next})
 	l.mark(notU)
 	// Anything else after a backslash stands for itself, which covers
@@ -335,6 +357,44 @@ func (l *lowerer) parseString(c *jsonCursor) Reg {
 	l.advance(c) // the closing quote
 	l.strEnd(buf, l.load(wSlot, vInt))
 	return buf
+}
+
+// hex4 is the value of the four hex digits off places ahead.
+func (l *lowerer) hex4(c *jsonCursor, off int64) Reg {
+	v := l.constant(0)
+	for i := int64(0); i < 4; i++ {
+		v = l.arith(OpAdd, l.arith(OpShl, v, l.constant(4)), l.hexValue(l.peekAt(c, off+i)))
+	}
+	return v
+}
+
+// putUTF8 writes code point cp() as one to four bytes.
+func (l *lowerer) putUTF8(cp func() Reg, put func(Reg)) {
+	done := l.newLabel()
+	two, three, four := l.newLabel(), l.newLabel(), l.newLabel()
+	cont := func(shift int64) Reg {
+		return l.arith(OpBOr, l.constant(0x80), l.arith(OpBAnd, l.arith(OpShr, cp(), l.constant(shift)), l.constant(63)))
+	}
+	l.jumpNot(l.compare(OpLt, cp(), l.constant(0x80)), two)
+	put(cp())
+	l.jump(done)
+	l.mark(two)
+	l.jumpNot(l.compare(OpLt, cp(), l.constant(0x800)), three)
+	put(l.arith(OpBOr, l.constant(0xC0), l.arith(OpShr, cp(), l.constant(6))))
+	put(cont(0))
+	l.jump(done)
+	l.mark(three)
+	l.jumpNot(l.compare(OpLt, cp(), l.constant(0x10000)), four)
+	put(l.arith(OpBOr, l.constant(0xE0), l.arith(OpShr, cp(), l.constant(12))))
+	put(cont(6))
+	put(cont(0))
+	l.jump(done)
+	l.mark(four)
+	put(l.arith(OpBOr, l.constant(0xF0), l.arith(OpShr, cp(), l.constant(18))))
+	put(cont(12))
+	put(cont(6))
+	put(cont(0))
+	l.mark(done)
 }
 
 // peekAt is the character `off` places ahead of the cursor.
