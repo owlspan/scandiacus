@@ -12,12 +12,12 @@
 
 #define AppName "Veyl"
 #define ShortName "veyl"
-#define AppVersion "1.78.0"
+#define AppVersion "1.79.0"
 #define AppPublisher "Veyl"
 #define AppExeName "veyl.exe"
 ; Has to match editors/vscode/package.json, which is the version VS
 ; Code records for the extension. build.ps1 checks both against veyl.exe.
-#define ExtVersion "1.78.0"
+#define ExtVersion "1.79.0"
 
 [Setup]
 AppId={{B7D42A19-3E6C-4F80-A5D3-91C7E20B4F68}

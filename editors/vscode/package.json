@@ -2,11 +2,11 @@
   "name": "veyl-lang",
   "displayName": "Veyl",
   "description": "Highlighting, errors as you type, completion, go to definition, and a button to run or build the file, for the Veyl programming language",
-  "version": "1.78.0",
+  "version": "1.79.0",
   "publisher": "veyl",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.78.0"
+    "vscode": "^1.79.0"
   },
   "categories": [
     "Programming Languages"

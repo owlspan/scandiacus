@@ -3,6 +3,26 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.79.0
+
+**JSON text in any script.** Decoding kept only the low byte of a
+`\u` escape, so an accented letter came out as an invalid byte, a CJK
+character as an unrelated ASCII one, and an emoji - which every JSON
+encoder sends as a surrogate pair - as junk. Escapes now decode to
+UTF-8, a pair to its code point, a lone surrogate to U+FFFD. Encoding
+copied invalid UTF-8 through, which is not JSON; it writes `\ufffd`
+for a bad byte now, and escapes U+2028 and U+2029 as Go does. Both
+directions agree with Go's `encoding/json` on 900 random strings.
+
+**CSV from Windows reads the same as from anywhere.** A CR LF inside a
+quoted field is a line feed, a carriage return as the last byte is
+dropped, and a stray one after a closing quote is an error, all as in
+Go's `encoding/csv`, checked on 800 random documents.
+
+**No warnings from the library.** Every program using the new
+`http.serveWorkers` was told a variable inside it was never used; a
+test now fails if any part of the library warns about itself.
+
 ## 1.78.0
 
 **`re` finds what Go's `regexp` finds.** Compared on 27000 random
