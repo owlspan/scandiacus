@@ -1,0 +1,6 @@
+audio: channels must be 1 or 2, got 3
+audio: a rate of 100 samples a second is not one a device takes
+audio: a block of 4 frames is too small or more than a second
+0
+false
+done

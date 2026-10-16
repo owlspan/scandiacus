@@ -85,6 +85,12 @@ var preludeOf = map[string]string{
 	"proc.scan":     "__vy_procScan",
 	"proc.pids":     "__vy_procPids",
 	"proc.name":     "__vy_procName",
+
+	"audio.input":   "__vy_audioInput",
+	"audio.output":  "__vy_audioOutput",
+	"audio.read":    "__vy_audioRead",
+	"audio.write":   "__vy_audioWrite",
+	"audio.close":   "__vy_audioClose",
 	"proc.parent":   "__vy_procParent",
 	"proc.find":     "__vy_procFind",
 	"proc.modules":  "__vy_procModules",
@@ -526,5 +532,6 @@ var preludeSource = strings.Join([]string{
 	preludePNG,
 	preludeZip,
 	preludeProc,
+	preludeAudio,
 	preludeCom,
 }, "\n")

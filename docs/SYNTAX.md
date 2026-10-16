@@ -2783,6 +2783,54 @@ Both return `false` when the file is missing or cannot be played. One
 sound plays at a time: starting another stops the first, which suits
 music or an alert but not a game's overlapping effects.
 
+### `audio` - live sound in and out
+
+A stream from the microphone or to the speakers, a block of samples at
+a time - enough for a voice changer, a tuner, a synthesizer or a level
+meter. Samples are floats from -1 to 1, interleaved when there are two
+channels.
+
+```veyl
+let mic = must(audio.input(48000, 1, 480))     // 10 ms blocks
+let out = must(audio.output(48000, 1, 480))
+for b in 0..1000 {                             // ten seconds
+    let block = audio.read(mic)                // waits for the next block
+    let louder: []float = []
+    for v in block {
+        push(louder, v * 2.0)
+    }
+    audio.write(out, louder)
+}
+audio.close(mic)
+audio.close(out)
+```
+
+| Function | Returns | Description |
+| --- | --- | --- |
+| `audio.input(rate, channels, frames)` | `int!` | open the default microphone; `frames` is the block size |
+| `audio.output(rate, channels, frames)` | `int!` | open the default speakers |
+| `audio.read(stream)` | `[]float` | the next block, `frames * channels` samples |
+| `audio.write(stream, samples)` | `bool` | queue samples to play; waits only when the queue is full |
+| `audio.close(stream)` | - | close it; an output stream plays what is queued first |
+
+The rate is 8000 to 192000, the channels 1 or 2, and a block from 16
+frames to a second. Smaller blocks mean less delay between the
+microphone and the speakers; 10 to 20 ms is a good start.
+`examples/audio/robot.vl` is a working voice changer.
+
+It plays on the default device, so to send changed sound to another
+program - Discord, a game - make a virtual audio cable such as the
+free VB-Audio Cable the default playback device, and pick the cable as
+the microphone in that program. That is how voice changers work
+without a driver of their own; writing one is not something any
+language does without the Windows driver kit.
+
+On Windows this is winmm's waveIn and waveOut, on Linux PulseAudio's
+simple API (`libpulse0`). Linux works, but its delay has only been
+measured on a virtual machine, not on real hardware. macOS is not done
+yet.
+
+
 ### `rand` - randomness
 
 | Function | Returns | Description |
