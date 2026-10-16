@@ -441,79 +441,170 @@ fn __vy_urlQuery(raw: str) -> {str: str}! {
 // Reference resolution. Enough of RFC 3986 for the shapes that come up:
 // an absolute reference, a network-relative one, a rooted path and a
 // relative path, with dot segments removed.
+// url.join is Go's URL.ResolveReference, step for step, since that is
+// what the http client's redirects and every Go program agree on: the
+// reference's parts replace the base's from the first one it has, and
+// the path is merged and its dot segments removed by resolvePath. The
+// old version lost the trailing slash of ".", ".." and "g/", and gave
+// something else for an empty reference.
 fn __vy_urlJoin(base: str, ref: str) -> str! {
-    if len(__vy_schemeOf(ref)) > 0 { return ref }
-
-    let scheme = __vy_schemeOf(base)
-    if len(scheme) == 0 { return fail("cannot resolve against a URL with no scheme") }
-    let authority = __vy_urlAuthority(base)
-    let root = scheme + "://" + authority
-
-    if startsWith(ref, "//") { return scheme + ":" + ref }
-    if startsWith(ref, "#") { return base + ref }
-    if startsWith(ref, "?") {
-        let cut = indexOf(base, "?")
-        if cut >= 0 { return __substrB(base, 0, cut) + ref }
-        return base + ref
+    let b = __vy_urlParts(base)
+    let r = __vy_urlParts(ref)
+    if r[0] != "" {
+        // An opaque reference, mailto:x or g:h, is whole as it is.
+        if r[2] == "" && !startsWith(r[3], "/") && r[3] != "" { return ref }
+        return __vy_urlFormat(r[0], r[2], r[1], __vy_resolvePath(__vy_escapedPath(r[3]), ""), r[4], r[5], r[6], r[7])
     }
-
-    let tail = ref
-    let suffix = ""
-    let mark = __vy_firstOf(tail, "?#")
-    if mark >= 0 {
-        suffix = __substrB(tail, mark, len(tail))
-        tail = __substrB(tail, 0, mark)
+    if b[0] == "" { return fail("cannot resolve against a URL with no scheme") }
+    if r[2] != "" {
+        return __vy_urlFormat(b[0], r[2], r[1], __vy_resolvePath(__vy_escapedPath(r[3]), ""), r[4], r[5], r[6], r[7])
     }
-
-    let merged = tail
-    if !startsWith(tail, "/") {
-        let bp = __vy_pathOf(base)
-        let slash = __vy_lastSlash(bp)
-        let dir = "/"
-        if slash >= 0 { dir = __substrB(bp, 0, slash + 1) }
-        merged = dir + tail
-    }
-    return root + __vy_removeDots(merged) + suffix
-}
-
-fn __vy_firstOf(s: str, set: str) -> int {
-    let i = 0
-    while i < len(s) {
-        if contains(set, __charAtB(s, i)) { return i }
-        i = i + 1
-    }
-    return -1
-}
-
-fn __vy_lastSlash(s: str) -> int {
-    let i = len(s) - 1
-    while i >= 0 {
-        if __charAtB(s, i) == "/" { return i }
-        i = i - 1
-    }
-    return -1
-}
-
-// RFC 3986's remove_dot_segments, done on whole segments rather than
-// character by character.
-fn __vy_removeDots(p: str) -> str {
-    let segs = split(p, "/")
-    let out: []str = []
-    for s in segs {
-        if s == "." {
-            // nothing to do
-        } else {
-            if s == ".." {
-                if len(out) > 1 { removeAt(out, len(out) - 1) }
-            } else {
-                push(out, s)
-            }
+    let hasQuery = r[4]
+    let query = r[5]
+    let hasFrag = r[6]
+    let frag = r[7]
+    if r[3] == "" && r[4] == "" {
+        hasQuery = b[4]
+        query = b[5]
+        if r[6] == "" {
+            hasFrag = b[6]
+            frag = b[7]
         }
     }
-    let joined = join(out, "/")
-    if len(joined) == 0 { return "/" }
-    if !startsWith(joined, "/") { return "/" + joined }
-    return joined
+    let path = __vy_resolvePath(__vy_escapedPath(b[3]), __vy_escapedPath(r[3]))
+    return __vy_urlFormat(b[0], b[2], b[1], path, hasQuery, query, hasFrag, frag)
+}
+
+// A URL's parts as written, nothing decoded: scheme, authority, whether
+// there is one, path, whether there is a query, the query, whether
+// there is a fragment, the fragment. Flags are "1" or "".
+fn __vy_urlParts(raw: str) -> []str {
+    let out: []str = ["", "", "", "", "", "", "", ""]
+    let rest = raw
+    let h = indexOf(rest, "#")
+    if h >= 0 {
+        out[6] = "1"
+        out[7] = __substrB(rest, h + 1, len(rest))
+        rest = __substrB(rest, 0, h)
+    }
+    let q = indexOf(rest, "?")
+    if q >= 0 {
+        out[4] = "1"
+        out[5] = __substrB(rest, q + 1, len(rest))
+        rest = __substrB(rest, 0, q)
+    }
+    let scheme = __vy_schemeOf(rest)
+    if scheme != "" {
+        out[0] = scheme
+        rest = __substrB(rest, len(scheme) + 1, len(rest))
+    }
+    // As in Go, a reference with no scheme that starts with three
+    // slashes is all path rather than an empty authority.
+    if startsWith(rest, "//") && (scheme != "" || !startsWith(rest, "///")) {
+        rest = __substrB(rest, 2, len(rest))
+        let slash = indexOf(rest, "/")
+        out[2] = "1"
+        if slash < 0 {
+            out[1] = rest
+            rest = ""
+        } else {
+            out[1] = __substrB(rest, 0, slash)
+            rest = __substrB(rest, slash, len(rest))
+        }
+    }
+    out[3] = rest
+    return out
+}
+
+fn __vy_urlFormat(scheme: str, hasAuth: str, auth: str, path: str, hasQuery: str, query: str, hasFrag: str, frag: str) -> str {
+    let out = scheme + ":"
+    if hasAuth != "" {
+        out = out + "//" + auth
+        if path != "" && !startsWith(path, "/") { out = out + "/" }
+    }
+    out = out + path
+    if hasQuery != "" { out = out + "?" + query }
+    if hasFrag != "" && frag != "" { out = out + "#" + frag }
+    return out
+}
+
+// The bytes a path may hold as they are: Go's shouldEscape for a path.
+fn __vy_pathSafe(c: int) -> bool {
+    if (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) { return true }
+    return c == 45 || c == 95 || c == 46 || c == 126 || c == 36 || c == 38 || c == 43 || c == 44 || c == 47 || c == 58 || c == 59 || c == 61 || c == 64
+}
+
+// A path as Go's EscapedPath gives it: as written when it is validly
+// encoded, otherwise decoded and encoded again.
+fn __vy_escapedPath(p: str) -> str {
+    let valid = true
+    let i = 0
+    while i < len(p) {
+        let c = __strByte(p, i)
+        let extra = c == 33 || c == 39 || c == 40 || c == 41 || c == 42 || c == 91 || c == 93 || c == 37
+        if !__vy_pathSafe(c) && !extra { valid = false }
+        i = i + 1
+    }
+    if valid { return p }
+    let raw = __vy_unescape(p)
+    let out = ""
+    i = 0
+    while i < len(raw) {
+        let c = __strByte(raw, i)
+        if __vy_pathSafe(c) {
+            out = out + __charAtB(raw, i)
+        } else {
+            out = out + "%" + upper(padLeft(bits.toBase(c, 16), 2, "0"))
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// Go's resolvePath: base's directory and ref merged, dot segments
+// removed, and a trailing . or .. leaving its slash.
+fn __vy_resolvePath(base: str, ref: str) -> str {
+    let full = ""
+    if ref == "" {
+        full = base
+    } else if !startsWith(ref, "/") {
+        let i = len(base) - 1
+        while i >= 0 && __strByte(base, i) != 47 {
+            i = i - 1
+        }
+        full = __substrB(base, 0, i + 1) + ref
+    } else {
+        full = ref
+    }
+    if full == "" { return "" }
+    let dst = "/"
+    let first = true
+    let elem = ""
+    for e in split(full, "/") {
+        elem = e
+        if e == "." {
+            first = false
+        } else if e == ".." {
+            let str0 = __substrB(dst, 1, len(dst))
+            let at = len(str0) - 1
+            while at >= 0 && __strByte(str0, at) != 47 {
+                at = at - 1
+            }
+            if at < 0 {
+                dst = "/"
+                first = true
+            } else {
+                dst = "/" + __substrB(str0, 0, at)
+            }
+        } else {
+            if !first { dst = dst + "/" }
+            dst = dst + e
+            first = false
+        }
+    }
+    if elem == "." || elem == ".." { dst = dst + "/" }
+    if len(dst) > 1 && __strByte(dst, 1) == 47 { return __substrB(dst, 1, len(dst)) }
+    return dst
 }
 `
 
