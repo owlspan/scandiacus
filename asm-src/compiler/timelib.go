@@ -93,6 +93,22 @@ func (l *lowerer) intArg(c *Call, i int) Reg {
 	return v
 }
 
+// The C runtime's local calendar covers 1970 to 3000 (_localtime64 on
+// Windows gives a null pointer outside it, _mktime64 -1). The Gregorian
+// calendar repeats exactly every 400 years - 146097 days, weekdays and
+// leap days included - so a second outside the range is moved by whole
+// cycles into it, converted there, and its year moved back. The local
+// rules are then applied to the same date in the moved year, which is
+// what both the C runtime and Go on Windows do: they use today's rules
+// for every year. Only a second the C runtime refuses is moved - on
+// Linux it covers every year, with the zone's history, and that answer
+// is kept. It used to read through the null pointer, so any date before
+// 1970 crashed the program on Windows.
+const (
+	cycleSecs  = 146097 * 86400 // 400 years
+	tmLastSafe = 32503680000    // 3000-01-01, comfortably inside
+)
+
 // tmField reads one field of the local calendar for a Unix second.
 //
 // _localtime64 wants a pointer to a 64-bit time and returns a pointer to
@@ -102,8 +118,42 @@ func (l *lowerer) intArg(c *Call, i int) Reg {
 func (l *lowerer) tmField(secs, idx Reg) Reg {
 	slot := l.temp(vInt)
 	l.emit(Instr{Op: OpStore, A: secs, Dst: NoReg, Imm: slot})
-	tm := l.ccall("_localtime64", []Reg{l.slotAddr(slot)}, []vty{vInt},
-		vInt, false, false)
+	idxS := l.temp(vInt)
+	l.setSlot(idxS, idx)
+	yearAdj := l.temp(vInt)
+	l.setSlot(yearAdj, l.constant(0))
+	tmS := l.temp(vInt)
+	l.setSlot(tmS, l.ccall("_localtime64", []Reg{l.slotAddr(slot)}, []vty{vInt}, vInt, false, false))
+	have := l.newLabel()
+	l.jumpNot(l.compare(OpEq, l.load(tmS, vInt), l.constant(0)), have)
+
+	// Refused: into the range by whole cycles, keeping count in years.
+	inRange, low := l.newLabel(), l.newLabel()
+	l.jumpIf(l.compare(OpLt, l.load(slot, vInt), l.constant(cycleSecs)), low)
+	l.jumpNot(l.compare(OpGt, l.load(slot, vInt), l.constant(tmLastSafe)), inRange)
+	k := l.arith(OpDiv, l.arith(OpAdd, l.arith(OpSub, l.load(slot, vInt), l.constant(tmLastSafe)), l.constant(cycleSecs-1)), l.constant(cycleSecs))
+	kS := l.temp(vInt)
+	l.setSlot(kS, k)
+	l.setSlot(slot, l.arith(OpSub, l.load(slot, vInt), l.arith(OpMul, l.load(kS, vInt), l.constant(cycleSecs))))
+	l.setSlot(yearAdj, l.arith(OpMul, l.load(kS, vInt), l.constant(400)))
+	l.jump(inRange)
+	l.mark(low)
+	// Below one cycle up from 1970, so that a zone east of UTC, whose
+	// local midnight of 1 January 1970 is before second 0, is inside
+	// too. Seconds already in 1970-2370 are moved up one cycle and back,
+	// which changes nothing.
+	k2 := l.arith(OpDiv, l.arith(OpSub, l.constant(2*cycleSecs-1), l.load(slot, vInt)), l.constant(cycleSecs))
+	l.setSlot(kS, k2)
+	l.setSlot(slot, l.arith(OpAdd, l.load(slot, vInt), l.arith(OpMul, l.load(kS, vInt), l.constant(cycleSecs))))
+	l.setSlot(yearAdj, l.arith(OpMul, l.load(kS, vInt), l.constant(-400)))
+	l.mark(inRange)
+	l.setSlot(tmS, l.ccall("_localtime64", []Reg{l.slotAddr(slot)}, []vty{vInt}, vInt, false, false))
+	l.mark(have)
+
+	out := l.temp(vInt)
+	l.setSlot(out, l.constant(0))
+	null := l.newLabel()
+	l.jumpIf(l.compare(OpEq, l.load(tmS, vInt), l.constant(0)), null)
 
 	// Two four-byte fields to a word, so field i lives in word i/2, in
 	// its low half when i is even and its high half when it is odd.
@@ -111,16 +161,20 @@ func (l *lowerer) tmField(secs, idx Reg) Reg {
 	l.regTy[word] = vInt
 	addr := l.newReg()
 	l.regTy[addr] = vInt
-	l.emit(Instr{Op: OpIndexAddr, Dst: addr, A: tm, B: l.arith(OpShr, idx, l.constant(1))})
+	l.emit(Instr{Op: OpIndexAddr, Dst: addr, A: l.load(tmS, vInt), B: l.arith(OpShr, l.load(idxS, vInt), l.constant(1))})
 	l.emit(Instr{Op: OpLoadMem, Dst: word, A: addr, B: NoReg, Imm: 0})
 
-	shift := l.arith(OpShl, l.arith(OpBAnd, idx, l.constant(1)), l.constant(5))
+	shift := l.arith(OpShl, l.arith(OpBAnd, l.load(idxS, vInt), l.constant(1)), l.constant(5))
 	half := l.arith(OpShr, word, shift)
 
 	// A tm field is a C int, so the top half of the word is another
 	// field or padding. Left then right by 32 with an arithmetic shift
 	// keeps the sign, which tm_year and tm_isdst both need.
-	return l.arith(OpShr, l.arith(OpShl, half, l.constant(32)), l.constant(32))
+	field := l.arith(OpShr, l.arith(OpShl, half, l.constant(32)), l.constant(32))
+	isYear := l.compare(OpEq, l.load(idxS, vInt), l.constant(5))
+	l.setSlot(out, l.arith(OpAdd, field, l.pick(isYear, l.load(yearAdj, vInt), l.constant(0), vInt)))
+	l.mark(null)
+	return l.load(out, vInt)
 }
 
 // mktime turns a local calendar back into a Unix second, or -1.
@@ -129,30 +183,73 @@ func (l *lowerer) tmField(secs, idx Reg) Reg {
 // _mktime64 takes a pointer to one. tm_isdst is set to -1, which is the
 // C way of saying "work out for yourself whether daylight saving was in
 // force" - the same question ParseInLocation answers on the Go side, and
-// getting it wrong shifts an hour twice a year.
+// getting it wrong shifts an hour twice a year. A year outside what the
+// C runtime covers is moved by whole 400-year cycles, as in tmField.
 func (l *lowerer) mktime(f []Reg) Reg {
+	yearS := l.temp(vInt)
+	l.setSlot(yearS, f[0])
+	secsAdj := l.temp(vInt)
+	l.setSlot(secsAdj, l.constant(0))
+	fs := make([]int64, 6)
+	for i := 1; i < 6; i++ {
+		fs[i] = l.temp(vInt)
+		l.setSlot(fs[i], f[i])
+	}
+	rS := l.temp(vInt)
+	l.setSlot(rS, l.mktimeOnce(l.load(yearS, vInt), fs))
+	done := l.newLabel()
+	l.jumpNot(l.compare(OpEq, l.load(rS, vInt), l.constant(-1)), done)
+
+	// Refused: the year moved by whole cycles, and the answer back.
+	ok, low := l.newLabel(), l.newLabel()
+	l.jumpIf(l.compare(OpLt, l.load(yearS, vInt), l.constant(1971)), low)
+	l.jumpNot(l.compare(OpGt, l.load(yearS, vInt), l.constant(2999)), ok)
+	k := l.temp(vInt)
+	l.setSlot(k, l.arith(OpDiv, l.arith(OpAdd, l.arith(OpSub, l.load(yearS, vInt), l.constant(2999)), l.constant(399)), l.constant(400)))
+	l.setSlot(yearS, l.arith(OpSub, l.load(yearS, vInt), l.arith(OpMul, l.load(k, vInt), l.constant(400))))
+	l.setSlot(secsAdj, l.arith(OpMul, l.load(k, vInt), l.constant(cycleSecs)))
+	l.jump(ok)
+	l.mark(low)
+	l.setSlot(k, l.arith(OpDiv, l.arith(OpAdd, l.arith(OpSub, l.constant(1971), l.load(yearS, vInt)), l.constant(399)), l.constant(400)))
+	l.setSlot(yearS, l.arith(OpAdd, l.load(yearS, vInt), l.arith(OpMul, l.load(k, vInt), l.constant(400))))
+	l.setSlot(secsAdj, l.arith(OpMul, l.load(k, vInt), l.constant(-cycleSecs)))
+	l.mark(ok)
+	l.setSlot(rS, l.mktimeOnce(l.load(yearS, vInt), fs))
+	l.jumpIf(l.compare(OpEq, l.load(rS, vInt), l.constant(-1)), done)
+	l.setSlot(rS, l.arith(OpAdd, l.load(rS, vInt), l.load(secsAdj, vInt)))
+	l.mark(done)
+	return l.load(rS, vInt)
+}
+
+// mktimeOnce is one call of _mktime64 on these fields.
+func (l *lowerer) mktimeOnce(yearR Reg, fs []int64) Reg {
+	yearS := l.temp(vInt)
+	l.setSlot(yearS, yearR)
 	buf := l.allocObj(l.constant(tmFields*4+8), tagBytes)
+	bufS := l.temp(vInt)
+	l.setSlot(bufS, buf)
 
 	// Packed two fields to a word, in the order C declares them.
 	pack := func(lo, hi Reg) Reg {
 		low := l.arith(OpBAnd, lo, l.constant(0xFFFFFFFF))
 		return l.arith(OpBOr, low, l.arith(OpShl, hi, l.constant(32)))
 	}
-	year := l.arith(OpSub, f[0], l.constant(1900))
-	mon := l.arith(OpSub, f[1], l.constant(1))
+	ld := func(i int) Reg { return l.load(fs[i], vInt) }
+	year := l.arith(OpSub, l.load(yearS, vInt), l.constant(1900))
+	mon := l.arith(OpSub, ld(1), l.constant(1))
 
 	words := []Reg{
-		pack(f[5], f[4]),                    // tm_sec, tm_min
-		pack(f[3], f[2]),                    // tm_hour, tm_mday
+		pack(ld(5), ld(4)),                  // tm_sec, tm_min
+		pack(ld(3), ld(2)),                  // tm_hour, tm_mday
 		pack(mon, year),                     // tm_mon, tm_year
 		pack(l.constant(0), l.constant(0)),  // tm_wday, tm_yday
 		pack(l.constant(-1), l.constant(0)), // tm_isdst, padding
 	}
 	for i, w := range words {
-		l.emit(Instr{Op: OpStoreMem, A: buf, B: w, Dst: NoReg, Imm: int64(i * 8)})
+		l.emit(Instr{Op: OpStoreMem, A: l.load(bufS, vInt), B: w, Dst: NoReg, Imm: int64(i * 8)})
 	}
 
-	return l.ccall("_mktime64", []Reg{buf}, []vty{vInt}, vInt, false, false)
+	return l.ccall("_mktime64", []Reg{l.load(bufS, vInt)}, []vty{vInt}, vInt, false, false)
 }
 
 // millis is the wall clock in milliseconds since the Unix epoch.
