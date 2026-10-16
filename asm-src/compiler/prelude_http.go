@@ -243,7 +243,9 @@ fn __vy_httpWorker(sock: int, handler: fn(Request) -> Response) {
         let raw = valueOr(__vy_httpRead(conn), "")
         if len(raw) > 0 {
             let res = handler(__vy_httpParse(raw))
-            let sent = net.send(conn, __vy_httpFormat(res))
+            // A client that has gone away is its own loss; the next
+            // connection is served all the same.
+            net.send(conn, __vy_httpFormat(res))
         }
         net.close(conn)
     }
