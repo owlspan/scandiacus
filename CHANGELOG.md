@@ -3,6 +3,21 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.80.0
+
+**Dates before 1970 work on Windows.** `time.format` of any date before
+1970 crashed the program, and `time.parse` said such a date did not
+match, because the C runtime's local calendar stops at 1970 and 3000.
+A time outside that is moved by whole 400-year cycles, over which the
+calendar repeats exactly, and moved back. Checked against Go's local
+time from 1900 to 9999 on Windows and Linux.
+
+**`url.join` resolves as Go does.** `.`, `..` and `g/` lost their
+trailing slash, an empty reference gave something other than the base,
+and escapes in the path were decoded away. It is now a port of Go's
+`ResolveReference`, and agrees with it on the RFC 3986 examples and 800
+random references. The http client follows redirects with it.
+
 ## 1.79.0
 
 **JSON text in any script.** Decoding kept only the low byte of a
