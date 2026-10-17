@@ -69,6 +69,21 @@ jobs:
           VEYL_NOOPT: '1'
         run: go test -count=1 -run "TestGolden|TestErrorLocations" ./compiler
 
+      # Live audio through PulseAudio, against a null sink: whether a
+      # stream opens and keeps time. Shown, not required - a runner's
+      # audio setup is not the code's.
+      - name: Audio
+        working-directory: veyl/asm-src
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y -q pulseaudio >/dev/null
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=ci
+          pactl set-default-sink ci
+          pactl set-default-source ci.monitor
+          go build -o veylc ./compiler
+          timeout 60 ./veylc run examples/audio/check.vl
+
   # Cross compiling: each system builds the string test for the other
   # two through `veyl cross install`, and each system then runs what the
   # others built for it, checked against the expected output.
@@ -185,3 +200,13 @@ jobs:
           ./veylc run https.vl | tee out.txt
           head -1 out.txt | grep -qx true
           sed -n 2p out.txt | grep -qx false
+
+      # Live audio through an AudioQueue: shown, not required, since a
+      # runner may have no sound device at all.
+      - name: Audio
+        working-directory: veyl/asm-src
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          go build -o veylc ./compiler
+          ./veylc run examples/audio/check.vl

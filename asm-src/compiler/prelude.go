@@ -91,6 +91,7 @@ var preludeOf = map[string]string{
 	"audio.read":    "__vy_audioRead",
 	"audio.write":   "__vy_audioWrite",
 	"audio.close":   "__vy_audioClose",
+	"audio.devices": "__vy_audioDevices",
 	"proc.parent":   "__vy_procParent",
 	"proc.find":     "__vy_procFind",
 	"proc.modules":  "__vy_procModules",
@@ -258,6 +259,9 @@ var preludeDefaults = map[string][]Expr{
 	"toFloat":  {&FloatLit{Val: "0.0"}},
 	"padLeft":  {&StrLit{Val: " "}},
 	"padRight": {&StrLit{Val: " "}},
+
+	"audio.input":  {&StrLit{Val: ""}},
+	"audio.output": {&StrLit{Val: ""}},
 }
 
 // preludeAlso is for a builtin the lowerer implements itself but which

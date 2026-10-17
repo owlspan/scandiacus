@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <time.h>
 
 #define MS __attribute__((ms_abi))
 typedef uint32_t u32;
@@ -887,4 +888,216 @@ MS int __vyw_mciSendStringA(const char *cmd, char *ret, int retLen, void *cb)
 	}
 	pthread_mutex_unlock(&g_snd);
 	return 0;
+}
+
+/* ---- audio streams: audio.input and audio.output ------------------ */
+/*
+ * An AudioQueue of the stream's own format, with a ring of samples
+ * between the queue's thread and the program's. The output callback
+ * takes what is in the ring and plays silence for the rest, so a
+ * program that falls behind is heard as a gap rather than stopping the
+ * queue; the input callback puts what the microphone gave into the
+ * ring, dropping the oldest when the program does not keep up. read and
+ * write wait on the ring. Only the default devices, for now.
+ */
+
+typedef struct astream {
+	void *q;
+	int out;
+	int16_t *ring;
+	size_t cap, head, count; /* samples */
+	pthread_mutex_t mu;
+	pthread_cond_t cv;
+} astream;
+
+static char g_aerr[256];
+static struct {
+	int (*NewInput)(const ASBD *, void *cb, void *user, void *rl, void *mode, u32 flags, void **out);
+	int (*Stop)(void *aq, int immediate);
+	int (*Dispose)(void *aq, int immediate);
+	int loaded;
+} AQ2;
+
+static int astream_load(void)
+{
+	if (AQ2.loaded)
+		return 1;
+	void *tb = dlopen("/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox", RTLD_NOW | RTLD_GLOBAL);
+	if (!tb)
+		return 0;
+	AQ.NewOutput = dlsym(tb, "AudioQueueNewOutput");
+	AQ.AllocateBuffer = dlsym(tb, "AudioQueueAllocateBuffer");
+	AQ.EnqueueBuffer = dlsym(tb, "AudioQueueEnqueueBuffer");
+	AQ.Start = dlsym(tb, "AudioQueueStart");
+	AQ2.NewInput = dlsym(tb, "AudioQueueNewInput");
+	AQ2.Stop = dlsym(tb, "AudioQueueStop");
+	AQ2.Dispose = dlsym(tb, "AudioQueueDispose");
+	if (!AQ.NewOutput || !AQ.AllocateBuffer || !AQ.EnqueueBuffer || !AQ.Start ||
+	    !AQ2.NewInput || !AQ2.Stop || !AQ2.Dispose)
+		return 0;
+	AQ2.loaded = 1;
+	return 1;
+}
+
+static void astream_out_cb(void *user, void *aq, AQBuffer *buf)
+{
+	astream *s = user;
+	size_t want = buf->mAudioDataBytesCapacity / 2, n = 0;
+	int16_t *dst = buf->mAudioData;
+	pthread_mutex_lock(&s->mu);
+	while (n < want && s->count > 0) {
+		dst[n++] = s->ring[s->head];
+		s->head = (s->head + 1) % s->cap;
+		s->count--;
+	}
+	pthread_cond_broadcast(&s->cv);
+	pthread_mutex_unlock(&s->mu);
+	if (n < want)
+		memset(dst + n, 0, (want - n) * 2);
+	buf->mAudioDataByteSize = (u32)(want * 2);
+	AQ.EnqueueBuffer(aq, buf, 0, NULL);
+}
+
+static void astream_in_cb(void *user, void *aq, AQBuffer *buf, const void *t, u32 n, const void *d)
+{
+	(void)t;
+	(void)n;
+	(void)d;
+	astream *s = user;
+	size_t got = buf->mAudioDataByteSize / 2;
+	int16_t *src = buf->mAudioData;
+	pthread_mutex_lock(&s->mu);
+	for (size_t i = 0; i < got; i++) {
+		if (s->count == s->cap) { /* full: the oldest goes */
+			s->head = (s->head + 1) % s->cap;
+			s->count--;
+		}
+		s->ring[(s->head + s->count) % s->cap] = src[i];
+		s->count++;
+	}
+	pthread_cond_broadcast(&s->cv);
+	pthread_mutex_unlock(&s->mu);
+	AQ.EnqueueBuffer(aq, buf, 0, NULL);
+}
+
+MS const char *__vyw_veyl_audio_error(void) { return g_aerr; }
+
+/* A stream, or 0 with the reason in veyl_audio_error. */
+MS int64_t __vyw_veyl_audio_open(int64_t rate, int64_t channels, int64_t frames, int64_t out)
+{
+	if (!astream_load()) {
+		snprintf(g_aerr, sizeof g_aerr, "AudioToolbox could not be loaded");
+		return 0;
+	}
+	ASBD fmt = {0};
+	fmt.mSampleRate = (double)rate;
+	fmt.mFormatID = 0x6C70636D; /* 'lpcm' */
+	fmt.mFormatFlags = 4 | 8;   /* signed integer, packed */
+	fmt.mFramesPerPacket = 1;
+	fmt.mChannelsPerFrame = (u32)channels;
+	fmt.mBitsPerChannel = 16;
+	fmt.mBytesPerFrame = (u32)(2 * channels);
+	fmt.mBytesPerPacket = (u32)(2 * channels);
+	astream *s = calloc(1, sizeof *s);
+	s->out = out != 0;
+	s->cap = (size_t)(frames * channels * 8);
+	s->ring = calloc(s->cap, 2);
+	pthread_mutex_init(&s->mu, NULL);
+	pthread_cond_init(&s->cv, NULL);
+	int st = s->out ? AQ.NewOutput(&fmt, (void *)astream_out_cb, s, NULL, NULL, 0, &s->q)
+			: AQ2.NewInput(&fmt, (void *)astream_in_cb, s, NULL, NULL, 0, &s->q);
+	if (st != 0 || !s->q) {
+		snprintf(g_aerr, sizeof g_aerr, "the %s could not be opened (OSStatus %d)",
+			 s->out ? "speakers" : "microphone", st);
+		free(s->ring);
+		free(s);
+		return 0;
+	}
+	u32 bytes = (u32)(frames * channels * 2);
+	for (int i = 0; i < 3; i++) {
+		AQBuffer *b = NULL;
+		if (AQ.AllocateBuffer(s->q, bytes, &b) != 0 || !b)
+			continue;
+		if (s->out) {
+			memset(b->mAudioData, 0, bytes);
+			b->mAudioDataByteSize = bytes;
+		}
+		AQ.EnqueueBuffer(s->q, b, 0, NULL);
+	}
+	st = AQ.Start(s->q, NULL);
+	if (st != 0) {
+		snprintf(g_aerr, sizeof g_aerr, "the %s would not start (OSStatus %d)",
+			 s->out ? "speakers" : "microphone", st);
+		AQ2.Dispose(s->q, 1);
+		free(s->ring);
+		free(s);
+		return 0;
+	}
+	return (int64_t)s;
+}
+
+/* Wait for bytes/2 samples and copy them out; 0, or -1 for no stream. */
+MS int64_t __vyw_veyl_audio_read(int64_t h, int64_t data, int64_t bytes)
+{
+	astream *s = (astream *)h;
+	if (!s || s->out)
+		return -1;
+	size_t want = (size_t)bytes / 2;
+	int16_t *dst = (int16_t *)data;
+	pthread_mutex_lock(&s->mu);
+	for (size_t i = 0; i < want; i++) {
+		while (s->count == 0)
+			pthread_cond_wait(&s->cv, &s->mu);
+		dst[i] = s->ring[s->head];
+		s->head = (s->head + 1) % s->cap;
+		s->count--;
+	}
+	pthread_mutex_unlock(&s->mu);
+	return 0;
+}
+
+/* Queue bytes/2 samples, waiting while the ring is full. */
+MS int64_t __vyw_veyl_audio_write(int64_t h, int64_t data, int64_t bytes)
+{
+	astream *s = (astream *)h;
+	if (!s || !s->out)
+		return -1;
+	size_t n = (size_t)bytes / 2;
+	int16_t *src = (int16_t *)data;
+	pthread_mutex_lock(&s->mu);
+	for (size_t i = 0; i < n; i++) {
+		while (s->count == s->cap)
+			pthread_cond_wait(&s->cv, &s->mu);
+		s->ring[(s->head + s->count) % s->cap] = src[i];
+		s->count++;
+	}
+	pthread_mutex_unlock(&s->mu);
+	return 0;
+}
+
+/* Close a stream: an output plays what is in the ring first, up to a
+ * few seconds. */
+MS void __vyw_veyl_audio_close(int64_t h)
+{
+	astream *s = (astream *)h;
+	if (!s)
+		return;
+	if (s->out) {
+		pthread_mutex_lock(&s->mu);
+		for (int waited = 0; s->count > 0 && waited < 500; waited++) {
+			struct timespec ts;
+			clock_gettime(CLOCK_REALTIME, &ts);
+			ts.tv_nsec += 10000000;
+			if (ts.tv_nsec >= 1000000000) {
+				ts.tv_sec++;
+				ts.tv_nsec -= 1000000000;
+			}
+			pthread_cond_timedwait(&s->cv, &s->mu, &ts);
+		}
+		pthread_mutex_unlock(&s->mu);
+	}
+	AQ2.Stop(s->q, 1);
+	AQ2.Dispose(s->q, 1);
+	free(s->ring);
+	free(s);
 }

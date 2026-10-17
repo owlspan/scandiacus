@@ -130,9 +130,13 @@ func exeName(source string) string {
 var linuxProvided = func() map[string]bool {
 	m := map[string]bool{}
 	re := regexp.MustCompile(`(?:VYW\(|__vyw_)(\w+)`)
-	for _, src := range linuxRuntimeSources {
-		for _, match := range re.FindAllStringSubmatch(src, -1) {
-			m[match[1]] = true
+	// The macOS runtime's too: what only it has (the audio streams) is
+	// only ever called in a macOS build.
+	for _, srcs := range []map[string]string{linuxRuntimeSources, macRuntimeSources} {
+		for _, src := range srcs {
+			for _, match := range re.FindAllStringSubmatch(src, -1) {
+				m[match[1]] = true
+			}
 		}
 	}
 	return m

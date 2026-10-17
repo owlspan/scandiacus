@@ -471,18 +471,24 @@ var sigs = map[string]front.Signature{
 	"proc.pids":     {Ret: ListOf(Int)},
 	"proc.name":     {Params: []*Type{Int}, Ret: Str},
 
-	"audio.input":  {Params: []*Type{Int, Int, Int}, Ret: ResultOf(Int)},
-	"audio.output": {Params: []*Type{Int, Int, Int}, Ret: ResultOf(Int)},
-	"audio.read":   {Params: []*Type{Int}, Ret: ListOf(Float)},
-	"audio.write":  {Params: []*Type{Int, ListOf(Float)}, Ret: Bool},
-	"audio.close":  {Params: []*Type{Int}, Ret: Void},
-	"proc.parent":  {Params: []*Type{Int}, Ret: Int},
-	"proc.find":    {Params: []*Type{Str}, Ret: Int},
-	"proc.modules": {Params: []*Type{Int}, Ret: ListOf(StructOf("ProcModule"))},
-	"proc.base":    {Params: []*Type{Int, Str}, Ret: Int},
-	"proc.threads": {Params: []*Type{Int}, Ret: ListOf(Int)},
-	"proc.regions": {Params: []*Type{Int}, Ret: ListOf(StructOf("ProcRegion"))},
-	"proc.scanAll": {Params: []*Type{Int, Str}, Ret: ListOf(Int)},
+	"audio.devices": {Params: []*Type{Bool}, Ret: ListOf(Str)},
+
+	// Private to the prelude: the macOS streams in veylmac.c.
+	"__audioMacOpen":  {Params: []*Type{Int, Int, Int, Bool}, Ret: Int},
+	"__audioMacRead":  {Params: []*Type{Int, Int, Int}, Ret: Int},
+	"__audioMacWrite": {Params: []*Type{Int, Int, Int}, Ret: Int},
+	"__audioMacClose": {Params: []*Type{Int}, Ret: Void},
+	"__audioMacError": {Ret: Str},
+	"audio.read":      {Params: []*Type{Int}, Ret: ListOf(Float)},
+	"audio.write":     {Params: []*Type{Int, ListOf(Float)}, Ret: Bool},
+	"audio.close":     {Params: []*Type{Int}, Ret: Void},
+	"proc.parent":     {Params: []*Type{Int}, Ret: Int},
+	"proc.find":       {Params: []*Type{Str}, Ret: Int},
+	"proc.modules":    {Params: []*Type{Int}, Ret: ListOf(StructOf("ProcModule"))},
+	"proc.base":       {Params: []*Type{Int, Str}, Ret: Int},
+	"proc.threads":    {Params: []*Type{Int}, Ret: ListOf(Int)},
+	"proc.regions":    {Params: []*Type{Int}, Ret: ListOf(StructOf("ProcRegion"))},
+	"proc.scanAll":    {Params: []*Type{Int, Str}, Ret: ListOf(Int)},
 
 	"mem.used":        {Ret: Int},
 	"mem.total":       {Ret: Int},
@@ -602,6 +608,9 @@ func (asmLibrary) Signature(name string) (front.Signature, bool) {
 		return front.Signature{Check: checkOptional("padLeft", []*Type{Str, Int, Str}, 2, Str)}, true
 	case "padRight":
 		return front.Signature{Check: checkOptional("padRight", []*Type{Str, Int, Str}, 2, Str)}, true
+	case "audio.input", "audio.output":
+		// The device is optional: "" is the default one.
+		return front.Signature{Check: checkOptional(name, []*Type{Int, Int, Int, Str}, 3, ResultOf(Int))}, true
 	case "first", "last", "pop":
 		return front.Signature{Check: checkElemOf}, true
 	case "sum":
@@ -661,7 +670,7 @@ var checkedBuiltins = []string{
 	"task.mapLimit", "task.each", "task.all", "http.serve", "http.serveWorkers", "stats.mean",
 	"stats.median", "stats.var", "stats.stdev", "stats.percentile",
 	"json.decode", "json.decodeOr", "os.path.join", "toInt", "toFloat",
-	"input", "padLeft", "padRight", "first", "last", "pop", "sum",
+	"input", "padLeft", "padRight", "audio.input", "audio.output", "first", "last", "pop", "sum",
 	"reverse", "sort", "rand.shuffle", "rand.sample", "rand.pick",
 	"slice", "join", "insert", "removeAt", "keys", "values", "remove",
 	"clear", "fail", "ok", "isOk", "failed", "errorOf", "must", "valueOr",

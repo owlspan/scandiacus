@@ -2409,6 +2409,9 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 	if r, handled := l.timeBuiltin(c, name); handled {
 		return r
 	}
+	if r, handled := l.audioMacBuiltin(c, name); handled {
+		return r
+	}
 
 	if r, handled := l.miscBuiltin(c, name); handled {
 		return r

@@ -1,18 +1,19 @@
 // A voice changer: the microphone, through an effect, to the speakers.
 //
-//   veyl run robot.vl            a robot voice for ten seconds
-//   veyl run robot.vl -- echo    an echo instead
+//   veyl run robot.vl                       a robot voice for ten seconds
+//   veyl run robot.vl -- echo               an echo instead
+//   veyl run robot.vl -- --in facecam --out cable
+//                                           any part of a device's name
 //
-// To hear it in Discord or a game, send the output to a virtual audio
-// cable (VB-Audio Cable is free) and pick the cable as the microphone
-// there; set the cable as the default playback device first, since
-// audio.output plays on the default one.
+// To be heard in Discord or a game, send the output to a virtual audio
+// cable (VB-Audio Cable is free) with --out cable, and pick the cable as
+// the microphone there. check.vl lists the devices.
 
 let rate = 48000
 let frames = 480            // 10 ms blocks: a small delay, a smooth sound
 
-let mic = must(audio.input(rate, 1, frames))
-let out = must(audio.output(rate, 1, frames))
+let mic = must(audio.input(rate, 1, frames, args.value("in", "")))
+let out = must(audio.output(rate, 1, frames, args.value("out", "")))
 
 let mode = "robot"
 if contains(args.rest(), "echo") {

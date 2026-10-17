@@ -2808,7 +2808,10 @@ audio.close(out)
 | Function | Returns | Description |
 | --- | --- | --- |
 | `audio.input(rate, channels, frames)` | `int!` | open the default microphone; `frames` is the block size |
+| `audio.input(rate, channels, frames, device)` | `int!` | open the microphone whose name contains `device`, in any case |
 | `audio.output(rate, channels, frames)` | `int!` | open the default speakers |
+| `audio.output(rate, channels, frames, device)` | `int!` | open a named output |
+| `audio.devices(output)` | `[]str` | the microphones, or with `true` the outputs |
 | `audio.read(stream)` | `[]float` | the next block, `frames * channels` samples |
 | `audio.write(stream, samples)` | `bool` | queue samples to play; waits only when the queue is full |
 | `audio.close(stream)` | - | close it; an output stream plays what is queued first |
@@ -2816,19 +2819,20 @@ audio.close(out)
 The rate is 8000 to 192000, the channels 1 or 2, and a block from 16
 frames to a second. Smaller blocks mean less delay between the
 microphone and the speakers; 10 to 20 ms is a good start.
-`examples/audio/robot.vl` is a working voice changer.
+`examples/audio/robot.vl` is a working voice changer, and
+`examples/audio/check.vl` lists the devices and times a stream each way.
 
-It plays on the default device, so to send changed sound to another
-program - Discord, a game - make a virtual audio cable such as the
-free VB-Audio Cable the default playback device, and pick the cable as
-the microphone in that program. That is how voice changers work
-without a driver of their own; writing one is not something any
-language does without the Windows driver kit.
+A device is named by any part of what `audio.devices` lists, so
+`"cable"` picks "CABLE Input (VB-Audio Virtual Cable)". That is the
+way to send changed sound to another program - Discord, a game:
+output to a virtual audio cable such as the free VB-Audio Cable, and
+pick the cable as the microphone in that program. It is how voice
+changers work without a driver of their own; writing one is not
+something any language does without the Windows driver kit.
 
-On Windows this is winmm's waveIn and waveOut, on Linux PulseAudio's
-simple API (`libpulse0`). Linux works, but its delay has only been
-measured on a virtual machine, not on real hardware. macOS is not done
-yet.
+On Windows this is winmm's waveIn and waveOut; on Linux PulseAudio's
+simple API (`libpulse0`), with device names from `pactl`; on macOS an
+AudioQueue, where only the default devices can be used so far.
 
 
 ### `rand` - randomness

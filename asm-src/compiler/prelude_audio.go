@@ -18,8 +18,9 @@ package main
 // On Windows it is the waveIn and waveOut functions of winmm, polled
 // rather than called back: eight buffers a stream, a buffer done when
 // its WAVEHDR says so. On Linux it is PulseAudio's simple API, which
-// blocks on its own. Both are loaded at the first call, so a program
-// that never opens a stream needs neither. macOS is not done yet.
+// blocks on its own; on macOS an AudioQueue in the runtime. Each is
+// loaded at the first call, so a program that never opens a stream
+// needs none of them.
 //
 // A stream is a block of words from mem.alloc:
 //
@@ -29,7 +30,7 @@ package main
 //	72 buffers written so far (output)             80 a scratch word
 
 const preludeAudio = `
-fn __vy_audioOpen(rate: int, channels: int, frames: int, out: bool) -> int! {
+fn __vy_audioOpen(rate: int, channels: int, frames: int, out: bool, device: str) -> int! {
     if channels != 1 && channels != 2 {
         return fail("audio: channels must be 1 or 2, got " + str(channels))
     }
@@ -46,29 +47,100 @@ fn __vy_audioOpen(rate: int, channels: int, frames: int, out: bool) -> int! {
     mem.write64(s + 24, frames)
     mem.write64(s + 48, frames * channels * 2)
     if os.name() == "windows" {
-        return __vy_audioOpenWin(s, rate, out)
+        return __vy_audioOpenWin(s, rate, out, device)
     }
     if os.name() == "linux" {
-        return __vy_audioOpenPulse(s, rate, out)
+        return __vy_audioOpenPulse(s, rate, out, device)
     }
-    mem.free(s)
-    return fail("audio streams are not on " + os.name() + " yet")
+    return __vy_audioOpenMac(s, rate, out, device)
 }
 
-fn __vy_audioInput(rate: int, channels: int, frames: int) -> int! {
-    return __vy_audioOpen(rate, channels, frames, false)
+fn __vy_audioInput(rate: int, channels: int, frames: int, device: str) -> int! {
+    return __vy_audioOpen(rate, channels, frames, false, device)
 }
 
-fn __vy_audioOutput(rate: int, channels: int, frames: int) -> int! {
-    return __vy_audioOpen(rate, channels, frames, true)
+fn __vy_audioOutput(rate: int, channels: int, frames: int, device: str) -> int! {
+    return __vy_audioOpen(rate, channels, frames, true, device)
+}
+
+// The names of the microphones, or with output true the speakers and
+// other outputs, as the system calls them. Any part of one, in any
+// case, picks it in audio.input and audio.output: "cable" finds
+// "CABLE Input (VB-Audio Virtual Cable)".
+fn __vy_audioDevices(output: bool) -> []str {
+    let out: []str = []
+    if os.name() == "windows" {
+        let prefix = "waveIn"
+        let size = 80
+        if output {
+            prefix = "waveOut"
+            size = 84
+        }
+        let n = mem.call(__vy_winmm(prefix + "GetNumDevs")) & 0xFFFFFFFF
+        let caps = mem.alloc(size)
+        let i = 0
+        while i < n {
+            if (mem.call(__vy_winmm(prefix + "GetDevCapsW"), i, caps, size) & 0xFFFFFFFF) == 0 {
+                push(out, __vy_memWstr(caps + 8))
+            }
+            i += 1
+        }
+        mem.free(caps)
+        return out
+    }
+    if os.name() == "linux" {
+        let kind = "sources"
+        if output { kind = "sinks" }
+        let listed = os.run("pactl", ["list", "short", kind])
+        if !isOk(listed) { return out }
+        for line in split(must(listed), "\n") {
+            let cols = split(line, "\t")
+            if len(cols) > 1 { push(out, cols[1]) }
+        }
+        return out
+    }
+    return out
+}
+
+// The device whose name contains wanted, ignoring case: its place in
+// the list, or -1.
+fn __vy_audioFind(wanted: str, output: bool) -> int {
+    let names = __vy_audioDevices(output)
+    let w = lower(wanted)
+    let i = 0
+    while i < len(names) {
+        if contains(lower(names[i]), w) { return i }
+        i += 1
+    }
+    return -1
+}
+
+fn __vy_audioNoDevice(wanted: str, out: bool) -> str {
+    let what = "microphone"
+    let call = "audio.devices(false)"
+    if out {
+        what = "output"
+        call = "audio.devices(true)"
+    }
+    return "audio: no " + what + " is called anything like \"" + wanted + "\" - " + call + " lists them"
 }
 
 fn __vy_winmm(name: str) -> int {
     return mem.symbol("winmm.dll", name)
 }
 
-fn __vy_audioOpenWin(s: int, rate: int, out: bool) -> int! {
+fn __vy_audioOpenWin(s: int, rate: int, out: bool, device: str) -> int! {
     let ch = mem.readI64(s + 16)
+    // WAVE_MAPPER, the device the user chose in Settings, unless one is
+    // named.
+    let id = -1
+    if device != "" {
+        id = __vy_audioFind(device, out)
+        if id < 0 {
+            mem.free(s)
+            return fail(__vy_audioNoDevice(device, out))
+        }
+    }
     let fmt = mem.alloc(24)
     mem.write16(fmt, 1)
     mem.write16(fmt + 2, ch)
@@ -78,8 +150,8 @@ fn __vy_audioOpenWin(s: int, rate: int, out: bool) -> int! {
     mem.write16(fmt + 14, 16)
     let prefix = "waveIn"
     if out { prefix = "waveOut" }
-    // WAVE_MAPPER, the device the user chose in Settings; no callback.
-    let r = mem.call(__vy_winmm(prefix + "Open"), s + 8, -1, fmt, 0, 0, 0) & 0xFFFFFFFF
+    // No callback: the buffers are polled.
+    let r = mem.call(__vy_winmm(prefix + "Open"), s + 8, id, fmt, 0, 0, 0) & 0xFFFFFFFF
     mem.free(fmt)
     if r != 0 {
         mem.free(s)
@@ -116,7 +188,7 @@ fn __vy_audioOpenWin(s: int, rate: int, out: bool) -> int! {
     return s
 }
 
-fn __vy_audioOpenPulse(s: int, rate: int, out: bool) -> int! {
+fn __vy_audioOpenPulse(s: int, rate: int, out: bool, device: str) -> int! {
     let lib = "libpulse-simple.so.0"
     let make = mem.symbol(lib, "pa_simple_new")
     if make == 0 {
@@ -140,7 +212,21 @@ fn __vy_audioOpenPulse(s: int, rate: int, out: bool) -> int! {
     mem.write32(attr + 8, -1)
     mem.write32(attr + 12, -1)
     mem.write32(attr + 16, bytes)
-    let p = mem.call(make, 0, "veyl", dir, 0, "audio", spec, 0, attr, s + 80)
+    // A named device by its full PulseAudio name; 0 is the default.
+    let dev = 0
+    let full = ""
+    if device != "" {
+        let at = __vy_audioFind(device, out)
+        if at < 0 {
+            mem.free(spec)
+            mem.free(attr)
+            mem.free(s)
+            return fail(__vy_audioNoDevice(device, out))
+        }
+        full = __vy_audioDevices(out)[at]
+        dev = mem.addr(full)
+    }
+    let p = mem.call(make, 0, "veyl", dir, dev, "audio", spec, 0, attr, s + 80)
     mem.free(spec)
     mem.free(attr)
     if p == 0 {
@@ -148,6 +234,24 @@ fn __vy_audioOpenPulse(s: int, rate: int, out: bool) -> int! {
         return fail("audio: PulseAudio would not open a stream (error " + str(mem.readI32(s + 80)) + ")")
     }
     mem.write64(s + 8, p)
+    mem.write64(s + 56, mem.alloc(mem.readI64(s + 48)))
+    return s
+}
+
+// macOS: an AudioQueue in the runtime (veylmac.c), which keeps a ring
+// of samples between its own thread and this one; read and write block
+// on it. Only the default devices for now.
+fn __vy_audioOpenMac(s: int, rate: int, out: bool, device: str) -> int! {
+    if device != "" {
+        mem.free(s)
+        return fail("audio: choosing a device is not on macOS yet - leave it out for the default")
+    }
+    let q = __audioMacOpen(rate, mem.readI64(s + 16), mem.readI64(s + 24), out)
+    if q == 0 {
+        mem.free(s)
+        return fail("audio: " + __audioMacError())
+    }
+    mem.write64(s + 8, q)
     mem.write64(s + 56, mem.alloc(mem.readI64(s + 48)))
     return s
 }
@@ -177,8 +281,12 @@ fn __vy_audioRead(s: int) -> []float {
         mem.write64(s + 40, (i + 1) % mem.readI64(s + 32))
         return out
     }
-    let read = mem.symbol("libpulse-simple.so.0", "pa_simple_read")
-    if mem.call(read, mem.readI64(s + 8), data, bytes, s + 80) != 0 { return out }
+    if os.name() == "linux" {
+        let read = mem.symbol("libpulse-simple.so.0", "pa_simple_read")
+        if mem.call(read, mem.readI64(s + 8), data, bytes, s + 80) != 0 { return out }
+    } else if __audioMacRead(mem.readI64(s + 8), data, bytes) != 0 {
+        return out
+    }
     let k = 0
     while k < bytes / 2 {
         push(out, float(mem.readI16(data + k * 2)) / 32768.0)
@@ -230,8 +338,12 @@ fn __vy_audioWrite(s: int, samples: []float) -> bool {
                 mem.write16(data + k * 2, __vy_audioPCM(samples[at + k]))
                 k += 1
             }
-            let write = mem.symbol("libpulse-simple.so.0", "pa_simple_write")
-            if mem.call(write, mem.readI64(s + 8), data, n * 2, s + 80) != 0 { return false }
+            if os.name() == "linux" {
+                let write = mem.symbol("libpulse-simple.so.0", "pa_simple_write")
+                if mem.call(write, mem.readI64(s + 8), data, n * 2, s + 80) != 0 { return false }
+            } else if __audioMacWrite(mem.readI64(s + 8), data, n * 2) != 0 {
+                return false
+            }
         }
         at += n
     }
@@ -273,6 +385,12 @@ fn __vy_audioClose(s: int) {
         mem.call(__vy_winmm("timeEndPeriod"), 1)
         mem.free(mem.readI64(s + 56))
         mem.free(mem.readI64(s + 64))
+        mem.free(s)
+        return
+    }
+    if os.name() != "linux" {
+        __audioMacClose(h)
+        mem.free(mem.readI64(s + 56))
         mem.free(s)
         return
     }
