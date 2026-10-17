@@ -3,6 +3,27 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.82.0
+
+**Audio on macOS.** `audio.input` and `audio.output` work on a Mac,
+through an AudioQueue in the runtime; checked on GitHub's Apple Silicon
+runner, where half a second plays and records in half a second.
+
+**Pick the device by name.** `audio.input` and `audio.output` take an
+optional fourth argument, any part of a device's name, and
+`audio.devices(output)` lists them - so a voice changer can send its
+sound straight to a virtual cable:
+
+```veyl
+let out = must(audio.output(48000, 1, 480, "cable"))
+```
+
+`examples/audio/robot.vl` takes `--in` and `--out`, and the new
+`examples/audio/check.vl` lists the devices and times a stream each
+way. On Windows and macOS a stream keeps time from the start; on Linux
+PulseAudio may take a second or two to start the first one if it had
+an idle device suspended, then keeps time.
+
 ## 1.81.0
 
 **Live audio.** `audio.input` and `audio.output` open the microphone
