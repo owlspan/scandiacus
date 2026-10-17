@@ -2833,6 +2833,9 @@ something any language does without the Windows driver kit.
 On Windows this is winmm's waveIn and waveOut; on Linux PulseAudio's
 simple API (`libpulse0`), with device names from `pactl`; on macOS an
 AudioQueue, where only the default devices can be used so far.
+PulseAudio may take a second or two to start the first stream of a
+program when it had suspended an idle device; from then on a stream
+keeps time.
 
 
 ### `rand` - randomness

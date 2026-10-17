@@ -204,7 +204,9 @@ fn __vy_audioOpenPulse(s: int, rate: int, out: bool, device: str) -> int! {
     // The buffering, as pa_buffer_attr: PulseAudio's own default holds
     // about two seconds, which is no use for anything live. About four
     // blocks queued to play, and a read handed over block by block;
-    // -1 is "the server's choice" for the rest.
+    // -1 is "the server's choice" for the rest. A server that suspended
+    // an idle device can take a second or two to start the first stream
+    // of a process - measured from C as well - and keeps time after.
     let bytes = mem.readI64(s + 48)
     let attr = mem.alloc(24)
     mem.write32(attr, -1)
