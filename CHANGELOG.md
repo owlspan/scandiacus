@@ -3,6 +3,15 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.82.1
+
+**Fix: floats stored into struct fields.** Storing a float into a field
+could stop the build with "the generated assembly could not be
+encoded" - setting a field of a list element from a variable
+(`ws[0].speed = v`), from a builtin such as `max()`, or from a value
+clamped in an `if`. Those now compile; `tests/floatfields.vl` covers
+them.
+
 ## 1.82.0
 
 **Audio on macOS.** `audio.input` and `audio.output` work on a Mac,
