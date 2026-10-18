@@ -304,7 +304,11 @@ func (e *Emitter) selInstr(in Instr) bool {
 			base = "rax"
 		}
 		src := fmt.Sprintf("qword ptr [%s+%d]", base, in.Imm)
-		if d := e.loc(in.Dst); isRegLoc(d) {
+		if d := e.loc(in.Dst); isXmm(d) {
+			// A float held in an xmm register: mov has no form for
+			// those, movsd moves the same eight bytes.
+			e.line("movsd %s, %s", d, src)
+		} else if isRegLoc(d) {
 			e.line("mov %s, %s", d, src)
 		} else {
 			e.line("mov rax, %s", src)
@@ -324,6 +328,10 @@ func (e *Emitter) selInstr(in Instr) bool {
 			return true
 		}
 		b := e.loc(in.B)
+		if isXmm(b) {
+			e.line("movsd %s, %s", dst, b)
+			return true
+		}
 		if !isRegLoc(b) {
 			e.line("mov rcx, %s", b)
 			b = "rcx"

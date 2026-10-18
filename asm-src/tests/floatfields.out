@@ -1,0 +1,8 @@
+2.5
+3.75
+Weapon{name: "c", speed: 2.5, depth: 4}
+150
+50
+Weapon{name: "d", speed: 50, depth: 0.5}
+4.5
+36.25
