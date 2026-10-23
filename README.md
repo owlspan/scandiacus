@@ -2,7 +2,7 @@
 
 # veyl - the Veyl compiler
 
-Veyl compiled to x86-64, with no Go anywhere.
+Veyl compiles to x86-64, with no Go anywhere.
 
 It used to work the other way. The old compiler translated Veyl to Go
 source and handed that to the Go toolchain. It produced genuinely
