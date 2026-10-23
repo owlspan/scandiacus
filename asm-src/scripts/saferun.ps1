@@ -1,6 +1,6 @@
 # Run a program under a memory cap and a time limit.
 #
-# Why this exists: nothing in a veyl-built program collects garbage
+# Why this exists: nothing in a scandiacus-built program collects garbage
 # on its own, so a loop that allocates and never exits eats every byte
 # of RAM and pagefile on the machine. That is not a crash, it is a hard
 # freeze that needs the power button. It has happened.

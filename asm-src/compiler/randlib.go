@@ -4,7 +4,7 @@ package main
 //
 // These three are in the lowerer rather than in the prelude for one
 // reason: they work on a list of anything, and the prelude has no way to
-// say that. A Veyl function has to name its parameter's type, and Veyl
+// say that. A Scandiacus function has to name its parameter's type, and Scandiacus
 // has no generics - so a prelude version would be one function per
 // element type, which is three functions turning into fifteen.
 //

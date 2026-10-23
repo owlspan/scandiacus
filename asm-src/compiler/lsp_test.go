@@ -123,13 +123,13 @@ func (c *lspClient) diagnostics() []string {
 
 func TestLanguageServer(t *testing.T) {
 	dir := t.TempDir()
-	helper := filepath.Join(dir, "shapes.vl")
+	helper := filepath.Join(dir, "shapes.scd")
 	if err := os.WriteFile(helper, []byte("pub fn area(w: int, h: int) -> int {\n    return w * h\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	main := filepath.Join(dir, "main.vl")
+	main := filepath.Join(dir, "main.scd")
 	uri := pathToURI(main)
-	src := `import "shapes.vl"
+	src := `import "shapes.scd"
 
 struct Point {
     x: int
@@ -160,7 +160,7 @@ let bad: int = "no"
 	c.call("initialize", map[string]any{"capabilities": map[string]any{}})
 	c.write(map[string]any{"method": "initialized", "params": map[string]any{}})
 	c.write(map[string]any{"method": "textDocument/didOpen", "params": map[string]any{
-		"textDocument": map[string]any{"uri": uri, "languageId": "veyl", "version": 1, "text": src}}})
+		"textDocument": map[string]any{"uri": uri, "languageId": "scandiacus", "version": 1, "text": src}}})
 
 	diags := c.diagnostics()
 	sort.Strings(diags)
@@ -198,13 +198,13 @@ let bad: int = "no"
 		file  string
 		want  int
 	}{
-		{24, "print(tw", "main.vl", 17},
-		{24, "p.su", "main.vl", 9},
-		{22, "Poi", "main.vl", 3},
-		{19, "return doub", "main.vl", 18},
-		{10, "self.x", "main.vl", 4},
-		{25, "print(ar", "shapes.vl", 1},
-		{23, "Col", "main.vl", 14},
+		{24, "print(tw", "main.scd", 17},
+		{24, "p.su", "main.scd", 9},
+		{22, "Poi", "main.scd", 3},
+		{19, "return doub", "main.scd", 18},
+		{10, "self.x", "main.scd", 4},
+		{25, "print(ar", "shapes.scd", 1},
+		{23, "Col", "main.scd", 14},
 	} {
 		f, l := defLine(c.call("textDocument/definition", pos(tc.line, tc.after)))
 		if f != tc.file || l != tc.want {
@@ -297,19 +297,19 @@ let bad: int = "no"
 // errors, and definition, hover and completion through the namespace.
 func TestLanguageServerNamespaces(t *testing.T) {
 	dir := t.TempDir()
-	helper := filepath.Join(dir, "geo.vl")
+	helper := filepath.Join(dir, "geo.scd")
 	geo := "pub struct Vec {\n    x: float\n}\n\n// The area of a circle.\npub fn area(r: float) -> float {\n    return 3.0 * r * r\n}\n"
 	if err := os.WriteFile(helper, []byte(geo), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	main := filepath.Join(dir, "main.vl")
+	main := filepath.Join(dir, "main.scd")
 	uri := pathToURI(main)
-	src := "import \"geo.vl\" as geo\n\nlet v = geo.Vec{x: 1.0}\nprint(geo.area(v.x))\n"
+	src := "import \"geo.scd\" as geo\n\nlet v = geo.Vec{x: 1.0}\nprint(geo.area(v.x))\n"
 	c := startLSP(t)
 	c.call("initialize", map[string]any{"capabilities": map[string]any{}})
 	c.write(map[string]any{"method": "initialized", "params": map[string]any{}})
 	c.write(map[string]any{"method": "textDocument/didOpen", "params": map[string]any{
-		"textDocument": map[string]any{"uri": uri, "languageId": "veyl", "version": 1, "text": src}}})
+		"textDocument": map[string]any{"uri": uri, "languageId": "scandiacus", "version": 1, "text": src}}})
 	if d := c.diagnostics(); len(d) != 0 {
 		t.Fatalf("diagnostics: %v", d)
 	}
@@ -319,11 +319,11 @@ func TestLanguageServerNamespaces(t *testing.T) {
 	}
 	var l lspLocation
 	json.Unmarshal(c.call("textDocument/definition", pos(4, 12)), &l)
-	if filepath.Base(uriToPath(l.URI)) != "geo.vl" || l.Range.Start.Line+1 != 6 {
+	if filepath.Base(uriToPath(l.URI)) != "geo.scd" || l.Range.Start.Line+1 != 6 {
 		t.Errorf("definition of geo.area: %+v", l)
 	}
 	json.Unmarshal(c.call("textDocument/definition", pos(3, 13)), &l)
-	if filepath.Base(uriToPath(l.URI)) != "geo.vl" || l.Range.Start.Line+1 != 1 {
+	if filepath.Base(uriToPath(l.URI)) != "geo.scd" || l.Range.Start.Line+1 != 1 {
 		t.Errorf("definition of geo.Vec: %+v", l)
 	}
 	var h struct {

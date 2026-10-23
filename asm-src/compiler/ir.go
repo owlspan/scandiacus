@@ -481,7 +481,7 @@ const (
 	OpWriteFloat
 	OpBoundsFail // A is the index, B the length; does not return
 
-	// Byte-level memory, for strings. A Veyl string is a pointer to
+	// Byte-level memory, for strings. A Scandiacus string is a pointer to
 	// NUL-terminated bytes, so anything that inspects or builds one
 	// needs to read and write single bytes rather than words.
 	OpLoadByte  // Dst = zero-extended byte at [A + B]
@@ -627,8 +627,8 @@ type Instr struct {
 	// came before it.
 	RetType vty    // OpCall only: whether the result comes back in rax or xmm0
 	Sym     string // OpCall only: the function being called
-	Extern  bool   // OpCall only: Sym is a raw symbol, not a Veyl function.
-	// Veyl functions are emitted as __vy_<name> so that a
+	Extern  bool   // OpCall only: Sym is a raw symbol, not a Scandiacus function.
+	// Scandiacus functions are emitted as __vy_<name> so that a
 	// program calling its own fn strlen cannot collide with
 	// libc; a foreign symbol has to be called by the name the
 	// linker knows, so the emitter must be told which it is.
@@ -641,7 +641,7 @@ type Instr struct {
 	// goes in both the xmm and the matching integer
 	// register, because the callee reading a va_list has
 	// no prototype telling it which file to look in.
-	Comment string // the Veyl this came from, carried into the .s file
+	Comment string // the Scandiacus this came from, carried into the .s file
 }
 
 // A Func is one lowered function.
@@ -752,7 +752,7 @@ type sig struct {
 }
 
 // externSig is what the lowerer knows about a declared native function.
-// It is a sig plus what a foreign call needs that a Veyl call does not:
+// It is a sig plus what a foreign call needs that a Scandiacus call does not:
 // how wide the return register was when the C side left it there
 // (ret32), whether the caller may pass extra arguments (variadic), and
 // which library exports the symbol when the declaration said `from`.
@@ -793,7 +793,7 @@ func (l *lowerer) collectExtern(fd *FnDecl) {
 	for _, pa := range fd.Params {
 		t, good := typeOfName(pa.Type)
 		// A function is a callback: the address of a stub that makes
-		// the native call look like a Veyl one.
+		// the native call look like a Scandiacus one.
 		if good && t.k == kFunc {
 			if es.widen == nil {
 				es.widen = map[int][]widenArg{}
@@ -949,7 +949,7 @@ type lowerer struct {
 
 	// autoGC is automatic collection: on, except in a DLL, whose
 	// functions the host may call on threads of its own, and when
-	// VEYL_GC=off asks for the old behaviour.
+	// SCANDIACUS_GC=off asks for the old behaviour.
 	autoGC bool
 
 	// mainLets are the names the top-level statements declare with let,
@@ -1013,8 +1013,8 @@ func Lower(p *Program, file string) (*Module, []string) {
 		globals:   map[string]int64{},
 		globalTy:  map[int64]vty{},
 		buf:       -1,
-		gcStress:  os.Getenv("VEYL_GC_STRESS") != "" && p.GC != "off",
-		autoGC:    os.Getenv("VEYL_GC") != "off" && p.GC != "off",
+		gcStress:  os.Getenv("SCANDIACUS_GC_STRESS") != "" && p.GC != "off",
+		autoGC:    os.Getenv("SCANDIACUS_GC") != "off" && p.GC != "off",
 		gcOff:     p.GC == "off",
 	}
 
@@ -1343,7 +1343,7 @@ func (l *lowerer) loadLocal(slot int64) Reg {
 	if k, kept := l.memSlot(slot); kept {
 		d := l.loadWidth(l.slotAddr(slot), k)
 		if t.k == kBool {
-			// C's bool is any nonzero byte; Veyl's is 0 or 1.
+			// C's bool is any nonzero byte; Scandiacus's is 0 or 1.
 			return l.compare(OpNe, d, l.constant(0))
 		}
 		l.regTy[d] = t
@@ -1527,7 +1527,7 @@ func (l *lowerer) stmt(s Stmt) {
 			}
 			// The checker already accepted an untyped int literal going
 			// into a float slot - Go's own untyped-constant rule, which
-			// Veyl copies - so that combination is promoted rather than
+			// Scandiacus copies - so that combination is promoted rather than
 			// rejected here, along with a bare nil taking the shape of
 			// the ?T it is going into.
 			if fitted, ok := l.coerce(v, declared); ok {
@@ -2110,7 +2110,7 @@ func (l *lowerer) call(c *Call) Reg {
 }
 
 // ccall emits a call to a foreign symbol - libc, or anything else the
-// linker can find - rather than to a Veyl function.
+// linker can find - rather than to a Scandiacus function.
 //
 // This is the seam the library is ported through. Before it, OpCall
 // could only name __vy_<sym>, so a builtin that wanted to reach a C
@@ -2144,7 +2144,7 @@ func (l *lowerer) ccall(sym string, args []Reg, argTypes []vty, ret vty, ret32, 
 // passed as the declared parameter asks, with an int widened to float
 // where the declaration says float. Two things are foreign-specific:
 // a declared `from "x.dll"` pins which library the import table names
-// the symbol under, and a `-> str` return is copied into a fresh Veyl
+// the symbol under, and a `-> str` return is copied into a fresh Scandiacus
 // string, because the C side may free or overwrite the buffer it
 // handed back as soon as we return to it.
 func (l *lowerer) callExtern(c *Call, name string, es externSig) Reg {
@@ -3084,7 +3084,7 @@ func (l *lowerer) binary(x *Binary) Reg {
 
 	// Numbers. An untyped int literal on one side of a float operand was
 	// already accepted by the checker - Go's own untyped-constant rule,
-	// which Veyl copies for exactly this case - so by the time lowering
+	// which Scandiacus copies for exactly this case - so by the time lowering
 	// sees a kind mismatch here it can only be that, and can safely
 	// promote rather than error a second time.
 	if at.k == kFloat || bt.k == kFloat {
@@ -3291,7 +3291,7 @@ func (l *lowerer) interp(x *Interp) Reg {
 	return acc
 }
 
-// ---- printing, for `veyl ir` ----
+// ---- printing, for `scandiacus ir` ----
 
 func (m *Module) String() string {
 	var b strings.Builder

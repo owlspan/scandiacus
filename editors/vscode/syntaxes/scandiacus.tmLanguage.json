@@ -1,0 +1,290 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Scandiacus",
+  "scopeName": "source.scandiacus",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#libraries"
+    },
+    {
+      "include": "#builtins"
+    },
+    {
+      "include": "#calls"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.scandiacus",
+          "begin": "//",
+          "end": "$"
+        },
+        {
+          "name": "comment.block.scandiacus",
+          "begin": "/\\*",
+          "end": "\\*/",
+          "patterns": [
+            {
+              "include": "#comments"
+            }
+          ]
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.scandiacus",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.scandiacus",
+          "match": "\\\\([ntr\"\\\\0]|x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]{1,6}\\})"
+        },
+        {
+          "name": "constant.character.escape.scandiacus",
+          "match": "\\{\\{|\\}\\}"
+        },
+        {
+          "name": "meta.embedded.scandiacus",
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.embedded.begin.scandiacus"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.embedded.end.scandiacus"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#strings"
+            },
+            {
+              "include": "#keywords"
+            },
+            {
+              "include": "#constants"
+            },
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#libraries"
+            },
+            {
+              "include": "#builtins"
+            },
+            {
+              "include": "#calls"
+            },
+            {
+              "include": "#operators"
+            }
+          ]
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.function.scandiacus"
+            },
+            "2": {
+              "name": "entity.name.function.scandiacus"
+            }
+          }
+        },
+        {
+          "match": "\\b(struct|impl|enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.struct.scandiacus"
+            },
+            "2": {
+              "name": "entity.name.type.scandiacus"
+            }
+          }
+        },
+        {
+          "match": "\\b(let|const)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.variable.scandiacus"
+            },
+            "2": {
+              "name": "variable.other.scandiacus"
+            }
+          }
+        },
+        {
+          "match": "\\b(import)\\b",
+          "name": "keyword.control.import.scandiacus"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.scandiacus",
+          "match": "\\b(if|else|while|for|in|step|break|continue|return|match|defer)\\b"
+        },
+        {
+          "name": "keyword.operator.new.scandiacus",
+          "match": "\\bnew\\b(?=\\s*[\\[A-Za-z_*])"
+        },
+        {
+          "name": "keyword.declaration.scandiacus",
+          "match": "\\b(let|const|var|fn|struct|impl|enum|pub|import|extern|export)\\b"
+        },
+        {
+          "name": "variable.language.self.scandiacus",
+          "match": "\\bself\\b"
+        },
+        {
+          "name": "constant.language.scandiacus",
+          "match": "\\b(true|false|nil)\\b"
+        },
+        {
+          "comment": "Reserved but not implemented - flagged so it is obvious the compiler will refuse them.",
+          "name": "invalid.illegal.reserved.scandiacus",
+          "match": "\\b(own|unsafe)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.scandiacus",
+          "match": "\\b(int|float|str|bool|bytes|i8|u8|i16|u16|i32|u32|i64|u64|f32|f64|ptr)\\b"
+        },
+        {
+          "comment": "A capitalised name after a colon, arrow, [] or ? is a struct type. Written with captures rather than a lookbehind: Oniguruma rejects a lookbehind whose alternatives differ in length, and one regex it refuses stops the entire grammar from loading.",
+          "match": "(:|->|\\[\\]|\\?)(\\s*)([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.type.scandiacus"
+            },
+            "3": {
+              "name": "entity.name.type.scandiacus"
+            }
+          }
+        },
+        {
+          "comment": "The ! and ? that make a type fallible or nullable.",
+          "name": "keyword.operator.type.scandiacus",
+          "match": "(?<=[A-Za-z0-9_\\]\\}])!(?=\\s*[=\\{\\)\\n]|$)"
+        }
+      ]
+    },
+    "constants": {
+      "name": "constant.language.scandiacus",
+      "match": "\\b(E|INF|NAN|PI)\\b"
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.scandiacus",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.scandiacus",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "libraries": {
+      "comment": "Dotted library paths: os.file.read, http.get, win.rect. Keep in step with the namespaces in asm-src/compiler/library.go.",
+      "match": "\\b(args|bits|bytes|csv|hash|http|json|mem|net|os|rand|re|sound|stats|task|term|time|url|win|zip)\\b((?:\\.[A-Za-z_][A-Za-z0-9_]*)+)",
+      "captures": {
+        "1": {
+          "name": "support.class.library.scandiacus"
+        },
+        "2": {
+          "name": "support.function.library.scandiacus"
+        }
+      }
+    },
+    "builtins": {
+      "name": "support.function.builtin.scandiacus",
+      "comment": "Generated from the table in asm-src/compiler/library.go. The old list still had beep, messageBox, openWindow and setTitle, which this compiler does not have, and was missing map, filter, reduce and the rest of the higher-order builtins.",
+      "match": "\\b(abs|acos|all|any|asin|atan|atan2|cbrt|ceil|charAt|chars|clamp|clear|contains|cos|count|divf|each|endsWith|errorOf|exit|exp|fail|failed|filter|find|first|float|floor|has|hypot|indexOf|input|insert|int|isFloat|isInt|isNan|isOk|join|keys|last|len|lines|log|log10|log2|lower|map|max|min|mod|must|ok|padLeft|padRight|pause|pop|pow|print|push|random|randomInt|reduce|remove|removeAt|repeat|replace|reverse|round|sign|sin|sleep|slice|sort|sortBy|split|sqrt|startsWith|str|substr|sum|tan|toFloat|toInt|trim|trunc|upper|valueOr|values|write)\\b(?=\\s*\\()"
+    },
+    "calls": {
+      "comment": "Anything else called like a function.",
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.call.scandiacus"
+        }
+      }
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.range.scandiacus",
+          "match": "\\.\\.=|\\.\\."
+        },
+        {
+          "name": "keyword.operator.arrow.scandiacus",
+          "match": "->|=>"
+        },
+        {
+          "name": "keyword.operator.assignment.scandiacus",
+          "match": "(\\+|-|\\*|/|%|&|\\||\\^|<<|>>)?="
+        },
+        {
+          "name": "keyword.operator.comparison.scandiacus",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.logical.scandiacus",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.bitwise.scandiacus",
+          "match": "<<|>>|&|\\||\\^|~"
+        },
+        {
+          "name": "keyword.operator.arithmetic.scandiacus",
+          "match": "\\+|-|\\*|/|%"
+        },
+        {
+          "name": "keyword.operator.try.scandiacus",
+          "match": "\\?"
+        }
+      ]
+    }
+  }
+}

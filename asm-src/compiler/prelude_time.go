@@ -1,13 +1,13 @@
 package main
 
-// The time library, in Veyl.
+// The time library, in Scandiacus.
 //
-// The Go backend spells a format the way Veyl users do - YYYY-MM-DD -
+// The Go backend spells a format the way Scandiacus users do - YYYY-MM-DD -
 // translates that to Go's reference-time layout with a plain textual
 // replace, and hands the result to time.Format. Both halves are
 // reproduced here, in that order, and the order is the point: a
 // translation followed by a layout interpreter behaves differently from
-// interpreting the Veyl tokens directly, because a literal `Jan` in the
+// interpreting the Scandiacus tokens directly, because a literal `Jan` in the
 // user's format survives the replace and is then read as a month by the
 // layout interpreter. That is arguably a wart on the Go backend, and it
 // is the behaviour, so it is the behaviour here.
@@ -51,7 +51,7 @@ fn __vy_pad4(n: int) -> str {
     return s
 }
 
-// The Veyl format to Go's reference layout. strings.NewReplacer tries
+// The Scandiacus format to Go's reference layout. strings.NewReplacer tries
 // each pair in order at each position and takes the first that matches,
 // which is why the longer spellings are listed before the shorter ones
 // they start with - YYYY before YY, MMMM before MMM before MM.
@@ -291,7 +291,7 @@ fn __vy_takeDigits(text: str, at: int, least: int, most: int) -> int {
     return n
 }
 
-// -1 for anything that is not a digit. Veyl has no ordering on strings,
+// -1 for anything that is not a digit. Scandiacus has no ordering on strings,
 // so a character class is a lookup rather than a range test.
 fn __vy_digitOf(c: str) -> int {
     let digits = "0123456789"
@@ -304,7 +304,7 @@ fn __vy_digitOf(c: str) -> int {
 }
 
 // A numeric or AM/PM chunk, returning the width it used and the value it
-// read packed into one int: width * 1000 + value. Veyl has no multiple
+// read packed into one int: width * 1000 + value. Scandiacus has no multiple
 // return, and every value this reads is below a thousand.
 fn __vy_takeNumeric(text: str, at: int, pat: str) -> int {
     if pat == "PM" || pat == "pm" {

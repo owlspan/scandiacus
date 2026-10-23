@@ -4,7 +4,7 @@ import "strings"
 
 // Extern structs: C layouts laid over memory at an address.
 //
-// A Veyl struct is an object this program owns, copied on assignment.
+// A Scandiacus struct is an object this program owns, copied on assignment.
 // An extern struct is the opposite: a description of bytes somewhere
 // else - a Win32 out-parameter, a block from mem.alloc, a structure in
 // another process read into a buffer - and a value of one is nothing

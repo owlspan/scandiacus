@@ -96,7 +96,7 @@ func elemTag(t vty) int64 {
 // allocObj allocates a tagged object and returns a pointer to its
 // payload. The header is written in the IR rather than inside the
 // runtime alloc helper, so that x64.go stays a translator and the
-// layout stays visible in `veyl ir`.
+// layout stays visible in `scandiacus ir`.
 func (l *lowerer) allocObj(bytes Reg, tag int64) Reg {
 	// tag is below 256 and the size is shifted past it, so no bit of one
 	// can reach the other and an add is an or.

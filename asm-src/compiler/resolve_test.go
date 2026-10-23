@@ -12,7 +12,7 @@ import (
 // by the checker, in the same list as the type errors, with the closest
 // real name offered when one is a likely slip.
 func TestUndefinedNames(t *testing.T) {
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 	dir := t.TempDir()
 	src := `let x: int = "a"
 let total = 3
@@ -28,22 +28,22 @@ struct Point {
 let p = Piont{x: 1}
 print(zzzzzz)
 `
-	p := filepath.Join(dir, "names.vl")
+	p := filepath.Join(dir, "names.scd")
 	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command(veyl, "ir", p).CombinedOutput()
+	out, err := exec.Command(scandiacus, "ir", p).CombinedOutput()
 	if err == nil {
 		t.Fatalf("expected errors, got:\n%s", out)
 	}
 	want := []string{
-		`names.vl:1:1: "x" is declared as int but the value is str`,
-		`names.vl:3:7: undefined variable "totl" - did you mean "total"?`,
-		`names.vl:7:7: undefined function "avrage" - did you mean "average"?`,
-		`names.vl:8:7: undefined function "lenn" - did you mean "len"?`,
-		`names.vl:12:9: undefined struct "Piont" - did you mean "Point"?`,
-		`names.vl:13:7: undefined variable "zzzzzz"`,
-		`veyl: 6 error(s)`,
+		`names.scd:1:1: "x" is declared as int but the value is str`,
+		`names.scd:3:7: undefined variable "totl" - did you mean "total"?`,
+		`names.scd:7:7: undefined function "avrage" - did you mean "average"?`,
+		`names.scd:8:7: undefined function "lenn" - did you mean "len"?`,
+		`names.scd:12:9: undefined struct "Piont" - did you mean "Point"?`,
+		`names.scd:13:7: undefined variable "zzzzzz"`,
+		`scandiacus: 6 error(s)`,
 	}
 	got := strings.Split(strings.TrimSpace(strings.ReplaceAll(string(out), "\r\n", "\n")), "\n")
 	if len(got) != len(want) {
@@ -62,15 +62,15 @@ print(zzzzzz)
 		"constlet": "let n = 2\nconst K = n + 1\nprint(K)\n",
 	}
 	wantReach := map[string]string{
-		"fnlet":    `fnlet.vl:3:12: "limit" belongs to the program body, so functions cannot see it - declare it with var instead of let to share it`,
-		"constlet": `constlet.vl:2:11: "n" is a let in the program body, which runs after every const and var is computed - make it a const or a var too`,
+		"fnlet":    `fnlet.scd:3:12: "limit" belongs to the program body, so functions cannot see it - declare it with var instead of let to share it`,
+		"constlet": `constlet.scd:2:11: "n" is a let in the program body, which runs after every const and var is computed - make it a const or a var too`,
 	}
 	for name, src := range reach {
-		p := filepath.Join(dir, name+".vl")
+		p := filepath.Join(dir, name+".scd")
 		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		out, _ := exec.Command(veyl, "ir", p).CombinedOutput()
+		out, _ := exec.Command(scandiacus, "ir", p).CombinedOutput()
 		first := strings.SplitN(strings.ReplaceAll(string(out), "\r\n", "\n"), "\n", 2)[0]
 		if !strings.HasSuffix(first, wantReach[name]) {
 			t.Errorf("%s:\n got %q\nwant it to end %q", name, first, wantReach[name])

@@ -1,7 +1,7 @@
-module veyl
+module scandiacus
 
 go 1.21
 
-require veylfront v0.0.0
+require scandiacusfront v0.0.0
 
-replace veylfront => ../frontend
+replace scandiacusfront => ../frontend

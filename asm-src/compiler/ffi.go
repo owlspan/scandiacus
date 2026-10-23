@@ -24,7 +24,7 @@ import (
 	"strings"
 )
 
-// cTypeOf maps a Veyl boundary type to the C type a wrapper declares it
+// cTypeOf maps a Scandiacus boundary type to the C type a wrapper declares it
 // with, so the argument is passed in the right register and width.
 func cTypeOf(t vty) string {
 	switch fixedOf(t) {
@@ -170,7 +170,7 @@ func unixLib(from string) string {
 // are genuinely unavailable off Windows (a runtime builtin with no POSIX
 // implementation, named by a library the program did not declare).
 // isSqliteSym reports whether a symbol is part of sqlite, which the db
-// library calls and veylsqlite.c provides against the system libsqlite3.
+// library calls and scandiacussqlite.c provides against the system libsqlite3.
 func isSqliteSym(s string) bool { return strings.HasPrefix(s, "sqlite3_") }
 
 // needsSqlite reports whether any of the externs is a sqlite call, so the

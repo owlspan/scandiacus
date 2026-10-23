@@ -22,9 +22,9 @@ extern struct Pinned {
     ammo: i16
 }
 `
-	lx := NewLexer("t.vl", src)
-	prog := NewParser("t.vl", lx.Scan()).ParseProgram()
-	ck := NewChecker("t.vl", EmptyLibrary{})
+	lx := NewLexer("t.scd", src)
+	prog := NewParser("t.scd", lx.Scan()).ParseProgram()
+	ck := NewChecker("t.scd", EmptyLibrary{})
 	ck.Check(prog)
 	if errs := append(lx.Errors, ck.Errors...); len(errs) > 0 {
 		t.Fatalf("errors: %v", errs)
@@ -108,10 +108,10 @@ export fn scale(v: Vec2, k: f32) { v.x = v.x * k }
 fn export(n: int) -> int { return n }
 let export2 = export(3)
 `
-	lx := NewLexer("t.vl", src)
-	ps := NewParser("t.vl", lx.Scan())
+	lx := NewLexer("t.scd", src)
+	ps := NewParser("t.scd", lx.Scan())
 	prog := ps.ParseProgram()
-	ck := NewChecker("t.vl", EmptyLibrary{})
+	ck := NewChecker("t.scd", EmptyLibrary{})
 	ck.Check(prog)
 	if errs := append(append(lx.Errors, ps.Errors...), ck.Errors...); len(errs) > 0 {
 		t.Fatalf("errors: %v", errs)

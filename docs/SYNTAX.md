@@ -1,10 +1,10 @@
-# Veyl Language Reference
+# Scandiacus Language Reference
 
 **Version 1.84.0** - the language as currently implemented.
 
-Veyl compiles straight to x86-64 and writes the Windows executable
+Scandiacus compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
-runtime to install, and building one needs nothing but `veyl.exe`.
+runtime to install, and building one needs nothing but `scandiacus.exe`.
 
 > Anything marked **planned** is not implemented yet. If you write it,
 > the compiler will reject it.
@@ -40,15 +40,15 @@ runtime to install, and building one needs nothing but `veyl.exe`.
 
 ## Hello, world
 
-```veyl
+```scandiacus
 print("Hello, world!")
 ```
 
 ```
-veyl run hello.vl
+scandiacus run hello.scd
 ```
 
-Source files use the `.vl` extension. There is no required `main`
+Source files use the `.scd` extension. There is no required `main`
 function - statements at the top level of a file run in order, and
 declaring a `main` yourself is an error, because the compiler writes
 its own around those statements.
@@ -57,7 +57,7 @@ its own around those statements.
 
 ## Comments
 
-```veyl
+```scandiacus
 // a line comment
 
 /* a block comment
@@ -69,10 +69,10 @@ Nesting matters in practice: you can comment out a region that already
 contains a block comment without the inner `*/` ending it early.
 
 **Doc comments.** The `//` lines directly above a declaration, with no
-blank line between, document it: `veyl doc` puts them in the file's
+blank line between, document it: `scandiacus doc` puts them in the file's
 reference, and the editor shows them when you hover the name.
 
-```veyl
+```scandiacus
 // The area of a w by h rectangle.
 pub fn area(w: int, h: int) -> int {
     return w * h
@@ -80,7 +80,7 @@ pub fn area(w: int, h: int) -> int {
 ```
 
 ```
-veyl doc shapes.vl -o shapes.html
+scandiacus doc shapes.scd -o shapes.html
 ```
 
 ---
@@ -89,7 +89,7 @@ veyl doc shapes.vl -o shapes.html
 
 Statements end at a line break. There are no semicolons.
 
-```veyl
+```scandiacus
 let a = 1
 let b = 2
 ```
@@ -97,7 +97,7 @@ let b = 2
 Blocks use braces, not indentation. Indentation is style only - the
 compiler ignores it.
 
-```veyl
+```scandiacus
 if a < b {
     print("smaller")
 }
@@ -106,7 +106,7 @@ if a < b {
 Inside brackets - `(...)` in a call or a grouped expression - line
 breaks are ignored, so long argument lists can wrap:
 
-```veyl
+```scandiacus
 print(
     "this",
     "spans",
@@ -120,7 +120,7 @@ print(
 
 `let` declares a variable. `const` declares one that cannot be reassigned.
 
-```veyl
+```scandiacus
 let count = 0
 const limit = 10
 
@@ -132,15 +132,15 @@ limit = 11         // error: cannot assign to "limit" because it was declared co
 The type is inferred from the value. Annotate it explicitly with `: Type`
 when you want to be specific:
 
-```veyl
-let name: str = "Veyl"
+```scandiacus
+let name: str = "Scandiacus"
 let ratio: float = 0.5
 ```
 
 A name may be declared only once per scope, but an inner block may shadow
 an outer name:
 
-```veyl
+```scandiacus
 let x = 1
 {
     let x = 2       // a different variable
@@ -151,7 +151,7 @@ print(x)            // 1
 
 Reading an undeclared variable is an error, not an implicit declaration:
 
-```veyl
+```scandiacus
 total = 5           // error: undefined variable "total"
 ```
 
@@ -159,7 +159,7 @@ total = 5           // error: undefined variable "total"
 
 ## Types
 
-| Veyl  | Holds                        | Example        |
+| Scandiacus  | Holds                        | Example        |
 | ------- | ---------------------------- | -------------- |
 | `int`     | whole numbers                | `42`, `-7`          |
 | `float`   | numbers with a decimal point | `3.14`, `0.5`       |
@@ -179,17 +179,17 @@ is a `float`.
 Integers can be written in decimal, hex or binary, and `_` may be used
 to group digits anywhere:
 
-```veyl
+```scandiacus
 let mask  = 0xFF          // 255
 let bits  = 0b1010_1010   // 170
 let big   = 1_000_000
 let ratio = 1_234.5
 ```
 
-Veyl does not convert between types automatically. Mixing them is an
+Scandiacus does not convert between types automatically. Mixing them is an
 error - use `str()`, `int()`, or `float()` to convert explicitly.
 
-```veyl
+```scandiacus
 let n = 5
 print("count: " + n)        // error: cannot add str and int
 print("count: " + str(n))   // fine
@@ -217,9 +217,9 @@ generating any code. The rules are short:
 | `for i in a..b` | the bounds and the `step` must be `int` |
 
 There is **no implicit conversion between two values**. This is an
-error, and the message says so in Veyl's words:
+error, and the message says so in Scandiacus's words:
 
-```veyl
+```scandiacus
 let a = 1
 let b = 2.5
 let c = a + b   // error: cannot mix int and float in '+'
@@ -232,7 +232,7 @@ The one exception is a plain integer literal, which will happily become
 a float where one is expected. This follows Go's untyped-constant rule
 and keeps ordinary arithmetic readable:
 
-```veyl
+```scandiacus
 let radius = 2.5
 let area = PI * radius * radius   // fine
 let wide  = radius * 2            // fine - 2 becomes 2.0
@@ -242,7 +242,7 @@ let ratio: float = 1              // fine
 The flexibility belongs to the *literal*, not to the type. Once a value
 is in a variable, its type is fixed:
 
-```veyl
+```scandiacus
 let two = 2                       // an int variable
 let nope = radius * two           // error: cannot mix float and int
 let ok   = radius * float(two)    // fine
@@ -257,7 +257,7 @@ deliberately.
 
 For a fractional result, use `divf()` or make a side a float:
 
-```veyl
+```scandiacus
 print(7 / 2)          // 3
 print(divf(7, 2))     // 3.5
 print(7.0 / 2.0)      // 3.5
@@ -280,7 +280,7 @@ They are ordinary types: a variable, a parameter, a return, a field, a
 list element or a map value can be one. Arithmetic wraps at the type's
 width, the way C's does:
 
-```veyl
+```scandiacus
 let a: u8 = 250
 print(a + 10)             // 4
 let b: i8 = 127
@@ -299,7 +299,7 @@ unsigned type fills with zeros. A signed division that overflows,
 exactly the answers C's `float` does, and prints as the shortest
 decimal that reads back to the same `f32`:
 
-```veyl
+```scandiacus
 let x: f32 = 0.1
 print(x + 0.2)            // 0.3
 print(x + 0.2 == 0.3)     // true, in single precision
@@ -311,7 +311,7 @@ There are still no implicit conversions. `i8(x)`, `u8(x)`, `i16(x)`,
 `float(x)` convert between any two number types. An integer narrows by
 keeping its low bits, like a C cast, and a float truncates toward zero:
 
-```veyl
+```scandiacus
 let big = 300
 print(u8(big))            // 44
 print(i8(200))            // -56
@@ -327,7 +327,7 @@ let good = n + i32(m)     // fine
 A literal, or an expression made only of literals, fits any of them
 when its value is in range, and is an error when it is not:
 
-```veyl
+```scandiacus
 let mask: u32 = (255 << 16) | 7    // fine
 let full: u64 = 0xFFFFFFFFFFFFFFFF // fine
 let over: u8 = 256                 // error: 256 does not fit in u8
@@ -349,7 +349,7 @@ that puts a result back into range is one `movzx`, `movsx` or 32-bit
 is a `str`, an `int`, a plain enum, or a struct of those (see
 [Maps](#maps)).
 
-```veyl
+```scandiacus
 let nums  = [3, 1, 2]                  // []int
 let words = ["beta", "alpha"]          // []str
 let ages  = {"ada": 36, "alan": 41}    // {str: int}
@@ -357,7 +357,7 @@ let ages  = {"ada": 36, "alan": 41}    // {str: int}
 
 They nest without any special rules:
 
-```veyl
+```scandiacus
 let grid:   [][]int      = [[1, 2], [3, 4]]
 let groups: {str: []str} = {}
 ```
@@ -367,7 +367,7 @@ where it goes: an annotation, the variable it is assigned to, the
 parameter or field it fills, the list it is pushed into. With nothing
 to go by the compiler says so:
 
-```veyl
+```scandiacus
 let xs: []int = []          // fine
 let m: {str: int} = {}      // fine
 xs = []                     // fine: xs is a []int
@@ -376,10 +376,10 @@ let oops = []               // error: cannot tell what kind of list
                             //        this is - annotate it
 ```
 
-Printing uses Veyl's own notation, so a printed value is something you
+Printing uses Scandiacus's own notation, so a printed value is something you
 could paste back into your program:
 
-```veyl
+```scandiacus
 print([1, 2, 3])                   // [1, 2, 3]
 print({"a": 1})                    // {"a": 1}
 print(["x", "y"])                  // ["x", "y"]
@@ -389,19 +389,19 @@ print(["x", "y"])                  // ["x", "y"]
 
 A plain type can **never** be nil. `?T` is the type that can.
 
-```veyl
+```scandiacus
 let name: str  = "ada"    // always holds a string
 let note: ?str = nil      // holds a string, or nothing
 ```
 
-This is the main thing Veyl offers over its own backend: there is no
+This is the main thing Scandiacus offers over its own backend: there is no
 such thing as a nil `str`, so there is no such thing as a nil-dereference
 crash. The cost is that a `?T` has to be checked before it can be used.
 
 **Checking narrows the type.** Inside a proven `!= nil`, the value is a
 plain `T`:
 
-```veyl
+```scandiacus
 let note: ?str = maybeLoad()
 
 if note != nil {
@@ -412,7 +412,7 @@ print(upper(note))         // error: ?str might be nil
 
 It works in either direction, and through `&&`:
 
-```veyl
+```scandiacus
 if note == nil {
     print("nothing")
 } else {
@@ -430,7 +430,7 @@ be harder to predict than it is worth.
 
 **Widening is automatic.** A `T` goes into a `?T` without ceremony:
 
-```veyl
+```scandiacus
 let n: ?int = 5           // fine
 ```
 
@@ -439,7 +439,7 @@ Going the other way needs the check - that is the whole point.
 **A bare `nil` needs a type to aim at**, so a binding that starts empty
 must say what it will hold:
 
-```veyl
+```scandiacus
 let x: ?int = nil         // fine
 let y = nil               // error: cannot tell what "y" can hold
 ```
@@ -447,7 +447,7 @@ let y = nil               // error: cannot tell what "y" can hold
 Nullables work anywhere a type does - struct fields, list elements, map
 values, parameters and return types:
 
-```veyl
+```scandiacus
 struct Config {
     name:    str
     timeout: ?int
@@ -470,7 +470,7 @@ a missing key is distinguishable from a key holding zero.
 "there might be nothing here", `T!` says "this might not have worked,
 and here is why".
 
-```veyl
+```scandiacus
 fn parsePort(text: str) -> int! {
     if !isInt(text) {
         return fail("{text} is not a number")
@@ -485,7 +485,7 @@ Inside a function returning `T!`, `return value` succeeds and
 **A result is not a value until you unwrap it.** Using one directly is
 an error, which is the whole point:
 
-```veyl
+```scandiacus
 let port = parsePort("8080")
 print(port + 1)         // error: int! might have failed
 ```
@@ -505,7 +505,7 @@ Four ways to get at it:
 `?` is the reason the error type is worth having. It unwraps a result,
 or returns its failure from the enclosing function:
 
-```veyl
+```scandiacus
 fn addressFor(host: str, port: str) -> str! {
     let n = parsePort(port)?      // on failure, addressFor returns it
     return "{host}:{n}"
@@ -517,7 +517,7 @@ That is Go's four-line `if err != nil` dance in one character.
 It works mid-expression, and chains - the first failure wins and
 nothing after it runs:
 
-```veyl
+```scandiacus
 fn sumPorts(a: str, b: str) -> int! {
     return parsePort(a)? + parsePort(b)?
 }
@@ -533,7 +533,7 @@ enclosing function must return a `T!`. The compiler says so if not.
 - `?int!` - it might have failed; if it worked, there might be no value.
 - `int!` inside a `?` - not a thing; wrap the other way round.
 
-```veyl
+```scandiacus
 fn maybePort(text: str) -> ?int! {
     if text == "" {
         return nil        // worked, and there is nothing
@@ -551,7 +551,7 @@ The standard library uses all of this: `os.file.read` returns `str!`,
 
 A `struct` groups named values into a new type.
 
-```veyl
+```scandiacus
 struct Point {
     x: float
     y: float
@@ -565,7 +565,7 @@ Fields go one per line, or separated by commas - whichever reads better.
 Name the struct, then give the fields in any order. **Fields you leave
 out take their zero value**, so `Point{}` is a valid origin.
 
-```veyl
+```scandiacus
 let origin = Point{}
 let p = Point{x: 3.0, y: 4.0}
 let q = Point{y: 1.0, x: 2.0}    // order does not matter
@@ -573,7 +573,7 @@ let q = Point{y: 1.0, x: 2.0}    // order does not matter
 
 Read and write fields with `.`:
 
-```veyl
+```scandiacus
 print(p.x)
 p.x = 6.0
 ```
@@ -582,7 +582,7 @@ p.x = 6.0
 
 Methods go in an `impl` block. The first parameter is always `self`.
 
-```veyl
+```scandiacus
 impl Point {
     fn length(self) -> float {
         return sqrt(self.x * self.x + self.y * self.y)
@@ -606,7 +606,7 @@ cannot share a name.
 **Assigning a struct copies it.** The two values are independent
 afterwards - there are no references and no aliasing to reason about.
 
-```veyl
+```scandiacus
 let a = Point{x: 1.0, y: 1.0}
 let b = a
 b.x = 99.0
@@ -620,7 +620,7 @@ copy - otherwise `scale` could not work at all.
 
 They nest in both directions:
 
-```veyl
+```scandiacus
 struct User {
     name: str
     tags: []str
@@ -637,7 +637,7 @@ byName["origin"] = Point{}
 A struct cannot contain **itself** by value - the type would need
 infinite space. Through a list it is fine:
 
-```veyl
+```scandiacus
 struct Node {
     value:    int
     children: []Node    // fine
@@ -647,10 +647,10 @@ struct Node {
 ### One syntax wrinkle
 
 `if p {` is ambiguous: `p` could be a variable, or the start of a struct
-literal `p{...}`. Veyl resolves it the way Go does - a struct literal
+literal `p{...}`. Scandiacus resolves it the way Go does - a struct literal
 cannot appear unparenthesised in an `if`, `while` or `for` header:
 
-```veyl
+```scandiacus
 if ready { }                                  // fine
 if (Point{x: 1.0, y: 0.0}).length() > 0.5 { } // parens needed
 ```
@@ -659,7 +659,7 @@ if (Point{x: 1.0, y: 0.0}).length() > 0.5 { } // parens needed
 
 Structs print in the same notation you would write them in:
 
-```veyl
+```scandiacus
 print(Point{x: 3.0, y: 4.0})    // Point{x: 3, y: 4}
 ```
 
@@ -669,7 +669,7 @@ print(Point{x: 3.0, y: 4.0})    // Point{x: 3, y: 4}
 
 An enum is a type with a fixed set of named values:
 
-```veyl
+```scandiacus
 enum State { Idle, Running, Done }
 
 enum Dir {
@@ -686,7 +686,7 @@ A value is written `State.Idle`. Two values of the same enum compare
 with `==` and `!=`; there is no arithmetic on them, and an enum is never
 mixed with an `int` or with another enum. They print by name:
 
-```veyl
+```scandiacus
 print(state)                  // Idle
 print("now {Dir.West}")       // now West
 print([Dir.North, Dir.East])  // [North, East]
@@ -696,7 +696,7 @@ An enum can key a map, which is the natural way to count or label its
 values. The keys print and iterate by name, in the order the enum
 declares them:
 
-```veyl
+```scandiacus
 let seen: {Dir: int} = {}
 seen[Dir.West] += 1
 seen[Dir.North] += 2
@@ -707,7 +707,7 @@ A `match` on an enum with no `else` has to handle every value. Adding a
 value to the enum later then makes each match that forgot it an error,
 naming what is missing:
 
-```veyl
+```scandiacus
 fn next(s: State) -> State {
     match s {
         State.Idle => return State.Running
@@ -725,7 +725,7 @@ brace, so a variable called `enum` still works.
 
 A variant can hold values, listed like a function's parameters:
 
-```veyl
+```scandiacus
 enum Shape {
     Circle(r: float)
     Rect(w: float, h: float)
@@ -739,7 +739,7 @@ print(shapes)          // [Circle(2), Rect(3, 4.5), Empty]
 A `match` names the values each variant holds, `_` for one it does not
 need, and without an `else` it has to handle every variant:
 
-```veyl
+```scandiacus
 fn area(s: Shape) -> float {
     match s {
         Shape.Circle(r) => return 3.14159 * r * r
@@ -757,7 +757,7 @@ is built.
 
 A variant can hold the enum itself, which makes trees easy:
 
-```veyl
+```scandiacus
 enum Expr {
     Num(n: int)
     Add(a: Expr, b: Expr)
@@ -777,7 +777,7 @@ fn eval(e: Expr) -> int {
 An enum can be generic, as a struct can. The type arguments come from
 what a variant is given, or from where the value is going:
 
-```veyl
+```scandiacus
 enum Option<T> {
     Some(v: T)
     None
@@ -808,7 +808,7 @@ written with its type: `let none = Option<str>.None`.
 A function or struct can take types as parameters, written in angle
 brackets after its name:
 
-```veyl
+```scandiacus
 fn largest<T>(xs: []T) -> T {
     let best = xs[0]
     for x in xs {
@@ -827,7 +827,7 @@ The types come from the arguments, so a call looks like any other.
 Where the arguments cannot say - an empty list, or a type that appears
 only in the result - name them:
 
-```veyl
+```scandiacus
 let none: []int = []
 let words = mapList<int, str>(none, fn(x: int) -> str { return str(x) })
 ```
@@ -836,7 +836,7 @@ A struct names its types the same way, and so does every use of it.
 Methods go in `impl Name<T>`, where `T` means whatever the struct was
 made with:
 
-```veyl
+```scandiacus
 struct Stack<T> {
     items: []T
 }
@@ -878,7 +878,7 @@ A method can have type parameters of its own, besides its struct's.
 Theirs come from the arguments, as a function's do, or are named at
 the call, as in `bag.empty<str>()`:
 
-```veyl
+```scandiacus
 impl Box<T> {
     fn map<U>(self, f: fn(T) -> U) -> Box<U> {
         return Box<U>{v: f(self.v)}
@@ -901,7 +901,7 @@ An interface lists methods. Any struct that has them, with the same
 parameter and result types, can be used as one - nothing on the struct
 says so, the way Go does it:
 
-```veyl
+```scandiacus
 interface Shape {
     fn area(self) -> float
     fn name(self) -> str
@@ -940,7 +940,7 @@ changes the value the interface holds. Printing one prints that
 struct. Its fields are not reachable through the interface; a `match`
 names the structs it could be and gets the one it is:
 
-```veyl
+```scandiacus
 match s {
     Shape.Circle(c) => print("radius {c.r}")
     Shape.Square(sq) => print("side {sq.side}")
@@ -987,7 +987,7 @@ All binary operators are left-associative: `a - b - c` means `(a - b) - c`.
 
 Use `( )` to group explicitly:
 
-```veyl
+```scandiacus
 let a = 2 + 3 * 4        // 14
 let b = (2 + 3) * 4      // 20
 ```
@@ -1002,7 +1002,7 @@ Compound assignment: `+=` `-=` `*=` `/=` `%=` `&=` `|=` `^=` `<<=` `>>=`.
 `&` `|` `^` `~` `<<` `>>` work on `int` only. Masks read better in hex
 or binary - `0xFF`, `0b1010` - and `_` can group the digits.
 
-```veyl
+```scandiacus
 let flags = 0
 flags |= 4          // set a bit
 flags &= ~4         // clear it
@@ -1012,12 +1012,12 @@ print(flags & 1)    // test it
 **The precedence ladder is C's**, which means comparison binds *tighter*
 than `&`, `^` and `|`. So this does not do what it looks like:
 
-```veyl
+```scandiacus
 if flags & 4 == 4 { }      // parses as flags & (4 == 4)
 if (flags & 4) == 4 { }    // what you meant
 ```
 
-Veyl keeps C's ordering so the operators behave the way people expect
+Scandiacus keeps C's ordering so the operators behave the way people expect
 from elsewhere, and the type checker catches the mistake with a message
 that says to add parentheses.
 
@@ -1037,7 +1037,7 @@ source:
 | `\xHH` | the byte with that hex value, exactly two digits |
 | `\u{H...}` | the Unicode code point, one to six hex digits, as UTF-8 |
 
-```veyl
+```scandiacus
 print("caf\u{e9}")          // cafe with an acute accent
 print(len("\u{e9}"))        // 2 - len counts bytes
 print("\x41\x42")           // AB
@@ -1067,7 +1067,7 @@ zero it finds.
 Backticks give a string with **no escapes and no interpolation**, which
 may span lines:
 
-```veyl
+```scandiacus
 const pattern = `\d{4}-\d{2}-\d{2}`
 const table = `name,age
 ada,36`
@@ -1083,7 +1083,7 @@ for that.
 
 Any expression inside `{ }` is evaluated and inserted:
 
-```veyl
+```scandiacus
 let name = "world"
 let n = 3
 
@@ -1094,14 +1094,14 @@ print("big: {n > 2 && name != ""}")
 
 String literals may appear inside an interpolation, so this works:
 
-```veyl
+```scandiacus
 print("shouting: {upper("hello")}")
 print("fixed: {replace(path, "\\", "/")}")
 ```
 
 For a literal brace, double it:
 
-```veyl
+```scandiacus
 print("{{literal braces}}")     // {literal braces}
 ```
 
@@ -1111,7 +1111,7 @@ A colon after the expression formats it: `.N` for that many places
 after the point, a width to pad to, `<` to pad on the right instead of
 the left, and a `0` to pad a number with zeros.
 
-```veyl
+```scandiacus
 let pi = 3.14159
 print("{pi:.2}")          // 3.14
 print("[{pi:8.3}]")       // [   3.142]
@@ -1137,7 +1137,7 @@ is safe - it needs no escaping.
 
 ### if / else if / else
 
-```veyl
+```scandiacus
 if score >= 90 {
     print("A")
 } else if score >= 80 {
@@ -1155,7 +1155,7 @@ single statement.
 A multi-way branch on one value. Arms may list several values, and
 **they do not fall through** - there is no `break` to forget.
 
-```veyl
+```scandiacus
 match code {
     200      => print("ok")
     301, 302 => print("redirect")
@@ -1166,7 +1166,7 @@ match code {
 
 An arm's body is a single statement, or a block:
 
-```veyl
+```scandiacus
 match n % 3 {
     0 => {
         print("divisible by three")
@@ -1189,7 +1189,7 @@ the match as returning on every path.
 
 ### while
 
-```veyl
+```scandiacus
 let i = 0
 while i < 10 {
     print(i)
@@ -1201,14 +1201,14 @@ while i < 10 {
 
 Counted loops use a range. `..` excludes the end, `..=` includes it.
 
-```veyl
+```scandiacus
 for i in 0..5 { print(i) }      // 0 1 2 3 4
 for i in 1..=5 { print(i) }     // 1 2 3 4 5
 ```
 
 `step` sets the increment. A negative step counts down.
 
-```veyl
+```scandiacus
 for i in 0..=100 step 25 { print(i) }   // 0 25 50 75 100
 for i in 10..0 step -2 { print(i) }     // 10 8 6 4 2
 ```
@@ -1225,7 +1225,7 @@ without disturbing it.
 it is left: its end, a `return`, or a `break` or `continue`. Several
 run latest first:
 
-```veyl
+```scandiacus
 fn save(m: int, path: str) -> bool {
     thread.lock(m)
     defer thread.unlock(m)      // on every way out below
@@ -1245,7 +1245,7 @@ It cannot itself `return`, `break` or `continue`.
 
 ### break and continue
 
-```veyl
+```scandiacus
 for i in 0..100 {
     if i % 2 == 0 { continue }   // skip to the next iteration
     if i > 20 { break }          // leave the loop
@@ -1260,14 +1260,14 @@ Using either outside a loop is a compile error.
 
 `for x in list` walks the elements. A second name gives the index too.
 
-```veyl
+```scandiacus
 for w in words { print(w) }
 for i, w in words { print("{i}: {w}") }
 ```
 
 A map binds two names, key and value:
 
-```veyl
+```scandiacus
 for name, age in ages { print("{name} is {age}") }
 ```
 
@@ -1279,7 +1279,7 @@ sorted for the same reason.
 A string walks its characters - one string each, decoded as UTF-8,
 the same as `chars(s)` - and with two names, the character index too:
 
-```veyl
+```scandiacus
 for c in "caf\u{e9}" { print(c) }
 for i, c in word { print("{i}: {c}") }
 ```
@@ -1291,7 +1291,7 @@ i-th character means walking the bytes before it every time.
 
 ## Functions
 
-```veyl
+```scandiacus
 fn add(a: int, b: int) -> int {
     return a + b
 }
@@ -1304,7 +1304,7 @@ fn add(a: int, b: int) -> int {
   later in the file.
 - Recursion works.
 
-```veyl
+```scandiacus
 fn fib(n: int) -> int {
     if n < 2 {
         return n
@@ -1321,7 +1321,7 @@ fn greet(name: str) {
 A function with a return type must return on **every** path. This is an
 error:
 
-```veyl
+```scandiacus
 fn bad(n: int) -> int {
     if n > 0 {
         return 1
@@ -1334,7 +1334,7 @@ fn bad(n: int) -> int {
 
 A parameter can have a default, used when a call leaves it off:
 
-```veyl
+```scandiacus
 fn greet(name: str, greeting: str = "hello", times: int = 1) -> str {
     ...
 }
@@ -1352,7 +1352,7 @@ needs one too. Methods take defaults the same way.
 A declared function can be handed around like anything else, and
 written down anonymously where it is needed:
 
-```veyl
+```scandiacus
 fn double(n: int) -> int {
     return n * 2
 }
@@ -1364,17 +1364,17 @@ print(f(21), triple(5))
 
 The type is written the way the signature is:
 
-```veyl
+```scandiacus
 let op: fn(int) -> int = double
 let show: fn(str) = fn(s: str) { print(s) }     // returns nothing
 ```
 
-Parameter types are always required, even in a literal - Veyl does
+Parameter types are always required, even in a literal - Scandiacus does
 not infer them.
 
 **Taking and returning them** is what makes callbacks work:
 
-```veyl
+```scandiacus
 fn applyTwice(g: fn(int) -> int, start: int) -> int {
     return g(g(start))
 }
@@ -1388,7 +1388,7 @@ print(applyTwice(adder(10), 1))     // 21
 
 **Literals close over what is around them**, and can change it:
 
-```veyl
+```scandiacus
 let seen = 0
 let tally = fn(n: int) { seen += n }
 tally(3)
@@ -1398,7 +1398,7 @@ print(seen)     // 7
 
 They go in lists, maps and struct fields like any other value:
 
-```veyl
+```scandiacus
 struct Rule {
     label: str
     test:  fn(int) -> bool
@@ -1416,7 +1416,7 @@ Each function has its own scope. A top-level `let` is local to the
 implicit `main`, so functions cannot see it - pass it in as a
 parameter, or make it a `const`, which is global.
 
-```veyl
+```scandiacus
 let total = 10
 const LIMIT = 100
 
@@ -1443,7 +1443,7 @@ Available everywhere; no import needed.
 | `print(...)` | writes its arguments, then a line break   |
 | `write(...)` | writes its arguments with no line break   |
 
-```veyl
+```scandiacus
 write("Loading")
 write("...")
 print("done")           // Loading...done
@@ -1457,7 +1457,7 @@ print("done")           // Loading...done
 | `input(prompt)`   | `str`   | writes `prompt`, then reads one line            |
 | `pause()`         | -       | waits for Enter; useful before a program exits  |
 
-```veyl
+```scandiacus
 let name = input("Your name: ")
 print("hi, {name}")
 pause()
@@ -1488,7 +1488,7 @@ Surrounding whitespace is ignored, so `toInt(" 7 ")` gives `7`.
 **Careful:** `toInt` never fails - it returns the fallback instead. If bad
 input should not be silently accepted, check it first:
 
-```veyl
+```scandiacus
 let raw = input("Age: ")
 while !isInt(raw) {
     print("that isn't a number")
@@ -1499,7 +1499,7 @@ let age = toInt(raw)
 
 Or pick a fallback that cannot be mistaken for a real answer:
 
-```veyl
+```scandiacus
 let age = toInt(input("Age: "), -1)
 if age < 0 {
     print("I'll take that as a no.")
@@ -1530,7 +1530,7 @@ Every numeric builtin accepts `int` or `float` arguments.
 
 Constants: `PI`, `E`, `INF`, `NAN`.
 
-```veyl
+```scandiacus
 print("sqrt(2) is {sqrt(2)}")
 print("a full turn is {2 * PI} radians")
 print("{floor(3.7)} {ceil(3.2)} {round(2.6)}")
@@ -1560,7 +1560,7 @@ Use `divf(7, 2)` for `3.5`, or make one side a float.
 keeps the pieces and joins them once, so building a long string is
 linear:
 
-```veyl
+```scandiacus
 let sb = Builder{}
 for i in 0..1000 {
     sb.add("{i},")
@@ -1589,7 +1589,7 @@ length, and `clear()` empties it.
 Index-based functions never crash - an out-of-range index gives `""`
 rather than stopping the program.
 
-```veyl
+```scandiacus
 print(padLeft(str(7), 3, "0"))    // 007
 print(substr("Hello, world", 7, 12))
 ```
@@ -1638,7 +1638,7 @@ list and leave the original alone.
 | `any(xs, test)` `all(xs, test)` | `bool` | whether some or every element passes  |
 | `each(xs, do)`          | -        | run `do` for each element                   |
 
-```veyl
+```scandiacus
 let nums = [5, 3, 8, 1]
 
 print(map(nums, fn(n: int) -> int { return n * 2 }))
@@ -1650,12 +1650,12 @@ print(sortBy(nums, fn(a: int, b: int) -> bool { return a > b }))
 `reduce` starts from a value of the type you want back, so it can build
 something other than a list of the same thing:
 
-```veyl
+```scandiacus
 let words = ["fig", "pear"]
 print(reduce(words, "", fn(acc: str, w: str) -> str { return acc + charAt(w, 0) }))
 ```
 
-```veyl
+```scandiacus
 let xs: []int = []
 push(xs, 3, 1, 2)
 print(sort(xs))        // [1, 2, 3]
@@ -1678,7 +1678,7 @@ matters.
 | `clear(m)`      | -       | remove everything                       |
 | `len(m)`        | `int`   | how many entries                        |
 
-```veyl
+```scandiacus
 let counts: {str: int} = {}
 for w in split("a b a", " ") {
     counts[w] += 1        // a missing key starts at 0
@@ -1691,7 +1691,7 @@ print(counts)             // {"a": 2, "b": 1}
 when `==` says so, and the map is sorted field by field, in the order
 the struct declares them:
 
-```veyl
+```scandiacus
 struct Cell {
     x: int
     y: int
@@ -1730,21 +1730,21 @@ Builtin names cannot be redefined.
 
 ## Multiple files
 
-`import` loads another `.vl` file and folds its declarations into your
+`import` loads another `.scd` file and folds its declarations into your
 program. The path is relative to the file that writes it - there is no
 search path, no registry, and no package names to learn.
 
-```veyl
-import "geometry.vl"
-import "shapes/circle.vl"
+```scandiacus
+import "geometry.scd"
+import "shapes/circle.scd"
 ```
 
 ### `pub` decides what escapes
 
 A declaration is private to its own file unless it is marked `pub`:
 
-```veyl
-// geometry.vl
+```scandiacus
+// geometry.scd
 pub const TAU = 6.283185307179586
 
 pub struct Vec {
@@ -1764,7 +1764,7 @@ fn helper() -> int {      // no pub: this file only
 Using something private from another file is an error that says so:
 
 ```
-error: "helper" is private to geometry.vl
+error: "helper" is private to geometry.scd
        - mark it 'pub fn helper' to use it from another file
 ```
 
@@ -1777,7 +1777,7 @@ Declarations only: `import`, `const`, `struct`, `fn` and `impl`. A
 loose statement is refused, because there is no sensible moment for it
 to run:
 
-```veyl
+```scandiacus
 // in an imported file
 print("hello")     // error: an imported file can only declare things
 ```
@@ -1791,9 +1791,9 @@ A plain import folds the file's names in as they are, so two files
 that both export `area` collide. Give an import a name and its file's
 names are reached through it instead:
 
-```veyl
-import "geometry.vl" as geo
-import "shapes.vl" as shapes      // also has an area and a Vec
+```scandiacus
+import "geometry.scd" as geo
+import "shapes.scd" as shapes      // also has an area and a Vec
 
 print(geo.area(2.0))
 print(shapes.area(3))
@@ -1820,7 +1820,7 @@ A top-level `const` and a top-level `var` are globals: visible inside
 every function, and across files if they are `pub`. A `const` cannot
 change; a `var` can, from anywhere.
 
-```veyl
+```scandiacus
 const LIMIT = 100
 var score = 0
 
@@ -1835,7 +1835,7 @@ print(score)                  // 5
 A top-level `let` is not a global: it belongs to the program body, and
 functions cannot see it. The compiler says so and points at `var`:
 
-```veyl
+```scandiacus
 let count = 10
 
 fn broken() -> bool {
@@ -1854,7 +1854,7 @@ that uses another global has to come after it.
 Everything above is a bare name. The rest of the standard library lives
 under a dotted path:
 
-```veyl
+```scandiacus
 let text = os.file.read("notes.txt")
 let page = http.get("https://example.com")
 print(time.stamp())
@@ -1879,10 +1879,10 @@ failure - says what went wrong and where:
 
 ```
 runtime error: index 5 is out of range for a list of length 3
-    at game.vl:42 in update
+    at game.scd:42 in update
 ```
 
-A crash that is not one of Veyl's own errors - an address given to
+A crash that is not one of Scandiacus's own errors - an address given to
 `mem.*` that is not valid, native code misbehaving - is reported too,
 with what kind it was and which of the program's functions it happened
 in, after everything the program printed has been written out:
@@ -1899,9 +1899,9 @@ Neither costs anything while the program runs normally.
 
 A Windows executable also carries unwind tables (`.pdata`), so a native
 debugger such as Visual Studio or WinDbg, a crash dump, or a call to
-`RtlCaptureStackBackTrace` walks the stack through Veyl functions to
+`RtlCaptureStackBackTrace` walks the stack through Scandiacus functions to
 the real callers. The debugger shows the call stack; it does not show
-Veyl variables or source lines, since no debug symbols are written.
+Scandiacus variables or source lines, since no debug symbols are written.
 
 ### How failure is reported
 
@@ -1918,7 +1918,7 @@ An operation that **produces a value** returns `T!`, so you unwrap it
 with `?`, `must()`, `valueOr()` or a check - see
 [Results](#results--things-that-can-fail).
 
-```veyl
+```scandiacus
 let text = must(os.file.read("notes.txt"))    // or stop, saying why
 
 fn wordCount(path: str) -> int! {
@@ -1938,7 +1938,7 @@ gap, and the last thing left to tidy here.
 Most fallible things hand back a value, so `T!` covers them. Writing a
 file does not: it either worked, or it did not. That is `void!`.
 
-```veyl
+```scandiacus
 fn save(path: str, text: str) -> void! {
     os.file.write(path, text)?
     os.file.append(path, "!")?
@@ -1953,7 +1953,7 @@ other result.
 Used as a plain statement, nothing changes - the result is simply
 ignored:
 
-```veyl
+```scandiacus
 os.file.write("notes.txt", "hello")
 ```
 
@@ -1965,7 +1965,7 @@ mandatory.
 all just `false`. There was no way to say "this failed and here is why"
 for something with no value to carry. Now there is:
 
-```veyl
+```scandiacus
 let r = os.file.write("/nowhere/a.txt", "x")
 if !isOk(r) {
     print(errorOf(r))   // open /nowhere/a.txt: no such file or directory
@@ -2014,7 +2014,7 @@ nothing for them to fail at.
 
 The path functions never touch the disk - they are string manipulation.
 
-```veyl
+```scandiacus
 os.file.write("notes.txt", "hello")
 for line in os.file.lines("notes.txt") {
     print(line)
@@ -2034,10 +2034,10 @@ Writing a server is the main thing here. `http.serve` takes a port and
 a function, calls it once per request, and sends back whatever it
 returns.
 
-```veyl
+```scandiacus
 http.serve(8080, fn(req: Request) -> Response {
     if req.path == "/" {
-        return http.ok("<h1>hello from Veyl</h1>")
+        return http.ok("<h1>hello from Scandiacus</h1>")
     }
     if req.path == "/time" {
         return http.text(time.stamp())
@@ -2086,7 +2086,7 @@ is not empty, is sent as the `Location` header.
 
 **Fetching.** `http.get(url)` returns the body as `str!`.
 
-```veyl
+```scandiacus
 let page = http.get("http://example.com")?
 ```
 
@@ -2104,7 +2104,7 @@ cannot fetch "https://localhost/": the certificate of localhost was not accepted
 
 OpenSSL is on every Linux distribution (`libssl3`). A Mac needs nothing
 installed: when there is no OpenSSL the program can load - and on Apple
-Silicon there is none, since a Veyl program runs there as x86-64 and
+Silicon there is none, since a Scandiacus program runs there as x86-64 and
 Homebrew's OpenSSL is arm64 - the system's own TLS, SecureTransport, is
 used. It goes up to TLS 1.2, so a server that only speaks TLS 1.3 needs
 an x86-64 OpenSSL (Homebrew in `/usr/local`).
@@ -2140,7 +2140,7 @@ socket itself. A socket is an `int` handle.
 
 An echo server:
 
-```veyl
+```scandiacus
 let server = must(net.listen(9000))
 print("listening on 9000")
 
@@ -2163,12 +2163,12 @@ included, so binary data comes back whole either way.
 
 Two ways to use it, because two different things are usually wanted.
 
-**Whole values.** `json.encode` turns any Veyl value into text, and
+**Whole values.** `json.encode` turns any Scandiacus value into text, and
 `json.decode` turns text back into a declared type. The type comes from
-the annotation on the binding - Veyl has no type arguments, so this is
+the annotation on the binding - Scandiacus has no type arguments, so this is
 how the decoder is told what to build:
 
-```veyl
+```scandiacus
 struct Point {
     x: float
     y: float
@@ -2182,7 +2182,7 @@ print(must(p).x)
 The annotation names the shape *and* says it can fail. It travels
 through a wrapper too, so this reads the way you would expect:
 
-```veyl
+```scandiacus
 let p: Point = must(json.decode(text))
 ```
 
@@ -2192,7 +2192,7 @@ structs and lists of structs all work.
 **Single values.** When you only want one field out of a response,
 reach in with a dotted path. Numbers step into arrays:
 
-```veyl
+```scandiacus
 let name  = json.get(body, "user.name")
 let age   = json.int(body, "user.age")
 let first = json.get(body, "members.0.name")
@@ -2220,7 +2220,7 @@ rather than failing; use `json.has` when the difference matters.
 **Writing JSON by hand needs doubled braces.** `{` starts an
 interpolation inside a string, so a literal one is written `{{`:
 
-```veyl
+```scandiacus
 let text = "{{"x": 1}}"        // the string {"x": 1}
 ```
 
@@ -2234,7 +2234,7 @@ text out.
 `task.map` is `map`, run concurrently. Same arguments, same ordered
 results - switching between them is a one-word edit.
 
-```veyl
+```scandiacus
 let pages = task.map(urls, fn(u: str) -> str {
     return valueOr(http.get(u), "")
 })
@@ -2255,7 +2255,7 @@ function passed to `task.map` runs on several threads at once, so it
 should compute a value from its argument rather than change something
 outside itself:
 
-```veyl
+```scandiacus
 // Fine: each call produces a value.
 let sizes = task.map(paths, fn(p: str) -> int {
     return valueOr(os.file.size(p), 0)
@@ -2269,7 +2269,7 @@ task.each(paths, fn(p: str) {
 ```
 
 That is a real limit of this design, not an oversight - enforcing it
-needs an ownership system Veyl does not have. A mutex, below, is how to
+needs an ownership system Scandiacus does not have. A mutex, below, is how to
 share something safely.
 
 ### `thread` and `atomic` - threads of your own
@@ -2278,7 +2278,7 @@ share something safely.
 away; `thread.join` waits for it. The function can be a closure, and
 sees what it captured:
 
-```veyl
+```scandiacus
 let hits = atomic.new(0)
 let workers: []int = []
 for id in 0..8 {
@@ -2317,7 +2317,7 @@ from `mem.alloc`. Each is a single locked instruction.
 
 A `Channel<T>` carries values from one thread to another, in order:
 
-```veyl
+```scandiacus
 let jobs = channel<int>()
 let done = channel<str>()
 
@@ -2341,7 +2341,7 @@ thread.join(worker)
 A `for` loop takes every value a channel carries, waiting for each, and
 ends once the channel is closed and empty:
 
-```veyl
+```scandiacus
 for line in results {
     print(line)
 }
@@ -2382,7 +2382,7 @@ Patterns belong in raw strings. In an ordinary string `{4}` is an
 interpolation, so a quantifier would have to be written `{{4}}`, and
 `\d` would be an unknown escape.
 
-```veyl
+```scandiacus
 const DATE = `\d{4}-\d{2}-\d{2}`
 
 print(re.find(DATE, log))
@@ -2442,7 +2442,7 @@ since the input comes from outside; encoding cannot.
 On Windows it needs the `sqlite` package, which carries the library:
 
 ```
-veyl get sqlite
+scandiacus get sqlite
 ```
 
 Linux and macOS use the system SQLite instead: a Linux build links
@@ -2453,7 +2453,7 @@ harmless there - it just brings the helper functions below.
 
 Then:
 
-```veyl
+```scandiacus
 import "sqlite"
 
 const NONE: []str = []
@@ -2483,7 +2483,7 @@ db.close(conn)
 function here that builds SQL from a value, so an injection cannot be
 written through this API even by accident:
 
-```veyl
+```scandiacus
 let typed = "a' or '1'='1"
 db.query(conn, "select id from notes where tag = ?", [typed])   // matches nothing
 ```
@@ -2497,14 +2497,14 @@ the database: `select body is null from ...`.
 **An empty argument list needs a name.** A bare `[]` in an argument
 position has nothing to infer its element type from, so declare one:
 
-```veyl
+```scandiacus
 const NONE: []str = []
 must(db.exec(conn, "delete from notes", NONE))
 ```
 
 #### The package's helpers
 
-`import "sqlite"` also brings these, which are ordinary Veyl over the
+`import "sqlite"` also brings these, which are ordinary Scandiacus over the
 above:
 
 | Function | Returns | Description |
@@ -2523,7 +2523,7 @@ Transactions are worth using for speed as well as correctness. SQLite
 commits every statement on its own otherwise, so a few thousand inserts
 go from seconds to milliseconds inside one:
 
-```veyl
+```scandiacus
 must(dbBegin(conn))
 for line in lines(text) {
     must(db.exec(conn, "insert into notes (body) values (?)", [line]))
@@ -2560,9 +2560,9 @@ read one is less useful than handing it over.
 | `zip.list(src)` | `[]str!` | the names inside, without unpacking |
 | `zip.extract(src, dir)` | `int!` | unpack into `dir`, returning how many files |
 
-```veyl
+```scandiacus
 must(zip.make("backup.zip", ["notes.txt", "src"]))
-print(must(zip.list("backup.zip")))     // [notes.txt, src/, src/main.vl, ...]
+print(must(zip.list("backup.zip")))     // [notes.txt, src/, src/main.scd, ...]
 print(must(zip.extract("backup.zip", "restored")))
 ```
 
@@ -2605,7 +2605,7 @@ Format strings use readable tokens rather than a reference date:
 | `time.weekday()` | `str` | the day's name |
 | `time.sleep(ms)` | - | pause |
 
-```veyl
+```scandiacus
 let started = time.millis()
 work()
 print("took {time.millis() - started} ms")
@@ -2621,7 +2621,7 @@ freed once nothing refers to them, and there is nothing to think about.
 A program that wants to manage its own memory, as in C++, says so on
 a line of its own at the top of the file:
 
-```veyl
+```scandiacus
 gc off
 
 let xs = [1, 2, 3]
@@ -2655,7 +2655,7 @@ collection walks.
 
 ### `mem` - memory
 
-Veyl collects its own values. The collector runs by itself when the
+Scandiacus collects its own values. The collector runs by itself when the
 live heap passes a threshold - 4 MB at first, then twice what survived
 the last collection - so a short program never pays for one. These
 report on it, and nudge it:
@@ -2701,7 +2701,7 @@ ordinary arithmetic:
 | `mem.call(p, args...)` | `int` | call native code at `p` and return what it leaves in `rax` |
 | `mem.callF(p, args...)` | `float` | the same, for a function returning a `double` |
 
-```veyl
+```scandiacus
 let p = mem.alloc(16)
 mem.write32(p, -5)
 print(mem.readU32(p))          // 4294967291
@@ -2724,7 +2724,7 @@ and macOS, where the build generates a small C bridge for each shape of
 call. Nothing checks that the address is code or that it takes what it
 is given.
 
-```veyl
+```scandiacus
 let pow = mem.symbol("msvcrt.dll", "pow")
 print(mem.callF(pow, 2.0, 10.0))     // 1024
 
@@ -2743,7 +2743,7 @@ undefined, so mask a result that can be negative: `mem.call(f) &
 `bytes` is a real type, alongside `int`, `str` and the rest. It holds
 binary: what comes off a socket, out of a file, or into a hash.
 
-```veyl
+```scandiacus
 let b: bytes = bytes.of("hello")
 print(len(b))        // 5
 print(b[0])          // 104
@@ -2817,7 +2817,7 @@ a time - enough for a voice changer, a tuner, a synthesizer or a level
 meter. Samples are floats from -1 to 1, interleaved when there are two
 channels.
 
-```veyl
+```scandiacus
 let mic = must(audio.input(48000, 1, 480))     // 10 ms blocks
 let out = must(audio.output(48000, 1, 480))
 for b in 0..1000 {                             // ten seconds
@@ -2846,8 +2846,8 @@ audio.close(out)
 The rate is 8000 to 192000, the channels 1 or 2, and a block from 16
 frames to a second. Smaller blocks mean less delay between the
 microphone and the speakers; 10 to 20 ms is a good start.
-`examples/audio/robot.vl` is a working voice changer, and
-`examples/audio/check.vl` lists the devices and times a stream each way.
+`examples/audio/robot.scd` is a working voice changer, and
+`examples/audio/check.scd` lists the devices and times a stream each way.
 
 A device is named by any part of what `audio.devices` lists, so
 `"cable"` picks "CABLE Input (VB-Audio Virtual Cable)". That is the
@@ -2883,14 +2883,14 @@ Programs differ from run to run without seeding. `rand.seed` is for
 when you want the same sequence every time - a test, or a puzzle with a
 daily number.
 
-```veyl
+```scandiacus
 rand.seed(7)
 print(rand.int(1, 100))       // 87, every time
 print(rand.pick(["a", "b"]))
 ```
 
 `rand.shuffle` returns a **new** list and leaves the original alone,
-because assignment in Veyl copies and a function that quietly
+because assignment in Scandiacus copies and a function that quietly
 reordered its argument would not fit that. `rand.pick` on an empty list
 gives the zero value; `rand.int(9, 2)`, where the range is backwards,
 gives `9` rather than failing.
@@ -2907,7 +2907,7 @@ Every one of these takes `[]int` or `[]float` and returns `float`.
 | `stats.stdev(xs)` | the square root of that |
 | `stats.percentile(xs, p)` | interpolated, `p` from 0 to 100 |
 
-```veyl
+```scandiacus
 let scores = [2, 4, 4, 4, 5, 5, 7, 9]
 print(stats.mean(scores))            // 5
 print(stats.median(scores))          // 4.5
@@ -2930,7 +2930,7 @@ spread to measure.
 | `term.clear()` | - | clear the screen |
 | `term.colour()` | `bool` | whether colour will actually show |
 
-```veyl
+```scandiacus
 print(term.green("passed") + " " + term.grey("0.4s"))
 print(term.bar(7, 10, 20))           // [##############------]
 ```
@@ -2943,7 +2943,7 @@ program can pick a different layout rather than relying on colour that
 is not there.
 
 On Windows the console has to be switched into virtual-terminal mode or
-the escape codes appear literally as `ESC[31m`. Veyl does that
+the escape codes appear literally as `ESC[31m`. Scandiacus does that
 automatically at startup for any program using `term`.
 
 ### `url` - taking a URL apart
@@ -2955,12 +2955,12 @@ automatically at startup for any program using `term`.
 | `url.build(base, params)` | `str` | append an encoded query |
 | `url.join(base, ref)` | `str!` | resolve a relative reference |
 
-```veyl
+```scandiacus
 let u = "https://api.example.com:8443/v2/items?limit=10"
 print(must(url.host(u)))               // api.example.com
 print(must(url.port(u)))               // 8443
 print(must(url.query(u))["limit"])     // 10
-print(url.build("https://x.dev/s", {"q": "veyl"}))
+print(url.build("https://x.dev/s", {"q": "scandiacus"}))
 ```
 
 A missing piece is an empty string, not a failure - a URL with no port
@@ -2977,7 +2977,7 @@ keeps its first value, since a map cannot hold both.
 | `args.value(name, fallback)` | `str` | the value after `--name` |
 | `args.rest()` | `[]str` | everything that is not a flag |
 
-```veyl
+```scandiacus
 if args.flag("verbose") {
     print("starting")
 }
@@ -2987,7 +2987,7 @@ for file in args.rest() {
 ```
 
 ```
-veyl run tool.vl --verbose --out=result.txt notes.txt
+scandiacus run tool.scd --verbose --out=result.txt notes.txt
 ```
 
 Both `--name=value` and `--name value` work, and one dash or two are
@@ -3006,7 +3006,7 @@ positional arguments. `os.args()` is still there for the raw list.
 | `bits.toBase(n, base)` | `str` | 2 to 36; `""` if out of range |
 | `bits.fromBase(s, base)` | `int!` | parse in that base |
 
-```veyl
+```scandiacus
 print(bits.count(255))            // 8
 print(bits.toBase(255, 16))       // ff
 print(must(bits.fromBase("1010", 2)))  // 10
@@ -3024,7 +3024,7 @@ program. The declaration is the whole bridge - nothing to install, no
 wrapper to write - and Windows loads each named library when the
 program starts.
 
-```veyl
+```scandiacus
 extern fn Beep(freq: int, ms: int) -> bool
 extern fn MessageBoxA(hwnd: int, text: str, cap: str, kind: int) -> int
 
@@ -3039,7 +3039,7 @@ A name in PascalCase is assumed to be the Windows API and lands in
 `kernel32.dll`; any other name falls back to `msvcrt.dll`, the C
 runtime. To point somewhere else, add a `from` clause:
 
-```veyl
+```scandiacus
 extern fn MessageBeep(kind: int) -> bool from "user32.dll"
 extern fn mz_extract(zip: str, dest: str) -> int from "miniz"
 ```
@@ -3074,7 +3074,7 @@ A `from` string ending in `.lib`, `.a`, `.obj` or `.o` names a static
 library rather than a DLL. Its extension is what chooses static over
 dynamic:
 
-```veyl
+```scandiacus
 extern fn vy_add(a: int, b: int) -> int from "mathlib.a"
 ```
 
@@ -3096,7 +3096,7 @@ program.
 
 ### Types at the boundary
 
-| Veyl type | Passes as | Comes back as |
+| Scandiacus type | Passes as | Comes back as |
 | --- | --- | --- |
 | `int` | a 64-bit word | C `int`, sign-extended |
 | `bool` | 0 or 1 | C `int`, sign-extended |
@@ -3115,7 +3115,7 @@ takes all 64 bits, which is what handles and pointers need. Guessing
 wrong on a handle leaves garbage in its top half, so pointers get
 their own spelling rather than sharing `int`.
 
-**`str` as a return.** The C side hands back a pointer to memory Veyl
+**`str` as a return.** The C side hands back a pointer to memory Scandiacus
 does not own. The compiler copies the bytes into a fresh string at
 once - nothing to free, and the library cannot take the memory back
 later. This relies on C strings being NUL-terminated, which they are
@@ -3125,7 +3125,7 @@ by convention.
 that fills one in. Make it the size you need with `bytes.fill`, pass
 it, and read it afterwards.
 
-Lists, maps, Veyl structs and `T!` cannot cross. A function can, as a
+Lists, maps, Scandiacus structs and `T!` cannot cross. A function can, as a
 callback - see below. Anything else is an error pointing at the
 declaration.
 
@@ -3135,7 +3135,7 @@ declaration.
 named ones pass through as themselves, with floats duplicated into
 integer registers because the x64 calling convention requires it:
 
-```veyl
+```scandiacus
 extern fn printf(fmt: str, ...) -> int
 printf("%d %s\n", 7, "dots")
 ```
@@ -3147,8 +3147,8 @@ printf("%d %s\n", 7, "dots")
 - Arity is checked like any function's; a variadic extern takes at
   least its named arguments.
 - If the program needs a library that is not beside the source, in an
-  installed package, in System32 or on PATH, `veyl build` and
-  `veyl run` refuse before building and name it. Windows would
+  installed package, in System32 or on PATH, `scandiacus build` and
+  `scandiacus run` refuse before building and name it. Windows would
   otherwise abort the program at startup with an error number instead
   of a sentence.
 
@@ -3165,7 +3165,7 @@ program read into a buffer. A value of one is a **view**: the address
 of its first byte. Reading a field loads it from memory at its own
 width; writing one stores it there.
 
-```veyl
+```scandiacus
 extern struct Vec3 { x: f32, y: f32, z: f32 }
 
 extern struct Player {
@@ -3193,7 +3193,7 @@ field to an exact offset instead, and the fields after it carry on from
 its end - which is how a structure is described when only a few of its
 offsets are known.
 
-```veyl
+```scandiacus
 let raw = mem.alloc(Player.size)    // Player.size is 68
 let p = Player(raw)                 // a view at an address
 p.hp = 100
@@ -3207,7 +3207,7 @@ mem.free(raw)
 A literal allocates zeroed memory the collector owns, for the common
 case of filling in a structure and passing it to Windows:
 
-```veyl
+```scandiacus
 extern struct SYSTEMTIME { year: u16, month: u16, weekday: u16, day: u16,
                            hour: u16, minute: u16, second: u16, ms: u16 }
 extern fn GetSystemTime(t: SYSTEMTIME)
@@ -3225,7 +3225,7 @@ structs the same as on any other.
 Nothing checks that a view points somewhere valid. Reading a field of
 one that does not stops the program the way it would in C.
 
-`examples/ffi/memreader.vl` puts this together: it lists running
+`examples/ffi/memreader.scd` puts this together: it lists running
 programs, finds where one is loaded, and follows a pointer chain
 through its memory.
 
@@ -3235,7 +3235,7 @@ through its memory.
 to `u64`, `f32`, `f64`, `bool`, `ptr`), an extern struct, or another
 pointer.
 
-```veyl
+```scandiacus
 let raw = mem.alloc(64)
 let p = raw as *i32           // an address becomes a pointer with `as`
 *p = 7                        // write through it
@@ -3256,7 +3256,7 @@ float. Nothing needs a `mem.readI32` or a `* 4`.
 A pointer to an extern struct reads its fields the way C's `->` does,
 and indexes an array of them:
 
-```veyl
+```scandiacus
 extern struct Vec3 { x: f32, y: f32, z: f32 }
 
 let vs = mem.alloc(Vec3.size * 3) as *Vec3
@@ -3269,7 +3269,7 @@ let v = vs[1]                 // a view of it, as before
 A field can be a pointer, including to its own kind, so a list in
 memory is written the way it is in C:
 
-```veyl
+```scandiacus
 extern struct Node {
     value: i32
     next: *Node
@@ -3288,7 +3288,7 @@ Pointers of the same type compare with `==`, `<` and the rest.
 `&` takes the address of memory - a field of an extern struct, `*p` or
 `p[i]` - and gives back a pointer to it:
 
-```veyl
+```scandiacus
 let pz = &vs[2].z             // *f32
 *pz = 8.0
 ```
@@ -3296,7 +3296,7 @@ let pz = &vs[2].z             // *f32
 `&` on a variable gives its address, which is what a native function
 with an out-parameter wants:
 
-```veyl
+```scandiacus
 extern fn strtol(s: str, end: **u8, base: i32) -> i32 from "msvcrt"
 extern fn frexp(x: float, exp: *i32) -> float from "msvcrt"
 
@@ -3325,7 +3325,7 @@ not outlive that. The compiler follows the address through the
 function - into other variables, through `+`, `-` and `as` - and
 refuses the ways out it can see:
 
-```veyl
+```scandiacus
 fn broken() -> *i32 {
     let x: i32 = 5
     return &x            // error: the address of a local variable
@@ -3353,7 +3353,7 @@ not.
 Across `extern`, a pointer is one 64-bit word both ways, like `ptr`,
 and a callback can take pointers:
 
-```veyl
+```scandiacus
 extern fn qsort(base: *i32, n: int, size: int, cmp: fn(*i32, *i32) -> int) from "msvcrt"
 
 fn ascending(x: *i32, y: *i32) -> int {
@@ -3372,7 +3372,7 @@ address as a number.
 back a pointer to it; `new [n]T` allocates `n` of them in a row, and
 `new T{...}` fills fields in. `delete(p)` frees it.
 
-```veyl
+```scandiacus
 extern struct Vec3 { x: f32, y: f32, z: f32 }
 
 let v = new Vec3{x: 1, y: 2}      // *Vec3
@@ -3391,7 +3391,7 @@ delete(count)
 
 `T` is a C scalar (`i8` to `u64`, `f32`, `f64`, `bool`, `ptr`, and
 `int` and `float` as `i64` and `f64`), an extern struct or a pointer
-type. A Veyl struct is made with a literal instead; the collector owns
+type. A Scandiacus struct is made with a literal instead; the collector owns
 it.
 
 This memory is never collected and never moved. That is the
@@ -3400,7 +3400,7 @@ and frees once nothing refers to them. `new` memory is freed by
 `delete` or not at all, and it comes from the same C runtime as
 native code linked against `msvcrt`, so either side can free what the
 other allocated. A pointer to it can be kept anywhere - a local, a
-field of a Veyl struct, a list, a map, a global - and passed to native
+field of a Scandiacus struct, a list, a map, a global - and passed to native
 code as it is. `delete` on `nil` does nothing; using memory after
 `delete`, or deleting it twice, is undefined, as in C. When memory
 runs out, `new` stops the program with a runtime error.
@@ -3408,7 +3408,7 @@ runs out, `new` stops the program with a runtime error.
 A pointer to an extern struct reaches its fields and calls its methods
 the way C++'s `->` does:
 
-```veyl
+```scandiacus
 impl Vec3 {
     fn scale(self, k: f32) {
         self.x *= k
@@ -3427,10 +3427,10 @@ Assigning a pointer or a view copies the address. `*dst = *src`, or
 
 ### Callbacks
 
-A parameter with a function type takes a Veyl function that native
+A parameter with a function type takes a Scandiacus function that native
 code will call back:
 
-```veyl
+```scandiacus
 extern fn qsort(base: ptr, n: int, size: int, cmp: fn(ptr, ptr) -> int)
 
 fn byValue(a: int, b: int) -> int {
@@ -3440,7 +3440,7 @@ fn byValue(a: int, b: int) -> int {
 qsort(buf, count, 4, byValue)
 ```
 
-```veyl
+```scandiacus
 extern fn EnumWindows(each: fn(ptr, ptr) -> bool, data: ptr) -> bool from "user32"
 
 fn onWindow(hwnd: int, data: int) -> bool {
@@ -3453,7 +3453,7 @@ EnumWindows(onWindow, 0)
 The types in the callback's signature follow the rest of the boundary:
 `int` and `bool` are the C types, 32 bits, and `ptr` is a full 64-bit
 value - so a handle, a pointer, an `LPARAM` or an `LRESULT` is `ptr`. A
-`float` is a double. The Veyl function itself takes plain `int`s.
+`float` is a double. The Scandiacus function itself takes plain `int`s.
 
 A fixed-width type in the signature is exactly that C type: `u8`,
 `i16`, `u32` and the rest arrive at their width, whatever the caller
@@ -3471,7 +3471,7 @@ Callbacks work the same on Linux and macOS. Native code there calls
 with the System V convention, which places arguments differently -
 integers and floats counted separately, more of them in registers, no
 shadow space - so the address native code is given is a stub that moves
-them to where a Veyl function expects them. `tests/callbacks_c.vl`
+them to where a Scandiacus function expects them. `tests/callbacks_c.scd`
 sorts through the C library's `qsort` and calls through
 `mem.callback` with mixed integer and float arguments on all three
 systems.
@@ -3482,7 +3482,7 @@ procedure in a `WNDCLASSEXW`, a table of methods for a COM object -
 arrives as the whole 64-bit register, so a 32-bit one is masked by
 hand:
 
-```veyl
+```scandiacus
 fn wndProc(h: int, msg: int, wp: int, lp: int) -> int {
     let m = msg & 0xFFFFFFFF            // a UINT
     ...
@@ -3498,10 +3498,10 @@ first. The `ui` library is built this way.
 
 ### Building a DLL
 
-`veyl build --dll mod.vl` writes `mod.dll`. `export fn` puts a function
+`scandiacus build --dll mod.scd` writes `mod.dll`. `export fn` puts a function
 in its export table under its own name:
 
-```veyl
+```scandiacus
 print("mod loaded")               // runs once, as the DLL loads
 
 export fn add(a: int, b: int) -> int {
@@ -3510,15 +3510,15 @@ export fn add(a: int, b: int) -> int {
 ```
 
 Anything that loads DLLs can load it - a mod loader, a host program's
-plugin folder, `LoadLibrary` and `GetProcAddress`, or another Veyl
+plugin folder, `LoadLibrary` and `GetProcAddress`, or another Scandiacus
 program:
 
-```veyl
+```scandiacus
 extern fn add(a: ptr, b: ptr) -> ptr from "mod"
 print(add(40, 2))
 ```
 
-For code calling an export, a Veyl `int` is a 64-bit `int64_t`, a
+For code calling an export, a Scandiacus `int` is a 64-bit `int64_t`, a
 `float` is a `double`, a `str` is a `const char*`, a `bool` is read as a
 C `BOOL`, and an extern struct is a pointer to it.
 
@@ -3563,7 +3563,7 @@ program to be as well, and returns `0` otherwise. A handle from
 `proc.open` is closed with `proc.close`; the one from `proc.current`
 is not.
 
-```veyl
+```scandiacus
 let h = proc.current()
 let cell = mem.alloc(8)
 
@@ -3581,7 +3581,7 @@ scan over a range does not have to know in advance which parts are
 readable. `proc.scan` takes a byte pattern in hex separated by spaces,
 with `??` matching any byte, the same form `mem.scan` takes:
 
-```veyl
+```scandiacus
 let at = proc.scan(h, region, 0x1000, "90 48 8B ?? ??")
 if at != -1 {
     print(proc.readU8(h, at))         // 144, the 0x90
@@ -3620,7 +3620,7 @@ private memory) and three bools worked out from the protection:
 program that uses these calls cannot declare a struct of its own with
 either name.
 
-```veyl
+```scandiacus
 let pid = proc.find("notepad.exe")
 if pid == 0 {
     print("notepad is not running")
@@ -3703,7 +3703,7 @@ a GUID stops the program.
 A memory stream, written and read back through `IStream` (3 `Read`,
 4 `Write`, 5 `Seek`):
 
-```veyl
+```scandiacus
 let stream = 0
 mem.call(mem.symbol("ole32.dll", "CreateStreamOnHGlobal"), 0, 1, &stream)
 
@@ -3722,15 +3722,15 @@ An object made from its class id, with wide strings in and out - the
 shell's shortcut object, `IShellLinkW` (6 `GetDescription`,
 7 `SetDescription`):
 
-```veyl
+```scandiacus
 com.init()
 let link = must(com.create("00021401-0000-0000-C000-000000000046",
                            "000214F9-0000-0000-C000-000000000046"))
-com.call(link, 7, mem.wide("made by a Veyl program"))
+com.call(link, 7, mem.wide("made by a Scandiacus program"))
 
 let buf = mem.alloc(520)
 com.call(link, 6, buf, 260)
-print(mem.wstr(buf))                         // made by a Veyl program
+print(mem.wstr(buf))                         // made by a Scandiacus program
 
 let file = com.query(link, "0000010B-0000-0000-C000-000000000046")
 if failed(file) {
@@ -3744,7 +3744,7 @@ com.done()
 `com.create` before `com.init` fails with `0x800401F0` and says so. An
 interface pointer is an `int`; nothing checks that it is one, that the
 slot exists, or that the arguments are what the method takes, exactly
-as with `mem.call`. `examples/ffi/adapters.vl` lists the display
+as with `mem.call`. `examples/ffi/adapters.scd` lists the display
 adapters through DXGI this way.
 
 An API that calls back through an interface of yours - an event
@@ -3757,10 +3757,10 @@ offset 8, read with `mem.readU16` and friends.
 
 ## `win` - windows, drawing and input
 
-Veyl opens a real window you can draw in. The shape is a **game loop**:
+Scandiacus opens a real window you can draw in. The shape is a **game loop**:
 open once, then poll, draw, present, repeat.
 
-```veyl
+```scandiacus
 let w = must(win.open("my game", 800, 500))
 
 while win.poll(w) {
@@ -3829,7 +3829,7 @@ fires sixty times a second. `clicked` is true for one frame per press.
 
 ### Widgets
 
-Built on the above, and written in Veyl. They are **immediate mode**:
+Built on the above, and written in Scandiacus. They are **immediate mode**:
 there is no widget tree and nothing to keep in sync, so a button draws
 itself and tells you whether it was clicked in the same call.
 
@@ -3839,7 +3839,7 @@ itself and tells you whether it was clicked in the same call.
 | `win.bar(w, x, y, width, height, frac, colour)` | | a fill bar, `frac` from 0.0 to 1.0 |
 | `win.hover(w, x, y, width, height)` | `bool` | is the pointer inside this box |
 
-```veyl
+```scandiacus
 let count = 0
 while win.poll(w) {
     win.clear(w, win.rgb(22, 24, 32))
@@ -3874,7 +3874,7 @@ the drawing area changes, so `win.width(w)` and `win.height(w)` are
 always current. Draw in terms of them rather than the numbers you
 passed to `win.open` and the layout follows the window:
 
-```veyl
+```scandiacus
 win.resizable(w, true)
 while win.poll(w) {
     win.clear(w, bg)
@@ -3906,7 +3906,7 @@ with what is already there by its own alpha.
 
 A PNG with a transparent background needs nothing more than `draw`:
 
-```veyl
+```scandiacus
 let player = must(win.image("player.png"))
 while win.poll(w) {
     win.clear(w, bg)
@@ -3921,7 +3921,7 @@ background: paint the background one colour nobody uses - magenta,
 `win.rgb(255, 0, 255)`, is the tradition - and name that colour when
 drawing.
 
-PNGs are decoded by Veyl itself. Every colour type is supported at 8
+PNGs are decoded by Scandiacus itself. Every colour type is supported at 8
 bits a sample, and palette images at 1, 2, 4 and 8 bits; interlaced and
 16-bit PNGs are refused with a message saying so. Decoding is not fast
 - about half a second for a large, noisy 512x512 image - so load images
@@ -3934,7 +3934,7 @@ once, before the game loop.
 | `win.textWidth(w, s)` | `int` | how wide `s` is when drawn, in pixels |
 | `win.textHeight(w)` | `int` | the height of a line of text |
 
-```veyl
+```scandiacus
 let label = "game over"
 let x = (win.width(w) - win.textWidth(w, label)) / 2
 win.text(w, x, 200, label, white)          // centred
@@ -3947,7 +3947,7 @@ drawing function works on it, nothing appears on screen, and
 `win.pixel(c, x, y)` reads a colour back - `-1` outside it. It is for
 drawing off-screen, and for checking what was drawn:
 
-```veyl
+```scandiacus
 let c = win.canvas(64, 64)
 win.clear(c, win.rgb(0, 0, 0))
 win.circle(c, 32, 32, 10, win.rgb(255, 255, 255))
@@ -3964,7 +3964,7 @@ last `present`.
 at `x, y`. A pixel is `0x00RRGGBB` - note that this is not the order
 `win.rgb` uses, which is Windows' own `0x00BBGGRR`.
 
-```veyl
+```scandiacus
 let px = win.pixels(w)
 let W = win.width(w)
 for x in 0..W {
@@ -3982,7 +3982,7 @@ result you want to read, since it flushes them first.
 
 Nothing checks the index. The buffer is replaced when a resizable
 window changes size, so take the pointer again each frame rather than
-keeping it. `examples/gui/render3d.vl` is a 3D renderer built on this,
+keeping it. `examples/gui/render3d.scd` is a 3D renderer built on this,
 with a depth buffer of its own from `mem.alloc`.
 
 ### What it does not do yet
@@ -3990,28 +3990,28 @@ with a depth buffer of its own from `mem.alloc`.
 No JPEG, and no interlaced or 16-bit PNG. One font, at the system
 size. One window per program.
 
-Working examples are in `examples/gui/`: `pong.vl` is a playable game
-in about 130 lines, `widgets.vl` exercises the widget set, and
-`sprites.vl` draws images and centres text.
+Working examples are in `examples/gui/`: `pong.scd` is a playable game
+in about 130 lines, `widgets.scd` exercises the widget set, and
+`sprites.scd` draws images and centres text.
 
 ---
 
 ## `ui` - interfaces in HTML and CSS
 
 A window whose contents are a web page: the layout, fonts, colours and
-animation of anything a browser can show, driven by a Veyl program.
+animation of anything a browser can show, driven by a Scandiacus program.
 The page talks to the program with messages, both ways.
 
-```veyl
+```scandiacus
 let app = must(ui.open("Counter", 420, 300))
 ui.html(app, `<!doctype html>
 <style>
   body { font: 16px system-ui; display: grid; place-items: center; height: 100vh; margin: 0 }
   button { font-size: 24px; padding: 12px 28px; border-radius: 12px; border: 0 }
 </style>
-<button onclick="veyl.send('click')">clicked 0 times</button>
+<button onclick="scandiacus.send('click')">clicked 0 times</button>
 <script>
-  veyl.onmessage = (n) => document.querySelector('button').textContent = 'clicked ' + n + ' times'
+  scandiacus.onmessage = (n) => document.querySelector('button').textContent = 'clicked ' + n + ' times'
 </script>`)
 
 let clicks = 0
@@ -4039,11 +4039,11 @@ ui.close(app)
 | `ui.title(app, title)` | - | change the window's title |
 | `ui.close(app)` | - | close the window |
 
-**In the page** there is a `veyl` object. `veyl.send(x)` sends `x` to
+**In the page** there is a `scandiacus` object. `scandiacus.send(x)` sends `x` to
 the program - a string as it is, anything else as JSON - and
-`veyl.onmessage`, when set to a function, receives each `ui.send`.
+`scandiacus.onmessage`, when set to a function, receives each `ui.send`.
 JSON is the natural way to carry more than a word: send
-`veyl.send({op: "add", text: t})` and read it with
+`scandiacus.send({op: "add", text: t})` and read it with
 `json.get(m, "op")`; send a whole list back with
 `ui.send(app, json.encode(items))` and `JSON.parse` it in the page.
 
@@ -4063,15 +4063,15 @@ get it. F12 opens the developer tools, which is the way to debug a
 page. The window follows Windows' dark mode for its title bar. Linux
 and macOS are not done yet: `ui.open` fails there.
 
-`examples/ui/todo.vl` is a complete to-do list, saved to a file, in
-about 120 lines of HTML and CSS and 40 of Veyl.
+`examples/ui/todo.scd` is a complete to-do list, saved to a file, in
+about 120 lines of HTML and CSS and 40 of Scandiacus.
 
 ## Testing
 
 Tests live beside the code they test, in the same file or another, as
 `test` blocks:
 
-```veyl
+```scandiacus
 fn add(a: int, b: int) -> int {
     return a + b
 }
@@ -4082,13 +4082,13 @@ test "adds small numbers" {
 }
 ```
 
-`veyl test` builds and runs them; `veyl run` and `veyl build` leave them
+`scandiacus test` builds and runs them; `scandiacus run` and `scandiacus build` leave them
 out. In a test build the program body does not run, only the tests, so
 a test file can also be the program.
 
 ```
-veyl test calc.vl
-PASS  calc.vl: adds small numbers (0.00s)
+scandiacus test calc.scd
+PASS  calc.scd: adds small numbers (0.00s)
 1 passed, 0 failed
 ```
 
@@ -4102,23 +4102,23 @@ line, and `expectEq` says what both sides were, so one run shows
 everything that is wrong:
 
 ```
-FAIL  calc.vl: adds small numbers (0.00s)
-    calc.vl:7: got 4, want 5
+FAIL  calc.scd: adds small numbers (0.00s)
+    calc.scd:7: got 4, want 5
 ```
 
 Every test runs in a process of its own, so one that crashes or stops on
-a runtime error fails alone and the rest still run. `veyl test` exits 1
+a runtime error fails alone and the rest still run. `scandiacus test` exits 1
 if any failed, for a CI step.
 
-`veyl test folder` runs every `.vl` under it that has tests, skipping
-`veyl_modules`. `veyl test --run text` runs only the tests whose names
+`scandiacus test folder` runs every `.scd` under it that has tests, skipping
+`scandiacus_modules`. `scandiacus test --run text` runs only the tests whose names
 contain `text`.
 
-**Benchmarks** are `bench` blocks. `veyl test --bench` runs each body
+**Benchmarks** are `bench` blocks. `scandiacus test --bench` runs each body
 1, 2, 4... times until a round takes half a second, and says how long
 one run took:
 
-```veyl
+```scandiacus
 bench "joining 100 strings" {
     let parts: []str = []
     for i in 0..100 {
@@ -4129,7 +4129,7 @@ bench "joining 100 strings" {
 ```
 
 ```
-BENCH calc.vl: joining 100 strings  262144 runs, 2.5 us each
+BENCH calc.scd: joining 100 strings  262144 runs, 2.5 us each
 ```
 
 `test` and `bench` are keywords only at the top of a file before a
@@ -4163,43 +4163,43 @@ defer own unsafe
 
 | Command | Effect |
 | --- | --- |
-| `veyl run f.vl` | compile and run |
-| `veyl build f.vl` | write `f.exe` next to the source |
-| `veyl build --dll f.vl` | write `f.dll`; see [Building a DLL](#building-a-dll) |
-| `veyl build f.vl -o path` | write the executable at `path` instead, making its folder if need be (`--out=path` too) |
-| `veyl build f.vl --product Name --description text --company Name --copyright text --file-version 1.2.3` | what Properties, Details shows for a Windows executable. Without them the product and description are the file's name and the version 1.0.0.0 |
-| `veyl build f.vl --icon game.ico` | give a Windows executable the icon Explorer, the taskbar and shortcuts show; every size in the `.ico` is kept. A Linux or macOS build says it left the icon out, since those executables carry none |
-| `veyl build --linux f.vl`, `--macos`, `--windows` | build for that system, whichever one veyl runs on; see [Cross compiling](#cross-compiling) |
-| `veyl cross install` | set up building for Linux and macOS from the other systems (once; `veyl cross` says whether it is) |
-| `veyl asm f.vl` | print the generated assembly |
-| `veyl ir f.vl` | print the intermediate representation |
-| `veyl doc f.vl` | a reference of the file's declarations with the comments above them, as Markdown; `-o api.md` writes it to a file, `-o api.html` as a web page (a file that marks anything `pub` documents only that) |
-| `veyl check f.vl` | the errors and warnings `veyl build` would print, without building; fails only on errors |
-| `veyl test f.vl` | run the file's `test` blocks (a folder runs every file with tests; `--run text` only matching names; `--bench` the `bench` blocks); see [Testing](#testing) |
-| `veyl fmt f.vl` | lay a file out the standard way: 4-space indents, one space around operators, one blank line at most (a folder formats every `.vl` in it; `--check` changes nothing and fails if anything would) |
-| `veyl lsp` | the language server an editor starts, on stdin and stdout |
-| `veyl vscode` | install the VS Code extension: highlighting, errors as you type, completion, go to definition, hover, and a button that runs the file |
-| `veyl version` | print the version |
-| `veyl f.vl` | same as `run` |
+| `scandiacus run f.scd` | compile and run |
+| `scandiacus build f.scd` | write `f.exe` next to the source |
+| `scandiacus build --dll f.scd` | write `f.dll`; see [Building a DLL](#building-a-dll) |
+| `scandiacus build f.scd -o path` | write the executable at `path` instead, making its folder if need be (`--out=path` too) |
+| `scandiacus build f.scd --product Name --description text --company Name --copyright text --file-version 1.2.3` | what Properties, Details shows for a Windows executable. Without them the product and description are the file's name and the version 1.0.0.0 |
+| `scandiacus build f.scd --icon game.ico` | give a Windows executable the icon Explorer, the taskbar and shortcuts show; every size in the `.ico` is kept. A Linux or macOS build says it left the icon out, since those executables carry none |
+| `scandiacus build --linux f.scd`, `--macos`, `--windows` | build for that system, whichever one scandiacus runs on; see [Cross compiling](#cross-compiling) |
+| `scandiacus cross install` | set up building for Linux and macOS from the other systems (once; `scandiacus cross` says whether it is) |
+| `scandiacus asm f.scd` | print the generated assembly |
+| `scandiacus ir f.scd` | print the intermediate representation |
+| `scandiacus doc f.scd` | a reference of the file's declarations with the comments above them, as Markdown; `-o api.md` writes it to a file, `-o api.html` as a web page (a file that marks anything `pub` documents only that) |
+| `scandiacus check f.scd` | the errors and warnings `scandiacus build` would print, without building; fails only on errors |
+| `scandiacus test f.scd` | run the file's `test` blocks (a folder runs every file with tests; `--run text` only matching names; `--bench` the `bench` blocks); see [Testing](#testing) |
+| `scandiacus fmt f.scd` | lay a file out the standard way: 4-space indents, one space around operators, one blank line at most (a folder formats every `.scd` in it; `--check` changes nothing and fails if anything would) |
+| `scandiacus lsp` | the language server an editor starts, on stdin and stdout |
+| `scandiacus vscode` | install the VS Code extension: highlighting, errors as you type, completion, go to definition, hover, and a button that runs the file |
+| `scandiacus version` | print the version |
+| `scandiacus f.scd` | same as `run` |
 
 ### Packages
 
 | Command | Effect |
 | --- | --- |
-| `veyl get <name>` | install from the official registry |
-| `veyl get <user/repo>` | install from any GitHub repository |
-| `veyl get <url>` | install from a url |
-| `veyl get officials` | install every official package |
-| `veyl get officials --nodlls` | the same, minus the ones carrying a native library |
-| `veyl get <user/repo> --all` | every package a registry lists |
-| `veyl list` | what is installed here |
-| `veyl remove <name>` | uninstall it |
+| `scandiacus get <name>` | install from the official registry |
+| `scandiacus get <user/repo>` | install from any GitHub repository |
+| `scandiacus get <url>` | install from a url |
+| `scandiacus get officials` | install every official package |
+| `scandiacus get officials --nodlls` | the same, minus the ones carrying a native library |
+| `scandiacus get <user/repo> --all` | every package a registry lists |
+| `scandiacus list` | what is installed here |
+| `scandiacus remove <name>` | uninstall it |
 
-Packages land in `./veyl_modules` next to your program rather than
+Packages land in `./scandiacus_modules` next to your program rather than
 machine-wide, so a project carries its own dependencies and deleting
 the directory uninstalls everything. A bare import finds one:
 
-```veyl
+```scandiacus
 import "totp"
 print(must(totpNow(secret)))
 ```
@@ -4207,7 +4207,7 @@ print(must(totpNow(secret)))
 An import lands in a **flat namespace** - there is no `totp.`
 qualifier - so packages prefix their exported names by convention.
 
-A package may carry a native `.dll`, which `veyl build` copies next to
+A package may carry a native `.dll`, which `scandiacus build` copies next to
 the executable. That is how [`sqlite`](#db---sqlite) works without
 every install carrying three megabytes of database.
 
@@ -4226,20 +4226,20 @@ every install carrying three megabytes of database.
 | `validator` | Checking data, collecting every problem rather than the first |
 | `vulkan` | Vulkan on a `win` window: swapchain, depth, pipelines from SPIR-V, push constants |
 
-Each one documents itself at the top of its `.vl` file, including what
+Each one documents itself at the top of its `.scd` file, including what
 it deliberately does not do. `toml`, for instance, refuses dates,
 inline tables and arrays of tables rather than guessing at them.
 
 The registry is
-[owlspan/veyl-packages](https://github.com/owlspan/veyl-packages), and
+[owlspan/scandiacus-packages](https://github.com/owlspan/scandiacus-packages), and
 its README covers writing your own. You do not have to be in the
 registry to publish one.
 
-Anything after the `.vl` file goes to your program rather than to the
+Anything after the `.scd` file goes to your program rather than to the
 compiler, so this reaches `args.flag("verbose")`:
 
 ```
-veyl run tool.vl --verbose
+scandiacus run tool.scd --verbose
 ```
 
 ### Reading what it compiled to
@@ -4250,8 +4250,8 @@ the readable one - three-address code over virtual registers, before
 anything knows an x86 register exists.
 
 ```
-veyl ir hello.vl
-veyl asm hello.vl
+scandiacus ir hello.scd
+scandiacus asm hello.scd
 ```
 
 ### Antivirus
@@ -4259,7 +4259,7 @@ veyl asm hello.vl
 New compilers' output gets flagged by antivirus engines that have never
 seen it, mostly by the machine-learning ones, which score a file on how
 much it looks like what mainstream toolchains write. A Windows
-executable from Veyl is built to look like one:
+executable from Scandiacus is built to look like one:
 
 - the DOS stub every linker writes, and a real timestamp and checksum;
 - address space layout randomisation: the program loads wherever
@@ -4268,28 +4268,28 @@ executable from Veyl is built to look like one:
   manifest asking for no elevation, which also stops Windows asking for
   administrator rights for a program called `setup.exe`.
 
-What Veyl cannot do for you is sign the file. A signature is the
+What Scandiacus cannot do for you is sign the file. A signature is the
 strongest signal there is, and SmartScreen's "unrecognised app" warning
 only goes away once a signed file has built up reputation. Signing
 needs a code signing certificate; open-source projects can get one free
 through SignPath Foundation, and Azure Trusted Signing costs a few
-dollars a month. Sign with `signtool sign` after `veyl build`.
+dollars a month. Sign with `signtool sign` after `scandiacus build`.
 
 A detection that still comes up is a false positive, and every vendor
 takes reports: Microsoft through its security intelligence submission
 page, the others through the address on their VirusTotal entry.
 
-### Right-clicking a .vl file
+### Right-clicking a .scd file
 
 The installer puts these on the menu:
 
-- **Run with Veyl**
+- **Run with Scandiacus**
 - **Compile to .exe**
-- **Veyl**, a submenu: the generated assembly, the IR, or a prompt in
+- **Scandiacus**, a submenu: the generated assembly, the IR, or a prompt in
   that folder
 
-Right-clicking any folder gives **Open Veyl prompt here**. Double-
-clicking a `.vl` file runs it. All of them open a console that stays
+Right-clicking any folder gives **Open Scandiacus prompt here**. Double-
+clicking a `.scd` file runs it. All of them open a console that stays
 up, so you can read what it said whether that was output or errors.
 
 ### Errors
@@ -4298,22 +4298,22 @@ Every error names a file, a line and a column, and the compiler reports
 all of them rather than stopping at the first:
 
 ```
-hello.vl:3:1: "y" is declared as int but the value is str
-hello.vl:4:9: '+' needs numbers, got int and bool
-veyl: 2 error(s)
+hello.scd:3:1: "y" is declared as int but the value is str
+hello.scd:4:9: '+' needs numbers, got int and bool
+scandiacus: 2 error(s)
 ```
 
 **Warnings** are things that are allowed but are almost always a
 mistake. They never stop a build:
 
 ```
-hello.vl:2:5: warning: "spare" is declared but never used
-hello.vl:4:5: warning: this can never run - it comes after a return
+hello.scd:2:5: warning: "spare" is declared but never used
+hello.scd:4:5: warning: this can never run - it comes after a return
 ```
 
 A `let` nothing reads is reported - assigning to it does not count as
 reading - except when its name starts with `_`, which is the way to keep
-a value on purpose. `veyl build` and `veyl check` print warnings; `veyl
+a value on purpose. `scandiacus build` and `scandiacus check` print warnings; `scandiacus
 run` does not, so a program's output is only its own. In VS Code they
 show as yellow squiggles.
 
@@ -4321,8 +4321,8 @@ A name that does not exist is reported in the same list, and when a
 real name is close enough to be a likely slip, it is offered:
 
 ```
-hello.vl:5:7: undefined variable "totl" - did you mean "total"?
-hello.vl:6:7: undefined function "lenn" - did you mean "len"?
+hello.scd:5:7: undefined variable "totl" - did you mean "total"?
+hello.scd:6:7: undefined function "lenn" - did you mean "len"?
 ```
 
 ---
@@ -4393,25 +4393,25 @@ Honest list of what v1.84.0 does not do yet.
 Any of the three systems builds for the other two:
 
 ```
-veyl build --linux game.vl -o game        # on Windows or macOS
-veyl build --macos game.vl -o game-mac    # on Windows or Linux
-veyl build --windows game.vl              # on Linux or macOS
+scandiacus build --linux game.scd -o game        # on Windows or macOS
+scandiacus build --macos game.scd -o game-mac    # on Windows or Linux
+scandiacus build --windows game.scd              # on Linux or macOS
 ```
 
-A Windows executable needs nothing beyond veyl on any system, since veyl
+A Windows executable needs nothing beyond scandiacus on any system, since scandiacus
 writes the PE itself. A Linux or macOS one is linked by a C toolchain
 for that system, and from another system that is zig's: run
-`veyl cross install` once and it downloads zig 0.13.0 (about 80 MB,
+`scandiacus cross install` once and it downloads zig 0.13.0 (about 80 MB,
 300 MB unpacked, checked against a pinned hash) into the user cache
 folder. The Windows installer does the same when its "Cross compiling"
-component is ticked. veyl looks for zig in `VEYL_ZIG`, then a `zig`
-folder beside veyl, then the cache, then `PATH`. The first build for a
+component is ticked. scandiacus looks for zig in `SCANDIACUS_ZIG`, then a `zig`
+folder beside scandiacus, then the cache, then `PATH`. The first build for a
 system takes a few seconds longer while zig prepares its C library for
 it; later ones do not.
 
 What differs from a native build: sqlite is loaded at run time on Linux
 too (the system's `libsqlite3.so.0`) rather than linked, and an `extern
-fn` from a library veyl does not know by name cannot be linked, since
+fn` from a library scandiacus does not know by name cannot be linked, since
 the library is not on the building machine. A macOS executable built
 elsewhere is unsigned, like one built on a Mac; see the macOS notes.
 
@@ -4419,7 +4419,7 @@ elsewhere is unsigned, like one built on a Mac; see the macOS notes.
 
 - **Three systems, x86-64 only.** Programs build for Windows, Linux or
   macOS (`--windows`, `--linux`, `--macos`; the default is the system
-  veyl runs on). macOS is x86-64, which runs natively on Intel and
+  scandiacus runs on). macOS is x86-64, which runs natively on Intel and
   through Rosetta on Apple Silicon; there is no ARM code generator yet.
   Every golden program that is not Windows-only is built and run on a
   Mac in CI (Apple Silicon, under Rosetta) and prints what it should.
@@ -4440,7 +4440,7 @@ elsewhere is unsigned, like one built on a Mac; see the macOS notes.
   runtime provides.
 - **A Linux or macOS build needs a C toolchain.** On its own system it
   uses the system's (`as`, `objcopy` and `cc` on Linux, `cc` on a Mac);
-  from another system, zig's, after `veyl cross install`. A Windows
+  from another system, zig's, after `scandiacus cross install`. A Windows
   build needs nothing.
 - **One window per program**, one font at the system size.
 

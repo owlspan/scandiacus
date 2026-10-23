@@ -1,6 +1,6 @@
 package main
 
-// PNG decoding, in Veyl.
+// PNG decoding, in Scandiacus.
 //
 // Windows has no plain call that turns a PNG file into pixels - that is
 // WIC, a COM API - so the decoder is here: DEFLATE, the PNG chunks, and

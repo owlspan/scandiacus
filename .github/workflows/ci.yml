@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: veyl
+          path: scandiacus
 
       - uses: actions/setup-go@v5
         with:
@@ -19,20 +19,20 @@ jobs:
           cache: false
 
       - name: Test the front end
-        working-directory: veyl/frontend
+        working-directory: scandiacus/frontend
         run: go test ./...
 
       - name: Test the compiler
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         run: go test ./...
 
       # The same programs with the collector running at almost every
       # statement, so a collection that frees something live fails here
       # rather than somewhere else, later.
       - name: Test with eager collection
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         env:
-          VEYL_GC: eager
+          SCANDIACUS_GC: eager
         run: go test -count=1 -run "TestGolden|TestDLL" ./compiler
 
   # The Linux target: the same programs built as Linux executables and
@@ -42,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: veyl
+          path: scandiacus
 
       - uses: actions/setup-go@v5
         with:
@@ -50,30 +50,30 @@ jobs:
           cache: false
 
       - name: Test the front end
-        working-directory: veyl/frontend
+        working-directory: scandiacus/frontend
         run: go test ./...
 
       - name: Test the compiler
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         run: go test ./...
 
       - name: Test with eager collection
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         env:
-          VEYL_GC: eager
+          SCANDIACUS_GC: eager
         run: go test -count=1 -run "TestGolden|TestErrorLocations" ./compiler
 
       - name: Test with the optimiser off
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         env:
-          VEYL_NOOPT: '1'
+          SCANDIACUS_NOOPT: '1'
         run: go test -count=1 -run "TestGolden|TestErrorLocations" ./compiler
 
       # Live audio through PulseAudio, against a null sink: whether a
       # stream opens and keeps time. Shown, not required - a runner's
       # audio setup is not the code's.
       - name: Audio
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         continue-on-error: true
         run: |
           sudo apt-get install -y -q pulseaudio >/dev/null
@@ -81,11 +81,11 @@ jobs:
           pactl load-module module-null-sink sink_name=ci
           pactl set-default-sink ci
           pactl set-default-source ci.monitor
-          go build -o veylc ./compiler
-          timeout 60 ./veylc run examples/audio/check.vl
+          go build -o scandiacusc ./compiler
+          timeout 60 ./scandiacusc run examples/audio/check.scd
 
   # Cross compiling: each system builds the string test for the other
-  # two through `veyl cross install`, and each system then runs what the
+  # two through `scandiacus cross install`, and each system then runs what the
   # others built for it, checked against the expected output.
   cross-build:
     strategy:
@@ -99,7 +99,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: veyl
+          path: scandiacus
 
       - uses: actions/setup-go@v5
         with:
@@ -107,24 +107,24 @@ jobs:
           cache: false
 
       - name: Build for the other systems
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         run: |
-          go build -o veylc.exe ./compiler
-          ./veylc.exe cross install
+          go build -o scandiacusc.exe ./compiler
+          ./scandiacusc.exe cross install
           host=$(echo "${{ runner.os }}" | tr 'A-Z' 'a-z')
           mkdir -p out
           for t in windows linux macos; do
             [ "$t" = "$host" ] && continue
             flag=--$t; [ "$t" = macos ] && flag=--mac
             ext=; [ "$t" = windows ] && ext=.exe
-            ./veylc.exe build $flag tests/strbytes.vl -o "out/strbytes-$t-from-$host$ext"
+            ./scandiacusc.exe build $flag tests/strbytes.scd -o "out/strbytes-$t-from-$host$ext"
           done
           ls -l out
 
       - uses: actions/upload-artifact@v4
         with:
           name: cross-${{ matrix.os }}
-          path: veyl/asm-src/out
+          path: scandiacus/asm-src/out
 
   cross-run:
     needs: cross-build
@@ -139,7 +139,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: veyl
+          path: scandiacus
 
       - uses: actions/download-artifact@v4
         with:
@@ -153,7 +153,7 @@ jobs:
           for f in built/strbytes-$host-from-*; do
             chmod +x "$f"
             "$f" > got.txt
-            cmp got.txt veyl/asm-src/tests/strbytes.out
+            cmp got.txt scandiacus/asm-src/tests/strbytes.out
             echo "ok $f"
             n=$((n+1))
           done
@@ -166,7 +166,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: veyl
+          path: scandiacus
 
       - uses: actions/setup-go@v5
         with:
@@ -174,17 +174,17 @@ jobs:
           cache: false
 
       - name: Golden programs
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         run: go test -count=1 -run TestGolden ./compiler
 
       # HTTPS on a real Mac: a site with a good certificate and one with
       # an expired one. It needs the network, so a failure here is shown
       # but does not fail the run.
       - name: HTTPS
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         continue-on-error: true
         run: |
-          go build -o veylc ./compiler
+          go build -o scandiacusc ./compiler
           printf '%s\n' \
             'let r = http.get("https://example.com/")' \
             'if isOk(r) {' \
@@ -196,17 +196,17 @@ jobs:
             'print(isOk(bad))' \
             'if !isOk(bad) {' \
             '    print(errorOf(bad))' \
-            '}' > https.vl
-          ./veylc run https.vl | tee out.txt
+            '}' > https.scd
+          ./scandiacusc run https.scd | tee out.txt
           head -1 out.txt | grep -qx true
           sed -n 2p out.txt | grep -qx false
 
       # Live audio through an AudioQueue: shown, not required, since a
       # runner may have no sound device at all.
       - name: Audio
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         continue-on-error: true
         timeout-minutes: 2
         run: |
-          go build -o veylc ./compiler
-          ./veylc run examples/audio/check.vl
+          go build -o scandiacusc ./compiler
+          ./scandiacusc run examples/audio/check.scd

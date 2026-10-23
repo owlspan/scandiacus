@@ -9,7 +9,7 @@ package main
 // ws2_32.dll. They are listed there by name.
 //
 // A socket is a plain int here, the SOCKET handle Windows hands back.
-// That keeps the whole http layer writable in Veyl in the prelude,
+// That keeps the whole http layer writable in Scandiacus in the prelude,
 // where a socket is just a number to pass around.
 
 // WinSock constants, all from winsock2.h.
@@ -166,7 +166,7 @@ func (l *lowerer) netBuiltin(c *Call, name string) (Reg, bool) {
 			a[i] = l.expr(c.Args[i])
 		}
 		// WinHTTP on Windows; a plain socket client on Linux and macOS,
-		// written in Veyl and folded in from the prelude. The two share a
+		// written in Scandiacus and folded in from the prelude. The two share a
 		// signature so the caller cannot tell them apart.
 		if targetLinux() || targetMac() {
 			return l.callPrelude("__vy_httpOverNet", a), true
@@ -226,7 +226,7 @@ func (l *lowerer) netAccept(sock Reg) Reg {
 
 // callPrelude emits a call to a prelude function the lowerer reaches by
 // name, using the signature the prelude declared it with. It is how a
-// builtin the lowerer handles itself can still delegate to Veyl code -
+// builtin the lowerer handles itself can still delegate to Scandiacus code -
 // __winhttp routes here to __vy_httpOverNet off Windows.
 func (l *lowerer) callPrelude(fn string, args []Reg) Reg {
 	s, ok := l.sigs[fn]

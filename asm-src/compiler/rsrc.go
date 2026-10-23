@@ -256,7 +256,7 @@ func versionResource(vi versionInfo) resource {
 		{"OriginalFilename", vi.fileName},
 		{"ProductName", vi.product},
 		{"ProductVersion", ver},
-		{"Comments", "Built with Veyl " + Version},
+		{"Comments", "Built with Scandiacus " + Version},
 	}
 	var strs [][]byte
 	for _, kv := range pairs {

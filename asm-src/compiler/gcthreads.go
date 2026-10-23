@@ -4,7 +4,7 @@ package main
 //
 // The collector finds roots by reading a stack word by word, and until
 // this it read only its own, so nothing was collected while any other
-// thread was alive. Now every thread that runs Veyl code is known, and a
+// thread was alive. Now every thread that runs Scandiacus code is known, and a
 // collection stops them all, reads every stack, and lets them go.
 //
 // Each thread has a record, five words of malloc'd memory reached
@@ -100,7 +100,7 @@ func (l *lowerer) gcSelf() Reg {
 
 		// Onto the list, but never during a stop: the collector took its
 		// view of the list when it began, and a thread it does not know
-		// about must not be running Veyl code while it works.
+		// about must not be running Scandiacus code while it works.
 		top := l.newLabel()
 		in := l.newLabel()
 		l.mark(top)

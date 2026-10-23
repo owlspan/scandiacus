@@ -1,6 +1,6 @@
 package main
 
-// Namespaced imports: `import "geometry.vl" as geo`.
+// Namespaced imports: `import "geometry.scd" as geo`.
 //
 // A plain import folds a file's names into the program as they are, so
 // two files that both export `area` collide. An import with `as` keeps
@@ -28,7 +28,7 @@ package main
 import (
 	"strings"
 
-	front "veylfront"
+	front "scandiacusfront"
 )
 
 // nsWalk rewrites one file.

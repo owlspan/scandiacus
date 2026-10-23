@@ -3,7 +3,7 @@ package main
 // Where a runtime error happened.
 //
 //	runtime error: index 5 is out of range for a list of length 3
-//	    at game.vl:42 in update
+//	    at game.scd:42 in update
 //
 // The first line is the Go backend's, byte for byte, as it always was.
 // The second is new, and costs nothing until something fails: each
@@ -15,7 +15,7 @@ package main
 // nothing for it, and a call made earlier in the same statement cannot
 // leave a stale answer behind.
 //
-// Crashes that are not Veyl's runtime errors - an access violation from
+// Crashes that are not Scandiacus's runtime errors - an access violation from
 // a bad address given to mem.*, a native function misbehaving - are
 // caught by crash.go instead, which names the function they happened
 // in.

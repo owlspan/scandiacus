@@ -2,7 +2,7 @@ package main
 
 // The error type `T!`, built in the IR.
 //
-// Veyl has no exceptions. Anything that can fail returns `T!`: either a
+// Scandiacus has no exceptions. Anything that can fail returns `T!`: either a
 // T, or the reason there is not one. Every library function in the
 // language reports failure this way, which is why this had to exist
 // before any more of the library could be ported - without it a

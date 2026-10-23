@@ -1,9 +1,9 @@
 package main
 
-// Widgets and key names, in Veyl.
+// Widgets and key names, in Scandiacus.
 //
 // Same arrangement as http on net: the lowerer provides the primitives
-// that have to touch Win32, and everything built out of them is Veyl
+// that have to touch Win32, and everything built out of them is Scandiacus
 // source compiled by this compiler.
 //
 // The widgets are immediate mode. There is no widget tree and nothing

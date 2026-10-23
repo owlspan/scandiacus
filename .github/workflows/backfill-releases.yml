@@ -6,7 +6,7 @@ name: backfill-releases
 # runner, the other cancelled behind it). Each one is built
 # from its own commit so its installer and binaries carry that version's
 # code. The current version releases through release.yml on the push to
-# veyl, so it is not in the list here. Run it by hand from the Actions
+# scandiacus, so it is not in the list here. Run it by hand from the Actions
 # tab; it skips any version already released, so running it twice is safe.
 # Delete this file once the backfill is done.
 
@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: veyl
+          path: scandiacus
           fetch-depth: 0
 
       - uses: actions/setup-go@v5
@@ -47,7 +47,7 @@ jobs:
           }
 
       - name: Build and publish each unreleased version
-        working-directory: veyl
+        working-directory: scandiacus
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -96,10 +96,10 @@ jobs:
             try {
               $env:CGO_ENABLED = '0'
               $env:GOOS = 'linux';  $env:GOARCH = 'amd64'
-              go build -trimpath -o "dist\veyl-$v-linux-x86_64" ./compiler
+              go build -trimpath -o "dist\scandiacus-$v-linux-x86_64" ./compiler
               if ($LASTEXITCODE -ne 0) { throw "linux build failed for v$v" }
               $env:GOOS = 'darwin'; $env:GOARCH = 'amd64'
-              go build -trimpath -o "dist\veyl-$v-macos-x86_64" ./compiler
+              go build -trimpath -o "dist\scandiacus-$v-macos-x86_64" ./compiler
               if ($LASTEXITCODE -ne 0) { throw "macos build failed for v$v" }
             } finally {
               Pop-Location
@@ -116,10 +116,10 @@ jobs:
             # the GITHUB_TOKEN's write scope. Passing --repo drops it to a
             # cross-repo path that 403s on release creation.
             gh release create "v$v" `
-              "asm-src\dist\veyl-$v-setup.exe" `
-              "asm-src\dist\veyl-$v-linux-x86_64" `
-              "asm-src\dist\veyl-$v-macos-x86_64" `
-              --target $sha --title "Veyl $v" --notes-file notes.md
+              "asm-src\dist\scandiacus-$v-setup.exe" `
+              "asm-src\dist\scandiacus-$v-linux-x86_64" `
+              "asm-src\dist\scandiacus-$v-macos-x86_64" `
+              --target $sha --title "Scandiacus $v" --notes-file notes.md
             if ($LASTEXITCODE -ne 0) { throw "release create failed for v$v" }
             Write-Host "==> published v$v" -ForegroundColor Green
           }

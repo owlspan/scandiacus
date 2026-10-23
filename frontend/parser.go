@@ -321,16 +321,16 @@ func (p *Parser) ParseProgram() *Program {
 	return prog
 }
 
-// parseImport reads `import "helpers.vl"`. The path is a plain string
+// parseImport reads `import "helpers.scd"`. The path is a plain string
 // resolved relative to the file the import appears in - there is no
 // module registry and no search path to learn.
 func (p *Parser) parseImport() *ImportDecl {
 	kw := p.advance() // 'import'
-	pathTok := p.expect(STRING, `a file path in quotes, as in: import "helpers.vl"`)
+	pathTok := p.expect(STRING, `a file path in quotes, as in: import "helpers.scd"`)
 	alias := ""
 	if p.check(IDENT) && p.cur().Lex == "as" {
 		p.advance()
-		name := p.expect(IDENT, "a name for the import after 'as', as in: import \"geo.vl\" as geo")
+		name := p.expect(IDENT, "a name for the import after 'as', as in: import \"geo.scd\" as geo")
 		alias = name.Lex
 		if p.aliases == nil {
 			p.aliases = map[string]bool{}
@@ -1135,7 +1135,7 @@ func (p *Parser) parseSimpleStmt() Stmt {
 }
 
 // endStmt enforces that a statement is followed by a newline, '}' or EOF.
-// This is what lets Veyl skip semicolons.
+// This is what lets Scandiacus skip semicolons.
 func (p *Parser) endStmt() {
 	if p.check(NEWLINE) {
 		p.advance()

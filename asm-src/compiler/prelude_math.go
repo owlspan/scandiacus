@@ -1,6 +1,6 @@
 package main
 
-// The math prelude, in Veyl.
+// The math prelude, in Scandiacus.
 //
 // Every function here is Go's own algorithm from its math package,
 // transcribed. That is the point: see the header of prelude.go for why
@@ -27,7 +27,7 @@ fn __vy_isnan(x: float) -> bool {
 
 // Frexp splits x into a fraction in [0.5, 1) and a power of two.
 // Returned as a pair through two functions rather than one, because
-// Veyl has no multiple return and a struct here would allocate.
+// Scandiacus has no multiple return and a struct here would allocate.
 
 fn __vy_normmul(x: float) -> float {
     // A subnormal has leading zeros in its fraction, so its exponent

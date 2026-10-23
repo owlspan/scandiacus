@@ -1,6 +1,6 @@
 package main
 
-// Channel<T>: a queue between threads, in Veyl, on the mutex and
+// Channel<T>: a queue between threads, in Scandiacus, on the mutex and
 // condition variable threads.go provides.
 //
 //	let ch = channel<int>()
@@ -170,7 +170,7 @@ var (
 	channelErrs []string
 )
 
-// addLibrary folds in the library types written in Veyl that the
+// addLibrary folds in the library types written in Scandiacus that the
 // program names: Channel<T> and Builder.
 func addLibrary(prog *Program, sources []string) []string {
 	if errs := addChannel(prog, sources); len(errs) > 0 {

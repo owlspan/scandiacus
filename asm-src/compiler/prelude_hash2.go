@@ -1,16 +1,16 @@
 package main
 
-// sha512, crc32, and the string-level encodings, in Veyl.
+// sha512, crc32, and the string-level encodings, in Scandiacus.
 //
 // sha512 is the same shape as sha256 next door but over 64-bit words,
 // so it needs its own padding (128 byte blocks) and its own shift
-// helper. A Veyl int is 64 bits and signed, so the top half of the K
+// helper. A Scandiacus int is 64 bits and signed, so the top half of the K
 // table is written as negative decimals, the same way the rand table
 // is. Addition wraps on its own, which is the whole reason no mask
 // function appears here the way __vy_m32 does over there.
 
 const preludeHash2 = `
-// A logical right shift. Veyl's >> sign-extends, so the mask puts the
+// A logical right shift. Scandiacus's >> sign-extends, so the mask puts the
 // top n bits back to zero.
 //
 // n == 0 has to be its own case: a shift count is taken mod 64, so

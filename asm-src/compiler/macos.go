@@ -4,7 +4,7 @@ package main
 //
 // macOS on x86-64 is reached the same way Linux is: the code generator's
 // output is unchanged, every library call is renamed to __vyw_<name> and
-// answered by the same runtime (veylrt.c, veylgdi.c, veylwin.c) compiled
+// answered by the same runtime (scandiacusrt.c, scandiacusgdi.c, scandiacuswin.c) compiled
 // under the Windows calling convention, and the C compiler does the
 // register translation on each call into the real C library. Only two
 // things differ from Linux, and both are in the assembly the compiler
@@ -20,7 +20,7 @@ package main
 //
 // The build runs a C compiler that targets macOS. On a Mac that is the
 // system cc; from another system it is zig (see cross.go), or whatever
-// compiler VEYL_MACCC names. The result is an x86-64 Mach-O, which runs natively on an
+// compiler SCANDIACUS_MACCC names. The result is an x86-64 Mach-O, which runs natively on an
 // Intel Mac and through Rosetta on Apple Silicon. It is left unsigned;
 // recent macOS wants at least an ad-hoc signature, which is a one-line
 // `codesign -s - <file>` on the Mac (no account), done by the helper
@@ -40,7 +40,7 @@ func targetMac() bool { return target == "macos" }
 
 // macCC is the C compiler argv that targets macOS.
 func macCC() []string {
-	if env := os.Getenv("VEYL_MACCC"); env != "" {
+	if env := os.Getenv("SCANDIACUS_MACCC"); env != "" {
 		return strings.Fields(env)
 	}
 	if runtime.GOOS != "darwin" {
@@ -62,7 +62,7 @@ func buildMac(mod *Module, out string) {
 	}
 
 	asmText := Emit(mod)
-	if !envOff("VEYL_NOPEEP") && !envOff("VEYL_NOOPT") {
+	if !envOff("SCANDIACUS_NOPEEP") && !envOff("SCANDIACUS_NOOPT") {
 		asmText = peephole(asmText)
 	}
 
@@ -80,7 +80,7 @@ func buildMac(mod *Module, out string) {
 			strings.Join(variadic, ", "))
 	}
 
-	tmp, err := os.MkdirTemp("", "veyl-mac-*")
+	tmp, err := os.MkdirTemp("", "scandiacus-mac-*")
 	if err != nil {
 		fail("%v", err)
 	}
@@ -121,7 +121,7 @@ func buildMac(mod *Module, out string) {
 	if needsSqlite(externs) {
 		// libsqlite3.dylib is loaded at run time, not linked, so the build
 		// needs no sqlite present and no macOS SDK stub for it.
-		sp := filepath.Join(tmp, "veylmacsqlite.c")
+		sp := filepath.Join(tmp, "scandiacusmacsqlite.c")
 		if err := os.WriteFile(sp, []byte(macSqliteSource), 0o644); err != nil {
 			fail("%v", err)
 		}

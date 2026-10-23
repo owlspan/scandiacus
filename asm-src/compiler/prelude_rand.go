@@ -1,16 +1,16 @@
 package main
 
-// rand, in Veyl: Go's math/rand, transcribed.
+// rand, in Scandiacus: Go's math/rand, transcribed.
 //
 // This is the least comfortable file in the prelude and the discomfort
-// is worth stating. Veyl's random sequence is whatever Go's math/rand
+// is worth stating. Scandiacus's random sequence is whatever Go's math/rand
 // produces, because rand.seed(7) has to give the same numbers on both
 // backends and the Go backend is defined as calling math/rand. That
 // pins a language-level guarantee to one implementation's internals -
 // an additive lagged Fibonacci generator over a 607-word state, seeded
 // through a table that exists only because Go's authors precomputed it.
 //
-// The honest fix is for Veyl to specify its own generator in the front
+// The honest fix is for Scandiacus to specify its own generator in the front
 // end, which both backends would then implement, and to accept that
 // seeded programs print different numbers than they did. That is a
 // language decision, not a backend one. Until it is made, this is what

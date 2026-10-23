@@ -275,7 +275,7 @@ func (l *lowerer) osRun(c *Call) Reg {
 // four that a program actually reaches for are in: join, dir, base and
 // ext.
 //
-// A separator is either slash, because Windows accepts both and Veyl
+// A separator is either slash, because Windows accepts both and Scandiacus
 // programs are written with forward ones. join produces a backslash,
 // which is what filepath.Join does on this platform.
 

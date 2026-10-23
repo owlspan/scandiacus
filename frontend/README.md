@@ -3,9 +3,9 @@
 The lexer, parser, AST, types and the type checker. Everything up to
 but not including a decision about what to emit.
 
-Both backends import this. `../asm-src` compiles Veyl to x86-64 and
+Both backends import this. `../asm-src` compiles Scandiacus to x86-64 and
 writes the executable itself; the discontinued Go backend, which
-translates Veyl to Go, lives in `src/` on the `veylgo` branch. They read
+translates Scandiacus to Go, lives in `src/` on the `scandiacusgo` branch. They read
 the same definition of what the language *is* rather than two copies
 that drift apart.
 
@@ -13,7 +13,7 @@ that drift apart.
 frontend/          token, lexer, ast, types, parser, check
   |
   +--> asm-src/    -> x86-64 -> encoder, linker, PE writer -> .exe
-  +--> src/        -> Go source -> go build -> .exe   (veylgo branch)
+  +--> src/        -> Go source -> go build -> .exe   (scandiacusgo branch)
 ```
 
 ## Why it could be lifted out unchanged
@@ -50,6 +50,6 @@ go test ./...
 ```
 
 `lexer_test.go` and `types_test.go` live here, with the code they test.
-The backends test their own halves: the Go backend on `veylgo` runs a
+The backends test their own halves: the Go backend on `scandiacusgo` runs a
 golden-file suite, and so does `../asm-src`, over its `tests/` and
 `examples/`.

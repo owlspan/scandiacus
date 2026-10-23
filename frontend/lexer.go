@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Lexer turns Veyl source text into a flat slice of Tokens.
+// Lexer turns Scandiacus source text into a flat slice of Tokens.
 type Lexer struct {
 	src  string
 	file string

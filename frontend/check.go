@@ -12,7 +12,7 @@ import (
 // can emit explicit Go types instead of leaning on Go's inference.
 //
 // Like every other stage it accumulates errors rather than aborting, and
-// every error names Veyl types (str, float) and never Go ones.
+// every error names Scandiacus types (str, float) and never Go ones.
 type Checker struct {
 	file    string
 	funcs   map[string]*FnDecl
@@ -589,7 +589,7 @@ func (c *Checker) checkExternDecl(f *FnDecl) {
 		c.ErrorAt(f, "extern %s cannot have a body", f.Name)
 	}
 	if f.Recv != "" {
-		c.ErrorAt(f, "%s cannot be an extern method - methods run as Veyl code", f.Name)
+		c.ErrorAt(f, "%s cannot be an extern method - methods run as Scandiacus code", f.Name)
 	}
 	for i := range f.Params {
 		prm := &f.Params[i]
@@ -1863,7 +1863,7 @@ func nilAdvice(x *Binary) string {
 	return "put it in a variable and check that for nil first"
 }
 
-// bitwise operators bind looser than comparison in C, and Veyl copies
+// bitwise operators bind looser than comparison in C, and Scandiacus copies
 // that ladder. `flags & MASK == 0` therefore parses as
 // `flags & (MASK == 0)`, which is almost never what was meant. When one
 // side turns out to be a bool, say so rather than leaving the reader to
@@ -2248,7 +2248,7 @@ func IsUntypedInt(e Expr) bool {
 // ---- extern structs ----
 
 // cTypes are the field types an extern struct may use: size, and what a
-// read gives back in Veyl. bool is one byte; the Windows BOOL is an i32.
+// read gives back in Scandiacus. bool is one byte; the Windows BOOL is an i32.
 var cTypes = map[string]struct {
 	size int
 	t    *Type
@@ -2297,7 +2297,7 @@ func (c *Checker) layout(d *StructDecl, visiting map[string]bool) {
 			f.T = StructOf(inner.Name)
 		} else {
 			if ok {
-				c.ErrorAt(f, "%s is a Veyl struct and has no C layout - make it an extern struct", f.Type)
+				c.ErrorAt(f, "%s is a Scandiacus struct and has no C layout - make it an extern struct", f.Type)
 			} else if f.Type != "" {
 				c.ErrorAt(f, "unknown field type %q - an extern struct field is i8, u8, i16, u16, "+
 					"i32, u32, i64, u64, f32, f64, ptr, bool or another extern struct", f.Type)
@@ -2408,7 +2408,7 @@ func (c *Checker) peekType(e Expr) *Type {
 }
 
 // checkCallbackType checks a function-typed extern parameter: the
-// native code will call back into Veyl through it, so everything in its
+// native code will call back into Scandiacus through it, so everything in its
 // signature has to be something C can pass and take back.
 func (c *Checker) checkCallbackType(prm *Param, fn string) {
 	ok := func(t *Type) bool { return externScalar(t) || c.isExternStruct(t) }

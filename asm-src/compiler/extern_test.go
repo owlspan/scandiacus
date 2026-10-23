@@ -1,6 +1,6 @@
 package main
 
-// Tests for `extern fn` - native functions declared in Veyl source and
+// Tests for `extern fn` - native functions declared in Scandiacus source and
 // called through the foreign-call path. The frontend tests cover what
 // the parser accepts; these cover what reaches the module: which
 // symbols are imported, how wide the return register is read, and what
@@ -15,10 +15,10 @@ import (
 
 // lowerForTest runs a program through the whole front end and lowering,
 // returning the module and every error reported. It mirrors compile()
-// in veyl.go but collects errors instead of exiting on them.
+// in scandiacus.go but collects errors instead of exiting on them.
 func lowerForTest(t *testing.T, src string) (*Module, []string) {
 	t.Helper()
-	const path = "test.vl"
+	const path = "test.scd"
 	lx := NewLexer(path, src)
 	toks := lx.Scan()
 	ps := NewParser(path, toks)
@@ -147,7 +147,7 @@ probe(3)
 			}
 		}
 		if hasCopy != tt.strCopy {
-			t.Errorf("ret %s: returned char* copied into a Veyl string = %v, want %v",
+			t.Errorf("ret %s: returned char* copied into a Scandiacus string = %v, want %v",
 				tt.ret, hasCopy, tt.strCopy)
 		}
 	}
@@ -232,7 +232,7 @@ func TestExternRejectsNonScalars(t *testing.T) {
 	}
 	for _, decl := range cases {
 		src := "struct User { name: str }\n" + decl + "\n"
-		const path = "test.vl"
+		const path = "test.scd"
 		lx := NewLexer(path, src)
 		ps := NewParser(path, lx.Scan())
 		prog := ps.ParseProgram()
@@ -256,7 +256,7 @@ extern fn Beep(freq: int, ms: int) -> bool
 let f = Beep
 print(f(440, 100))
 `
-	const path = "test.vl"
+	const path = "test.scd"
 	lx := NewLexer(path, src)
 	ps := NewParser(path, lx.Scan())
 	prog := ps.ParseProgram()
@@ -282,8 +282,8 @@ extern fn sum(start: int, ...) -> int
 let from = 3
 print(from + sum(1, 2))
 `
-	lx := NewLexer("test.vl", src)
-	ps := NewParser("test.vl", lx.Scan())
+	lx := NewLexer("test.scd", src)
+	ps := NewParser("test.scd", lx.Scan())
 	prog := ps.ParseProgram()
 	errs := append(append([]string{}, lx.Errors...), ps.Errors...)
 	if len(errs) > 0 {

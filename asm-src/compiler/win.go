@@ -64,11 +64,11 @@ const (
 	wcCursorAt        = 40
 	wcBackgroundAt    = 48
 	wcClassNameAt     = 64
-	wndClassNameConst = "VeylWindow"
+	wndClassNameConst = "ScandiacusWindow"
 )
 
 // The window block. One allocation holding everything about a window,
-// handed to Veyl as an int so a window is a handle like a socket is.
+// handed to Scandiacus as an int so a window is a handle like a socket is.
 //
 // It comes from calloc, not the collected heap. A handle is an int, and
 // the collector does not look inside ints - a window kept in a struct
@@ -257,7 +257,7 @@ func (l *lowerer) winBuiltin(c *Call, name string) (Reg, bool) {
 		}
 		hwnd := l.field(l.expr(c.Args[0]), winHwndAt, vInt)
 		if targetLinux() || targetMac() {
-			return l.ccall("VeylNativeWindow", []Reg{hwnd}, []vty{vInt}, vInt, false, false), true
+			return l.ccall("ScandiacusNativeWindow", []Reg{hwnd}, []vty{vInt}, vInt, false, false), true
 		}
 		return hwnd, true
 	case "win.display":
@@ -269,7 +269,7 @@ func (l *lowerer) winBuiltin(c *Call, name string) (Reg, bool) {
 		}
 		hwnd := l.field(l.expr(c.Args[0]), winHwndAt, vInt)
 		if targetLinux() || targetMac() {
-			return l.ccall("VeylNativeDisplay", []Reg{hwnd}, []vty{vInt}, vInt, false, false), true
+			return l.ccall("ScandiacusNativeDisplay", []Reg{hwnd}, []vty{vInt}, vInt, false, false), true
 		}
 		return l.ccall("GetModuleHandleA", []Reg{l.constant(0)}, []vty{vInt}, vInt, false, false), true
 

@@ -19,7 +19,7 @@ package main
 // used where x86 accepts one. A constant whose every use became an
 // immediate is not materialised at all.
 //
-// Only with the optimisations on. VEYL_NOOPT keeps the plain form, so
+// Only with the optimisations on. SCANDIACUS_NOOPT keeps the plain form, so
 // the two can be compared when something goes wrong.
 
 import (
@@ -555,7 +555,7 @@ func low32(r string) string {
 	return r + "d" // r8 to r15
 }
 
-// emitPeek reads memory at a C width into a Veyl int or float, straight
+// emitPeek reads memory at a C width into a Scandiacus int or float, straight
 // into the result's register when it has one.
 func (e *Emitter) emitPeek(in Instr, addr string) {
 	d := e.loc(in.Dst)

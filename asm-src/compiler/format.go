@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// fmtCommand is veyl fmt: each file named, or every .vl under a folder
+// fmtCommand is scandiacus fmt: each file named, or every .scd under a folder
 // named, rewritten in place. --check rewrites nothing and lists the
 // files that would change, failing if there are any.
 func fmtCommand(args []string) {
@@ -37,10 +37,10 @@ func fmtCommand(args []string) {
 			if err != nil {
 				return nil
 			}
-			if fi.IsDir() && (fi.Name() == "veyl_modules" || strings.HasPrefix(fi.Name(), ".") && path != p) {
+			if fi.IsDir() && (fi.Name() == "scandiacus_modules" || strings.HasPrefix(fi.Name(), ".") && path != p) {
 				return filepath.SkipDir
 			}
-			if !fi.IsDir() && strings.HasSuffix(fi.Name(), ".vl") {
+			if !fi.IsDir() && strings.HasSuffix(fi.Name(), ".scd") {
 				files = append(files, path)
 			}
 			return nil
@@ -91,7 +91,7 @@ func fmtCommand(args []string) {
 // breaks has to be much cleverer than this one before it earns the
 // right.
 
-// Format reformats Veyl source. It returns the source unchanged if
+// Format reformats Scandiacus source. It returns the source unchanged if
 // the input does not lex cleanly - reformatting a file with a broken
 // string literal in it is a good way to lose work.
 func Format(file, src string) (string, bool) {

@@ -17,13 +17,13 @@ import (
 // image moves (ASLR), so the call lands only if the address is in the
 // .reloc table and the loader adjusted it.
 func TestAbsoluteRelocations(t *testing.T) {
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "absptr.o"), absPointerObject(), 0o644)
-	os.WriteFile(filepath.Join(dir, "abs.vl"), []byte(
+	os.WriteFile(filepath.Join(dir, "abs.scd"), []byte(
 		"extern fn vy_call() -> int from \"absptr.o\"\nprint(vy_call())\n"), 0o644)
 	exe := filepath.Join(dir, "abs.exe")
-	if out, err := exec.Command(veyl, "build", "--windows", filepath.Join(dir, "abs.vl")).CombinedOutput(); err != nil {
+	if out, err := exec.Command(scandiacus, "build", "--windows", filepath.Join(dir, "abs.scd")).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 

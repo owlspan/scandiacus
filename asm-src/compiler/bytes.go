@@ -7,7 +7,7 @@ package main
 // inside it is just a byte, which is the whole difference from a str.
 //
 // Only the primitives are here. hex, base64, the integer codecs and the
-// hashes are all written in Veyl, in prelude_bytes.go, on top of
+// hashes are all written in Scandiacus, in prelude_bytes.go, on top of
 // __bytesMake, __byteAt and __bytePut.
 
 func (l *lowerer) bytesBuiltin(c *Call, name string) (Reg, bool) {

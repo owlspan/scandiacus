@@ -2,7 +2,7 @@ package frontend
 
 import "strings"
 
-// TypeKind is the category of a Veyl type.
+// TypeKind is the category of a Scandiacus type.
 type TypeKind int
 
 const (
@@ -62,7 +62,7 @@ const (
 	KAny
 )
 
-// Type is a Veyl type. Composite types point at their element types,
+// Type is a Scandiacus type. Composite types point at their element types,
 // so nesting like [][]int or {str: []int} needs no special cases.
 type Type struct {
 	Kind TypeKind
@@ -167,7 +167,7 @@ func (t *Type) IsNumeric() bool    { return t != nil && (t.Kind == KInt || t.Kin
 func (t *Type) IsCollection() bool { return t != nil && (t.Kind == KList || t.Kind == KMap) }
 
 // NeedsShow reports whether printing this type has to go through the
-// Veyl formatting helper. Scalars are fine with Go's own %v; anything
+// Scandiacus formatting helper. Scalars are fine with Go's own %v; anything
 // with structure would otherwise leak Go's notation.
 func (t *Type) NeedsShow() bool {
 	if t == nil {
@@ -177,7 +177,7 @@ func (t *Type) NeedsShow() bool {
 		t.Kind == KBytes
 }
 
-// String prints a type in Veyl's vocabulary. The whole point of the
+// String prints a type in Scandiacus's vocabulary. The whole point of the
 // checker is that users never see "float64" or "string" again.
 func (t *Type) String() string {
 	if t == nil {
@@ -277,7 +277,7 @@ func (t *Type) Equal(u *Type) bool {
 
 // Accepts reports whether a value of type `got` may be passed where this
 // type is expected. It is deliberately almost as strict as Equal -
-// Veyl has no implicit conversions. The exceptions are the two
+// Scandiacus has no implicit conversions. The exceptions are the two
 // signature-only kinds and KUnknown, which is already an error.
 func (t *Type) Accepts(got *Type) bool {
 	if t == nil || got == nil {

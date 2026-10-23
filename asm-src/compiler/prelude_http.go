@@ -1,10 +1,10 @@
 package main
 
-// An HTTP server, in Veyl.
+// An HTTP server, in Scandiacus.
 //
 // The whole thing sits on the six net.* primitives, so nothing here
 // touches a socket API directly. That is the point of making a socket a
-// plain int: the protocol is ordinary Veyl and reads like it.
+// plain int: the protocol is ordinary Scandiacus and reads like it.
 //
 // What it is: HTTP/1.1, one request per connection, Connection: close.
 // What it is not: keep-alive, chunked transfer, or TLS. http.serve runs
@@ -388,7 +388,7 @@ fn __vy_httpRequestText(u: __vy_URL, method: str, body: str) -> str {
     if u.port != deflt { host = "{u.host}:{u.port}" }
     let req = "{method} {u.path} HTTP/1.1\r\n"
     req = req + "Host: {host}\r\n"
-    req = req + "User-Agent: veyl\r\n"
+    req = req + "User-Agent: scandiacus\r\n"
     req = req + "Accept: */*\r\n"
     req = req + "Connection: close\r\n"
     if len(body) > 0 {

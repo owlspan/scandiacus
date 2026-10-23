@@ -1,18 +1,18 @@
 'use strict';
 
-// The VS Code side of `veyl lsp`.
+// The VS Code side of `scandiacus lsp`.
 //
 // A language client is usually the vscode-languageclient package, which
 // would mean shipping node_modules with the extension. The part of the
-// protocol Veyl uses is small - a few requests and one notification over
+// protocol Scandiacus uses is small - a few requests and one notification over
 // stdio - so it is written out here instead, and the extension stays a
 // handful of plain files.
 //
-// If veyl cannot be started (not on PATH, or veyl.path is wrong) the
+// If scandiacus cannot be started (not on PATH, or scandiacus.path is wrong) the
 // highlighting still works; a message says what to fix.
 //
 // It also puts a run button, with build beside it in its menu, on the
-// title bar of a .vl file, the way the Python extension does.
+// title bar of a .scd file, the way the Python extension does.
 
 const vscode = require('vscode');
 const cp = require('child_process');
@@ -26,7 +26,7 @@ class Server {
         this.onNotify = onNotify;
         this.proc = cp.spawn(command, ['lsp'], { stdio: ['pipe', 'pipe', 'pipe'] });
         this.proc.on('error', (err) => onExit(err));
-        this.proc.on('exit', (code) => onExit(code === 0 ? null : new Error('veyl lsp exited with ' + code)));
+        this.proc.on('exit', (code) => onExit(code === 0 ? null : new Error('scandiacus lsp exited with ' + code)));
         this.proc.stdout.on('data', (chunk) => this.receive(chunk));
         this.proc.stdin.on('error', () => {});
     }
@@ -101,14 +101,14 @@ class Server {
     }
 }
 
-const selector = { language: 'veyl' };
+const selector = { language: 'scandiacus' };
 
 function toRange(r) {
     return new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character);
 }
 
 function activate(context) {
-    const diagnostics = vscode.languages.createDiagnosticCollection('veyl');
+    const diagnostics = vscode.languages.createDiagnosticCollection('scandiacus');
     context.subscriptions.push(diagnostics);
 
     let server = null;
@@ -117,14 +117,14 @@ function activate(context) {
     const opened = new Set();
 
     function start() {
-        const command = vscode.workspace.getConfiguration('veyl').get('path') || 'veyl';
+        const command = vscode.workspace.getConfiguration('scandiacus').get('path') || 'scandiacus';
         opened.clear();
         server = new Server(command, (method, params) => {
             if (method === 'textDocument/publishDiagnostics') {
                 diagnostics.set(vscode.Uri.parse(params.uri), params.diagnostics.map((d) => {
                     const sev = d.severity === 2 ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error;
                     const diag = new vscode.Diagnostic(toRange(d.range), d.message, sev);
-                    diag.source = 'veyl';
+                    diag.source = 'scandiacus';
                     return diag;
                 }));
             }
@@ -133,8 +133,8 @@ function activate(context) {
             ready = null;
             if (err && !failed) {
                 failed = true;
-                vscode.window.showWarningMessage('Veyl: could not run "' + command + ' lsp" (' + err.message +
-                    '). Highlighting still works; for errors, completion and go to definition, put veyl on PATH or set veyl.path.');
+                vscode.window.showWarningMessage('Scandiacus: could not run "' + command + ' lsp" (' + err.message +
+                    '). Highlighting still works; for errors, completion and go to definition, put scandiacus on PATH or set scandiacus.path.');
             }
         });
         ready = server.request('initialize', {
@@ -151,12 +151,12 @@ function activate(context) {
     }
 
     function open(doc) {
-        if (!server || doc.languageId !== 'veyl' || opened.has(doc.uri.toString())) {
+        if (!server || doc.languageId !== 'scandiacus' || opened.has(doc.uri.toString())) {
             return;
         }
         opened.add(doc.uri.toString());
         server.notify('textDocument/didOpen', {
-            textDocument: { uri: doc.uri.toString(), languageId: 'veyl', version: doc.version, text: doc.getText() },
+            textDocument: { uri: doc.uri.toString(), languageId: 'scandiacus', version: doc.version, text: doc.getText() },
         });
     }
 
@@ -185,20 +185,20 @@ function activate(context) {
     }
 
     // The run and build buttons. Each one starts a terminal whose process
-    // is veyl itself rather than a shell, so it works the same whichever
+    // is scandiacus itself rather than a shell, so it works the same whichever
     // shell the user has, the path needs no quoting, and a program that
     // reads input gets the terminal's. The previous run's terminal is
-    // closed first, so there is one Veyl terminal rather than a pile.
+    // closed first, so there is one Scandiacus terminal rather than a pile.
     let runTerminal = null;
 
-    async function runVeyl(verb, uri) {
+    async function runScandiacus(verb, uri) {
         let target = uri && uri.fsPath ? uri : null;
         const editor = vscode.window.activeTextEditor;
         if (!target && editor) {
             target = editor.document.uri;
         }
         if (!target || !target.fsPath) {
-            vscode.window.showWarningMessage('Veyl: open a .vl file to ' + verb + ' it.');
+            vscode.window.showWarningMessage('Scandiacus: open a .scd file to ' + verb + ' it.');
             return null;
         }
         // Run what is on screen, not what was last saved.
@@ -210,8 +210,8 @@ function activate(context) {
             runTerminal.dispose();
         }
         runTerminal = vscode.window.createTerminal({
-            name: 'Veyl',
-            shellPath: vscode.workspace.getConfiguration('veyl').get('path') || 'veyl',
+            name: 'Scandiacus',
+            shellPath: vscode.workspace.getConfiguration('scandiacus').get('path') || 'scandiacus',
             shellArgs: [verb, target.fsPath],
             cwd: path.dirname(target.fsPath),
         });
@@ -222,8 +222,8 @@ function activate(context) {
     start();
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('veyl.run', (uri) => runVeyl('run', uri)),
-        vscode.commands.registerCommand('veyl.build', (uri) => runVeyl('build', uri)),
+        vscode.commands.registerCommand('scandiacus.run', (uri) => runScandiacus('run', uri)),
+        vscode.commands.registerCommand('scandiacus.build', (uri) => runScandiacus('build', uri)),
         vscode.window.onDidCloseTerminal((t) => {
             if (t === runTerminal) {
                 runTerminal = null;
@@ -233,7 +233,7 @@ function activate(context) {
         vscode.workspace.onDidOpenTextDocument((doc) => open(doc)),
         vscode.workspace.onDidChangeTextDocument((e) => {
             const doc = e.document;
-            if (!server || doc.languageId !== 'veyl') {
+            if (!server || doc.languageId !== 'scandiacus') {
                 return;
             }
             if (!opened.has(doc.uri.toString())) {
@@ -253,7 +253,7 @@ function activate(context) {
             diagnostics.delete(doc.uri);
         }),
         vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration('veyl.path')) {
+            if (e.affectsConfiguration('scandiacus.path')) {
                 if (server) {
                     server.stop();
                 }

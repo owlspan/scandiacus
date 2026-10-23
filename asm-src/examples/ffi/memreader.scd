@@ -1,0 +1,170 @@
+// memreader: find a running program and read values out of its memory.
+//
+//     scandiacus run memreader.scd                          list running programs
+//     scandiacus run memreader.scd game.exe                 where game.exe is loaded
+//     scandiacus run memreader.scd game.exe 0x1F2C0 0x18    follow a pointer chain
+//
+// A pointer chain is the usual way a value inside a game is found again
+// after a restart: start at the module's base address plus the first
+// offset, then for each further offset read the pointer stored there and
+// add the offset to it. The value at the end is printed as each of the
+// types it might be.
+//
+// Everything below is the Windows API, declared with extern and called
+// directly. Reading another program needs the same rights it runs with,
+// and for a program running as administrator this has to be as well.
+
+extern struct ProcessEntry {
+    size: u32
+    usage: u32
+    pid: u32
+    heap: ptr
+    module: u32
+    threads: u32
+    parent: u32
+    priority: i32
+    flags: u32
+    exe: [260]u8
+}
+
+extern struct ModuleEntry {
+    size: u32
+    moduleId: u32
+    pid: u32
+    globalCount: u32
+    processCount: u32
+    base: ptr
+    baseSize: u32
+    handle: ptr
+    name: [256]u8
+    path: [260]u8
+}
+
+extern fn CreateToolhelp32Snapshot(flags: int, pid: int) -> ptr
+extern fn Process32First(snap: ptr, entry: ProcessEntry) -> bool
+extern fn Process32Next(snap: ptr, entry: ProcessEntry) -> bool
+extern fn Module32First(snap: ptr, entry: ModuleEntry) -> bool
+extern fn OpenProcess(access: int, inherit: bool, pid: int) -> ptr
+extern fn ReadProcessMemory(h: ptr, addr: ptr, buf: bytes, n: int, got: ptr) -> bool
+extern fn CloseHandle(h: ptr) -> bool
+
+const snapProcess = 0x2
+const snapModule = 0x18
+const vmRead = 0x10
+const queryInfo = 0x400
+
+// Every running program, as its pid and executable name.
+fn processes() -> {int: str} {
+    let found: {int: str} = {}
+    let snap = CreateToolhelp32Snapshot(snapProcess, 0)
+    if snap == -1 {
+        return found
+    }
+    let entry = ProcessEntry{size: u32(ProcessEntry.size)}
+    let more = Process32First(snap, entry)
+    while more {
+        found[int(entry.pid)] = mem.str(entry.exe)
+        more = Process32Next(snap, entry)
+    }
+    CloseHandle(snap)
+    return found
+}
+
+// The pid of the first program with this executable name, or 0.
+fn findProcess(name: str) -> int {
+    for pid, exe in processes() {
+        if lower(exe) == lower(name) {
+            return pid
+        }
+    }
+    return 0
+}
+
+// Where a program's executable is loaded. The first module a snapshot
+// lists is always the executable itself.
+fn baseAddress(pid: int) -> int {
+    let snap = CreateToolhelp32Snapshot(snapModule, pid)
+    if snap == -1 {
+        return 0
+    }
+    let entry = ModuleEntry{size: u32(ModuleEntry.size)}
+    let base = 0
+    if Module32First(snap, entry) {
+        base = entry.base
+    }
+    CloseHandle(snap)
+    return base
+}
+
+// n bytes at an address in another program.
+fn readRemote(h: int, addr: int, n: int) -> bytes! {
+    let buf = bytes.fill(n, 0)?
+    if !ReadProcessMemory(h, addr, buf, n, 0) {
+        return fail("cannot read {n} bytes at 0x{bits.toBase(addr, 16)}")
+    }
+    return buf
+}
+
+fn hex(n: int) -> str {
+    return "0x" + bits.toBase(n, 16)
+}
+
+fn parseOffset(s: str) -> int! {
+    if startsWith(lower(s), "0x") {
+        return bits.fromBase(substr(s, 2, len(s)), 16)
+    }
+    return bits.fromBase(s, 10)
+}
+
+fn run(args: []str) -> void! {
+    if len(args) == 0 {
+        for pid, exe in processes() {
+            print("{padLeft(str(pid), 6)}  {exe}")
+        }
+        return ok()
+    }
+
+    let pid = findProcess(args[0])
+    if pid == 0 {
+        return fail("no running program is called {args[0]}")
+    }
+    let base = baseAddress(pid)
+    print("{args[0]} is pid {pid}, loaded at {hex(base)}")
+    if len(args) == 1 {
+        return ok()
+    }
+
+    let h = OpenProcess(vmRead | queryInfo, false, pid)
+    if h == 0 {
+        return fail("cannot open pid {pid} for reading - it may need administrator rights")
+    }
+    let addr = base + parseOffset(args[1])?
+    let i = 2
+    while i < len(args) {
+        let word = readRemote(h, addr, 8)
+        if failed(word) {
+            CloseHandle(h)
+            return fail(errorOf(word))
+        }
+        addr = must(bytes.getInt(must(word), 0, 8)) + parseOffset(args[i])?
+        i += 1
+    }
+
+    let raw = readRemote(h, addr, 8)
+    CloseHandle(h)
+    let value = raw?
+    let at = mem.addr(value)
+    print("{hex(addr)}:")
+    print("  i32  {mem.readI32(at)}")
+    print("  f32  {mem.readF32(at)}")
+    print("  i64  {mem.readI64(at)}")
+    print("  f64  {mem.readF64(at)}")
+    print("  hex  {bytes.hex(value)}")
+    return ok()
+}
+
+let done = run(os.args())
+if failed(done) {
+    print("memreader: {errorOf(done)}")
+    exit(1)
+}

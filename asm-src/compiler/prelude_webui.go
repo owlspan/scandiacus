@@ -1,7 +1,7 @@
 package main
 
 // ui: a window whose contents are a web page, so an interface can be
-// written in HTML and CSS and driven from Veyl.
+// written in HTML and CSS and driven from Scandiacus.
 //
 // On Windows the page is a WebView2 control, the Edge engine that ships
 // with Windows 11 and with every updated Windows 10. Nothing is linked:
@@ -13,7 +13,7 @@ package main
 // state, with QueryInterface, AddRef, Release and Invoke in the table.
 //
 // The shape is the one win has: open, then poll in a loop. A message
-// the page sends with veyl.send(...) waits in a queue of the strings
+// the page sends with scandiacus.send(...) waits in a queue of the strings
 // WebView2 handed over until ui.messages takes them; nothing runs on
 // a thread of its own, so every handler runs inside ui.poll.
 //
@@ -205,13 +205,13 @@ fn __vy_uiRuntime() -> str {
     return ""
 }
 
-// What the page has: veyl.send(x) posts x, as text, to ui.messages,
-// and veyl.onmessage receives what ui.send sends.
+// What the page has: scandiacus.send(x) posts x, as text, to ui.messages,
+// and scandiacus.onmessage receives what ui.send sends.
 fn __vy_uiBridge() -> str {
-    let js = "window.veyl = {{ onmessage: null, send: function (m) {{ "
+    let js = "window.scandiacus = {{ onmessage: null, send: function (m) {{ "
     js += "window.chrome.webview.postMessage(typeof m === 'string' ? m : JSON.stringify(m)) }} }};"
     js += "window.chrome.webview.addEventListener('message', function (e) {{ "
-    js += "if (window.veyl.onmessage) window.veyl.onmessage(e.data) }});"
+    js += "if (window.scandiacus.onmessage) window.scandiacus.onmessage(e.data) }});"
     return js
 }
 
@@ -252,7 +252,7 @@ fn __vy_uiOpen(title: str, width: int, height: int) -> int! {
     mem.write64(s + 64, 8)
 
     let inst = mem.call(mem.symbol("kernel32.dll", "GetModuleHandleW"), 0)
-    let cls = mem.wide("VeylWebView")
+    let cls = mem.wide("ScandiacusWebView")
     let wc = mem.alloc(80)
     mem.write32(wc, 80)
     mem.write32(wc + 4, 3)
@@ -313,7 +313,7 @@ fn __vy_uiOpen(title: str, width: int, height: int) -> int! {
 
     // WebView2 keeps its profile - cache, storage - in a folder it can
     // write to; beside the program is often not one.
-    let data = os.path.join(os.env.get("LOCALAPPDATA"), "veyl", "webview")
+    let data = os.path.join(os.env.get("LOCALAPPDATA"), "scandiacus", "webview")
     let hr = 0
     if start != 0 {
         hr = mem.call(start, 1, 0, mem.wide(data), 0, mem.readI64(s + 72))

@@ -1,7 +1,7 @@
 package main
 
 // The macOS half of the audio library: five calls into the AudioQueue
-// streams in linuxrt/veylmac.c, which the prelude's audio functions
+// streams in linuxrt/scandiacusmac.c, which the prelude's audio functions
 // make on macOS only. On every other target they lower to constants,
 // so a Windows or Linux program does not import functions its runtime
 // does not have.
@@ -12,15 +12,15 @@ func (l *lowerer) audioMacBuiltin(c *Call, name string) (Reg, bool) {
 	ret := vInt
 	switch name {
 	case "__audioMacOpen":
-		sym, types = "veyl_audio_open", []vty{vInt, vInt, vInt, vInt}
+		sym, types = "scandiacus_audio_open", []vty{vInt, vInt, vInt, vInt}
 	case "__audioMacRead":
-		sym, types = "veyl_audio_read", []vty{vInt, vInt, vInt}
+		sym, types = "scandiacus_audio_read", []vty{vInt, vInt, vInt}
 	case "__audioMacWrite":
-		sym, types = "veyl_audio_write", []vty{vInt, vInt, vInt}
+		sym, types = "scandiacus_audio_write", []vty{vInt, vInt, vInt}
 	case "__audioMacClose":
-		sym, types, ret = "veyl_audio_close", []vty{vInt}, vVoid
+		sym, types, ret = "scandiacus_audio_close", []vty{vInt}, vVoid
 	case "__audioMacError":
-		sym, types = "veyl_audio_error", nil
+		sym, types = "scandiacus_audio_error", nil
 	default:
 		return NoReg, false
 	}

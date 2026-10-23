@@ -5,7 +5,7 @@ package main
 // The code generator speaks one calling convention, the Windows x64 one,
 // and calls the C runtime and kernel32 by name. A Linux program is built
 // from exactly the same assembly. Every import it makes is renamed to
-// __vyw_<name> and linked against a small runtime, linuxrt/veylrt.c,
+// __vyw_<name> and linked against a small runtime, linuxrt/scandiacusrt.c,
 // that implements each of those names on POSIX under the Windows
 // convention (GCC's ms_abi does the register and stack translation). So
 // the instructions the program runs are the ones the Windows target runs,
@@ -40,22 +40,22 @@ import (
 
 // The Linux runtime: the C runtime shim, the software GDI, and the X11
 // window / audio layer. Each is embedded, compiled, and linked into the
-// program. veylgdi.c includes font8x8.h, so that is embedded too and
+// program. scandiacusgdi.c includes font8x8.h, so that is embedded too and
 // written beside the sources before they are compiled.
 //
-//go:embed linuxrt/veylrt.c
+//go:embed linuxrt/scandiacusrt.c
 var linuxRuntimeSource string
 
-//go:embed linuxrt/veylgdi.c
+//go:embed linuxrt/scandiacusgdi.c
 var linuxGdiSource string
 
-//go:embed linuxrt/veylwin.c
+//go:embed linuxrt/scandiacuswin.c
 var linuxWinSource string
 
-//go:embed linuxrt/veylmac.c
+//go:embed linuxrt/scandiacusmac.c
 var macWinSource string
 
-//go:embed linuxrt/veyltls.c
+//go:embed linuxrt/scandiacustls.c
 var tlsSource string
 
 //go:embed linuxrt/font8x8.h
@@ -64,40 +64,40 @@ var linuxFontHeader string
 // The db library's sqlite calls, linked only when a program uses them so
 // that other programs need no sqlite installed.
 //
-//go:embed linuxrt/veylsqlite.c
+//go:embed linuxrt/scandiacussqlite.c
 var sqliteSource string
 
 // The macOS sqlite calls, which dlopen the system libsqlite3.dylib at run
 // time rather than linking it, because the cross toolchain has no macOS
 // SDK to link against. Linked only when a program uses db.
 //
-//go:embed linuxrt/veylmacsqlite.c
+//go:embed linuxrt/scandiacusmacsqlite.c
 var macSqliteSource string
 
 // linuxRuntimeSources is every runtime .c, by file name. The order does
 // not matter; they are linked together. The window layer differs by
 // system - X11 on Linux, Cocoa on macOS - so each target picks its own.
 var linuxRuntimeSources = map[string]string{
-	"veylrt.c":  linuxRuntimeSource,
-	"veylgdi.c": linuxGdiSource,
-	"veylwin.c": linuxWinSource,
-	"veyltls.c": tlsSource,
+	"scandiacusrt.c":  linuxRuntimeSource,
+	"scandiacusgdi.c": linuxGdiSource,
+	"scandiacuswin.c": linuxWinSource,
+	"scandiacustls.c": tlsSource,
 }
 
 var macRuntimeSources = map[string]string{
-	"veylrt.c":  linuxRuntimeSource,
-	"veylgdi.c": linuxGdiSource,
-	"veylmac.c": macWinSource,
-	"veyltls.c": tlsSource,
+	"scandiacusrt.c":  linuxRuntimeSource,
+	"scandiacusgdi.c": linuxGdiSource,
+	"scandiacusmac.c": macWinSource,
+	"scandiacustls.c": tlsSource,
 }
 
 // Which operating system the output is for: "windows" or "linux".
-// Chosen by --windows / --linux on the command line, else VEYL_TARGET,
+// Chosen by --windows / --linux on the command line, else SCANDIACUS_TARGET,
 // else the system the compiler runs on.
 var target = defaultTarget()
 
 func defaultTarget() string {
-	switch strings.ToLower(os.Getenv("VEYL_TARGET")) {
+	switch strings.ToLower(os.Getenv("SCANDIACUS_TARGET")) {
 	case "linux":
 		return "linux"
 	case "windows":
@@ -166,7 +166,7 @@ func buildLinux(mod *Module, out string) {
 	}
 
 	asmText := Emit(mod)
-	if !envOff("VEYL_NOPEEP") && !envOff("VEYL_NOOPT") {
+	if !envOff("SCANDIACUS_NOPEEP") && !envOff("SCANDIACUS_NOOPT") {
 		asmText = peephole(asmText)
 	}
 
@@ -193,7 +193,7 @@ func buildLinux(mod *Module, out string) {
 	objcopy := linuxTool("objcopy")
 	cc := linuxTool("cc", "gcc", "clang")
 
-	tmp, err := os.MkdirTemp("", "veyl-build-*")
+	tmp, err := os.MkdirTemp("", "scandiacus-build-*")
 	if err != nil {
 		fail("%v", err)
 	}
@@ -241,7 +241,7 @@ func buildLinux(mod *Module, out string) {
 	}
 	linkArgs = append(linkArgs, linuxRuntimeObjects(cc)...)
 	if needsSqlite(externs) {
-		sp := filepath.Join(tmp, "veylsqlite.c")
+		sp := filepath.Join(tmp, "scandiacussqlite.c")
 		if err := os.WriteFile(sp, []byte(sqliteSource), 0o644); err != nil {
 			fail("%v", err)
 		}
@@ -274,7 +274,7 @@ func linuxRuntimeObjects(cc string) []string {
 	if err != nil {
 		dir = os.TempDir()
 	}
-	dir = filepath.Join(dir, "veyl")
+	dir = filepath.Join(dir, "scandiacus")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		fail("%v", err)
 	}
@@ -283,7 +283,7 @@ func linuxRuntimeObjects(cc string) []string {
 	objs := make([]string, 0, len(names))
 	var toBuild []string
 	for _, name := range names {
-		obj := filepath.Join(dir, "veylrt-"+tag+"-"+strings.TrimSuffix(name, ".c")+".o")
+		obj := filepath.Join(dir, "scandiacusrt-"+tag+"-"+strings.TrimSuffix(name, ".c")+".o")
 		objs = append(objs, obj)
 		if _, err := os.Stat(obj); err != nil {
 			toBuild = append(toBuild, name)
@@ -314,7 +314,7 @@ func linuxRuntimeObjects(cc string) []string {
 		if outp, err := exec.Command(cc, "-c", "-O2", "-o", part, filepath.Join(work, name)).CombinedOutput(); err != nil {
 			fail("the Linux runtime could not be compiled.\n%s\n%s", err, outp)
 		}
-		final := filepath.Join(dir, "veylrt-"+tag+"-"+strings.TrimSuffix(name, ".c")+".o")
+		final := filepath.Join(dir, "scandiacusrt-"+tag+"-"+strings.TrimSuffix(name, ".c")+".o")
 		if err := os.Rename(part, final); err != nil {
 			// A rename across the same directory should not fail; copy as
 			// a fallback so a build still succeeds.

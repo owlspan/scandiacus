@@ -1,0 +1,58 @@
+// Scandiacus functions called by native code, the same on every system: by
+// the C library's qsort and bsearch, and through an address from
+// mem.callback. On Linux and macOS native code calls the System V way
+// and a stub turns that into the convention Scandiacus functions take -
+// integers and floats counted apart there, positions here, and the
+// arguments past the sixth integer on the stack. (qsort there is the
+// runtime's own, which bridges the other way itself; bsearch is the C
+// library's, called through a generated wrapper.)
+extern fn qsort(base: ptr, n: int, size: int, cmp: fn(ptr, ptr) -> int)
+extern fn bsearch(key: ptr, base: ptr, n: int, size: int, cmp: fn(ptr, ptr) -> int) -> ptr
+
+fn byValue(a: int, b: int) -> int {
+    let x = mem.readI64(a)
+    let y = mem.readI64(b)
+    if x < y {
+        return -1
+    }
+    if x > y {
+        return 1
+    }
+    return 0
+}
+
+fn mixed(a: int, x: float, b: int, y: float) -> float {
+    return float(a) + x * 10.0 + float(b) * 100.0 + y * 1000.0
+}
+
+fn eight(a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int) -> int {
+    return a + b * 2 + c * 3 + d * 4 + e * 5 + f * 6 + g * 7 + h * 8
+}
+
+let values = [42, -7, 19, 0, 1000, 3, -250, 8]
+let buf = mem.alloc(len(values) * 8)
+for i in 0..len(values) {
+    mem.write64(buf + i * 8, values[i])
+}
+qsort(buf, len(values), 8, byValue)
+let sorted: []int = []
+for i in 0..len(values) {
+    push(sorted, mem.readI64(buf + i * 8))
+}
+print(sorted)
+let want = mem.alloc(8)
+for v in [19, 4, -250] {
+    mem.write64(want, v)
+    let hit = bsearch(want, buf, len(values), 8, byValue)
+    if hit == 0 {
+        print("{v} not found")
+    } else {
+        print("{v} at {(hit - buf) / 8}")
+    }
+}
+mem.free(want)
+mem.free(buf)
+
+print(mem.callF(mem.callback(mixed), 1, 2.5, 3, 4.25))
+print(mem.call(mem.callback(eight), 1, 1, 1, 1, 1, 1, 1, 1))
+print(mem.call(mem.callback(eight), 8, 7, 6, 5, 4, 3, 2, 1))

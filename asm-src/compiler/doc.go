@@ -1,6 +1,6 @@
 package main
 
-// veyl doc: a reference for a file, written from its declarations and
+// scandiacus doc: a reference for a file, written from its declarations and
 // the comments above them.
 //
 //	// Area is width times height.
@@ -12,8 +12,8 @@ package main
 // pub is a library, and only what it exports is documented; otherwise
 // everything at the top level is.
 //
-//	veyl doc shapes.vl            Markdown on stdout
-//	veyl doc shapes.vl -o api.md  into a file; .html writes a web page
+//	scandiacus doc shapes.scd            Markdown on stdout
+//	scandiacus doc shapes.scd -o api.md  into a file; .html writes a web page
 //
 // The same comments show when hovering a name in the editor.
 
@@ -25,7 +25,7 @@ import (
 	"sort"
 	"strings"
 
-	front "veylfront"
+	front "scandiacusfront"
 )
 
 // docComments maps a line to the comment block that ends on the line
@@ -104,7 +104,7 @@ func docCommand(args []string) {
 		file = args[i]
 	}
 	if file == "" {
-		fail("veyl doc needs a .vl file")
+		fail("scandiacus doc needs a .scd file")
 	}
 	b, err := os.ReadFile(file)
 	if err != nil {
@@ -283,12 +283,12 @@ func docMarkdown(title, intro string, entries []docEntry) string {
 	}
 	b.WriteString("\n")
 	for _, e := range entries {
-		fmt.Fprintf(&b, "## %s %s\n\n```veyl\n%s\n```\n\n", e.kind, e.name, e.sig)
+		fmt.Fprintf(&b, "## %s %s\n\n```scandiacus\n%s\n```\n\n", e.kind, e.name, e.sig)
 		if e.doc != "" {
 			b.WriteString(e.doc + "\n\n")
 		}
 		for _, m := range e.members {
-			fmt.Fprintf(&b, "### %s.%s\n\n```veyl\n%s\n```\n\n", e.name, m.name, m.sig)
+			fmt.Fprintf(&b, "### %s.%s\n\n```scandiacus\n%s\n```\n\n", e.name, m.name, m.sig)
 			if m.doc != "" {
 				b.WriteString(m.doc + "\n\n")
 			}

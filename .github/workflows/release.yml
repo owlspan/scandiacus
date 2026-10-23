@@ -1,11 +1,11 @@
 name: release
 
-# A release happens when the version in compiler/veyl.go has none yet:
-# on a push to veyl that bumps it, or on pushing its tag by hand. Every
+# A release happens when the version in compiler/scandiacus.go has none yet:
+# on a push to scandiacus that bumps it, or on pushing its tag by hand. Every
 # other push stops after the first step.
 on:
   push:
-    branches: [veyl]
+    branches: [scandiacus]
     tags: ['v*']
 
 permissions:
@@ -21,17 +21,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: veyl
+          path: scandiacus
 
       - name: Is this version released yet
         id: version
-        working-directory: veyl
+        working-directory: scandiacus
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $v = ([regex]'const Version = "([^"]+)"').Match((Get-Content asm-src\compiler\veyl.go -Raw)).Groups[1].Value
+          $v = ([regex]'const Version = "([^"]+)"').Match((Get-Content asm-src\compiler\scandiacus.go -Raw)).Groups[1].Value
           if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$v") {
-            throw "the tag says ${{ github.ref_name }} and compiler/veyl.go says $v"
+            throw "the tag says ${{ github.ref_name }} and compiler/scandiacus.go says $v"
           }
           gh release view "v$v" --repo "${{ github.repository }}" 2>&1 | Out-Null
           $new = if ($LASTEXITCODE -eq 0) { 'false' } else { 'true' }
@@ -48,7 +48,7 @@ jobs:
 
       - name: Test
         if: steps.version.outputs.new == 'true'
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         run: |
           go test ../frontend/...
           if ($LASTEXITCODE -ne 0) { exit 1 }
@@ -64,26 +64,26 @@ jobs:
 
       - name: Build the installer
         if: steps.version.outputs.new == 'true'
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         run: powershell -NoProfile -ExecutionPolicy Bypass -File installer\build.ps1
 
       - name: Build the Linux and macOS binaries
         if: steps.version.outputs.new == 'true'
-        working-directory: veyl/asm-src
+        working-directory: scandiacus/asm-src
         env:
           CGO_ENABLED: '0'
         run: |
           $v = "${{ steps.version.outputs.version }}"
           $env:GOOS = 'linux';  $env:GOARCH = 'amd64'
-          go build -trimpath -o "dist\veyl-$v-linux-x86_64" ./compiler
+          go build -trimpath -o "dist\scandiacus-$v-linux-x86_64" ./compiler
           if ($LASTEXITCODE -ne 0) { exit 1 }
           $env:GOOS = 'darwin'; $env:GOARCH = 'amd64'
-          go build -trimpath -o "dist\veyl-$v-macos-x86_64" ./compiler
+          go build -trimpath -o "dist\scandiacus-$v-macos-x86_64" ./compiler
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Release notes
         if: steps.version.outputs.new == 'true'
-        working-directory: veyl
+        working-directory: scandiacus
         run: |
           $v = "${{ steps.version.outputs.version }}"
           $text = Get-Content CHANGELOG.md -Raw
@@ -93,13 +93,13 @@ jobs:
 
       - name: Publish
         if: steps.version.outputs.new == 'true'
-        working-directory: veyl
+        working-directory: scandiacus
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $v = "${{ steps.version.outputs.version }}"
           gh release create "v$v" `
-            "asm-src\dist\veyl-$v-setup.exe" `
-            "asm-src\dist\veyl-$v-linux-x86_64" `
-            "asm-src\dist\veyl-$v-macos-x86_64" `
-            --target "${{ github.sha }}" --title "Veyl $v" --notes-file notes.md
+            "asm-src\dist\scandiacus-$v-setup.exe" `
+            "asm-src\dist\scandiacus-$v-linux-x86_64" `
+            "asm-src\dist\scandiacus-$v-macos-x86_64" `
+            --target "${{ github.sha }}" --title "Scandiacus $v" --notes-file notes.md

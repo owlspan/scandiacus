@@ -11,18 +11,18 @@ import (
 )
 
 // TestUnwindTable builds a Windows executable and reads its exception
-// directory back: a sorted, non-overlapping RUNTIME_FUNCTION per Veyl
+// directory back: a sorted, non-overlapping RUNTIME_FUNCTION per Scandiacus
 // function, each starting on push rbp; mov rbp, rsp, covering main and
 // the program's own functions, all sharing one well-formed UNWIND_INFO.
 func TestUnwindTable(t *testing.T) {
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 	dir := t.TempDir()
-	src := filepath.Join(dir, "u.vl")
+	src := filepath.Join(dir, "u.scd")
 	prog := "fn f(n: int) -> int {\n    if n == 0 { return 0 }\n    return f(n - 1) + 1\n}\nprint(f(5))\nprint(\"x\" + str(f(2)))\n"
 	if err := os.WriteFile(src, []byte(prog), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := exec.Command(veyl, "build", "--windows", src).CombinedOutput(); err != nil {
+	if out, err := exec.Command(scandiacus, "build", "--windows", src).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	f, err := pe.Open(filepath.Join(dir, "u.exe"))

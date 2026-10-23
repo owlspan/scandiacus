@@ -1,13 +1,13 @@
 package main
 
-// bits, args and url, in Veyl.
+// bits, args and url, in Scandiacus.
 //
 // All three are pure computation over ints and strings, which is exactly
 // what the prelude is for. The only thing here that needs the operating
 // system is the command line, and that is one call.
 //
 // The bit functions are written against Go's math/bits, which works on
-// uint64 where Veyl's int is signed. Every place that matters, the shift
+// uint64 where Scandiacus's int is signed. Every place that matters, the shift
 // is followed by a mask: `>>` here is arithmetic, so a negative value
 // shifted right brings ones down from the top, and the mask is what
 // turns that back into the logical shift these functions mean.
@@ -608,7 +608,7 @@ fn __vy_resolvePath(base: str, ref: str) -> str {
 }
 `
 
-// os.dir.home, os.dir.temp and os.path.clean, in Veyl. None of them
+// os.dir.home, os.dir.temp and os.path.clean, in Scandiacus. None of them
 // needs Win32: two are an environment variable and the third is string
 // work.
 const preludeOsMore = `

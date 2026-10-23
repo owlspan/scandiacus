@@ -13,19 +13,19 @@ import (
 )
 
 // TestZip checks zip.make, zip.list and zip.extract against Go's own
-// archive/zip in both directions: what veyl writes, Go reads back byte
-// for byte, and what Go writes (dynamic Huffman, the usual kind), veyl
+// archive/zip in both directions: what scandiacus writes, Go reads back byte
+// for byte, and what Go writes (dynamic Huffman, the usual kind), scandiacus
 // unpacks. An entry climbing out of the destination is refused before
 // anything is written.
 func TestZip(t *testing.T) {
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 	dir := t.TempDir()
 	r := rand.New(rand.NewSource(1))
 	random := make([]byte, 6000)
 	r.Read(random)
 	files := map[string][]byte{
 		"notes.txt":          []byte(strings.Repeat("hello zip\n", 3)),
-		"src/code.vl":        []byte(strings.Repeat("let x = 1\nprint(x + 2)\n", 900)),
+		"src/code.scd":       []byte(strings.Repeat("let x = 1\nprint(x + 2)\n", 900)),
 		"src/sub/binary.bin": append(random, 0, 0, 0, 1),
 		"src/sub/zeros.bin":  make([]byte, 70000),
 	}
@@ -38,8 +38,8 @@ func TestZip(t *testing.T) {
 
 	run := func(src string) string {
 		t.Helper()
-		os.WriteFile(filepath.Join(dir, "z.vl"), []byte(src), 0o644)
-		cmd := exec.Command(veyl, "run", "z.vl")
+		os.WriteFile(filepath.Join(dir, "z.scd"), []byte(src), 0o644)
+		cmd := exec.Command(scandiacus, "run", "z.scd")
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -51,12 +51,12 @@ func TestZip(t *testing.T) {
 	got := run(`must(zip.make("out.zip", ["notes.txt", "src"]))
 print(join(must(zip.list("out.zip")), " "))
 `)
-	want := "notes.txt src/ src/code.vl src/empty/ src/sub/ src/sub/binary.bin src/sub/zeros.bin\n"
+	want := "notes.txt src/ src/code.scd src/empty/ src/sub/ src/sub/binary.bin src/sub/zeros.bin\n"
 	if got != want {
 		t.Errorf("zip.list: got %q, want %q", got, want)
 	}
 
-	// Go reads veyl's archive.
+	// Go reads scandiacus's archive.
 	zr, err := zip.OpenReader(filepath.Join(dir, "out.zip"))
 	if err != nil {
 		t.Fatalf("Go cannot open the archive: %v", err)
@@ -73,7 +73,7 @@ print(join(must(zip.list("out.zip")), " "))
 		data, err := io.ReadAll(rc) // checks the CRC too
 		rc.Close()
 		if err != nil || !bytes.Equal(data, files[f.Name]) {
-			t.Errorf("%s does not read back from veyl's archive: %v", f.Name, err)
+			t.Errorf("%s does not read back from scandiacus's archive: %v", f.Name, err)
 		}
 		if f.Method == zip.Deflate {
 			compressed++
@@ -84,7 +84,7 @@ print(join(must(zip.list("out.zip")), " "))
 		t.Errorf("only %d entries were compressed", compressed)
 	}
 
-	// Veyl reads Go's archive.
+	// Scandiacus reads Go's archive.
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	for name, data := range files {

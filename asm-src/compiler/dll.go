@@ -1,6 +1,6 @@
 package main
 
-// DLLs: `veyl build --dll mod.vl` writes mod.dll.
+// DLLs: `scandiacus build --dll mod.scd` writes mod.dll.
 //
 //	export fn add(a: int, b: int) -> int { return a + b }
 //	print("loaded")
@@ -21,7 +21,7 @@ package main
 // The export table, built in pe.go from Module.Exports. Each export
 // points at a stub rather than the function itself, for the same
 // reason a callback does - see callback.go - with one difference: an
-// exported int is a 64-bit int64_t, as a Veyl int is, so only a bool
+// exported int is a 64-bit int64_t, as a Scandiacus int is, so only a bool
 // needs fixing up on the way in.
 //
 // Relocation. A DLL cannot count on its preferred address being free,

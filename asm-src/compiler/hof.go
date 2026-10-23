@@ -3,7 +3,7 @@ package main
 // map, filter, reduce, sortBy, any, all and each.
 //
 // These are in the lowerer for the same reason shuffle is: they work on
-// a list of anything, and Veyl has no generics, so they cannot be
+// a list of anything, and Scandiacus has no generics, so they cannot be
 // written in the prelude. Here the element type is a compile-time fact
 // and the loop is the same loop whatever it turns out to be.
 //

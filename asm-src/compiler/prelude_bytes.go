@@ -1,6 +1,6 @@
 package main
 
-// The bytes library, in Veyl.
+// The bytes library, in Scandiacus.
 //
 // Everything here is built on three primitives from bytes.go:
 // __bytesMake(n), __byteAt(b, i) and __bytePut(b, i, v). The rest is

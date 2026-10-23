@@ -2,25 +2,25 @@ package main
 
 // The package manager.
 //
-//	veyl get sqlite                  from the official packages
-//	veyl get github.com/you/thing    from any GitHub repo
-//	veyl get https://.../thing.vl    from a URL
-//	veyl list
-//	veyl remove sqlite
+//	scandiacus get sqlite                  from the official packages
+//	scandiacus get github.com/you/thing    from any GitHub repo
+//	scandiacus get https://.../thing.scd    from a URL
+//	scandiacus list
+//	scandiacus remove sqlite
 //
-// Packages land in ./veyl_modules/<name>/ next to the program that uses
+// Packages land in ./scandiacus_modules/<name>/ next to the program that uses
 // them, not in a machine-wide location. A project carries its own
 // dependencies, two projects can want different versions of the same
 // thing, and deleting the directory uninstalls everything.
 //
-// A package is Veyl source, and may also carry a native DLL. That is
-// the whole reason `veyl get sqlite` exists rather than the compiler
+// A package is Scandiacus source, and may also carry a native DLL. That is
+// the whole reason `scandiacus get sqlite` exists rather than the compiler
 // shipping SQLite: the installer stays at 5 MB, and a program that
-// never touches a database never sees the library. `veyl build` copies
+// never touches a database never sees the library. `scandiacus build` copies
 // any DLL in a used package next to the executable it writes.
 //
 // The compiler is a Go program, so this uses Go's own HTTPS rather than
-// the WinHTTP path that compiled Veyl programs use. Two implementations
+// the WinHTTP path that compiled Scandiacus programs use. Two implementations
 // of "fetch a URL" is not duplication here - they run in different
 // processes, at different times, and one of them has to work before the
 // other one exists.
@@ -39,7 +39,7 @@ import (
 
 // modulesDir is where packages are installed, relative to the working
 // directory.
-const modulesDir = "veyl_modules"
+const modulesDir = "scandiacus_modules"
 
 // officialBase is where a bare name comes from.
 //
@@ -49,18 +49,18 @@ const modulesDir = "veyl_modules"
 //
 // HEAD rather than a branch name, so this keeps working whatever the
 // registry calls its default branch.
-const officialBase = "https://raw.githubusercontent.com/owlspan/veyl-packages/HEAD/"
+const officialBase = "https://raw.githubusercontent.com/owlspan/scandiacus-packages/HEAD/"
 
 // manifestName lists the files a package is made of. A package without
-// one is a single .vl file named after the package.
-const manifestName = "veyl.pkg"
+// one is a single .scd file named after the package.
+const manifestName = "scandiacus.pkg"
 
 // indexName lists every package a registry holds, one name per line.
 //
 // A file rather than the GitHub API: the API needs a token past sixty
 // requests an hour and only knows about GitHub, where this works for
 // any registry reachable over HTTP.
-const indexName = "veyl.index"
+const indexName = "scandiacus.index"
 
 // pkgClient has a timeout, because a fetch that hangs forever looks
 // exactly like a compiler that has crashed.
@@ -71,9 +71,9 @@ var pkgClient = &http.Client{Timeout: 30 * time.Second}
 func resolveSpec(spec string) (base, name string, err error) {
 	switch {
 	case strings.HasPrefix(spec, "http://"), strings.HasPrefix(spec, "https://"):
-		if strings.HasSuffix(spec, ".vl") {
+		if strings.HasSuffix(spec, ".scd") {
 			// A direct file: its own base, named after the file.
-			name = strings.TrimSuffix(filepath.Base(spec), ".vl")
+			name = strings.TrimSuffix(filepath.Base(spec), ".scd")
 			return spec, name, nil
 		}
 		return strings.TrimSuffix(spec, "/") + "/", filepath.Base(strings.TrimSuffix(spec, "/")), nil
@@ -191,7 +191,7 @@ func pkgGetAll(base string, skipNative bool) error {
 func hasNativeFile(base string) (bool, error) {
 	body, err := fetch(base + manifestName)
 	if err != nil {
-		// No manifest means a single .vl file, which is not native.
+		// No manifest means a single .scd file, which is not native.
 		return false, nil
 	}
 	for _, line := range strings.Split(string(body), "\n") {
@@ -211,13 +211,13 @@ func pkgGet(spec string) error {
 	}
 
 	var files []string
-	if strings.HasSuffix(base, ".vl") {
+	if strings.HasSuffix(base, ".scd") {
 		// A direct link to one file. The base is the file itself.
 		body, err := fetch(base)
 		if err != nil {
 			return err
 		}
-		return writePackage(name, map[string][]byte{name + ".vl": body})
+		return writePackage(name, map[string][]byte{name + ".scd": body})
 	}
 
 	// A manifest if there is one, otherwise the single obvious file.
@@ -233,7 +233,7 @@ func pkgGet(spec string) error {
 			return fmt.Errorf("%s lists no files", base+manifestName)
 		}
 	} else {
-		files = []string{name + ".vl"}
+		files = []string{name + ".scd"}
 	}
 
 	contents := map[string][]byte{}
@@ -402,7 +402,7 @@ func missingForeignDLLs(root string, mod *Module) error {
 		}
 		msg := fmt.Sprintf("this program needs %s, which could not be found.", dll)
 		if pkg, ok := officialCarrier[dll]; ok {
-			msg += fmt.Sprintf("\n        Install it next to the program with:  veyl get %s", pkg)
+			msg += fmt.Sprintf("\n        Install it next to the program with:  scandiacus get %s", pkg)
 		} else {
 			msg += "\n        Put the DLL next to the program, or install the package that ships it."
 		}

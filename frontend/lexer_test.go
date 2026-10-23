@@ -9,7 +9,7 @@ import (
 // which every case would otherwise have to mention.
 func scan(t *testing.T, src string) ([]Token, []string) {
 	t.Helper()
-	lx := NewLexer("t.vl", src)
+	lx := NewLexer("t.scd", src)
 	toks := lx.Scan()
 	if n := len(toks); n > 0 && toks[n-1].Kind == EOF {
 		toks = toks[:n-1]
@@ -217,7 +217,7 @@ func TestLexComments(t *testing.T) {
 }
 
 func TestLexKeepComments(t *testing.T) {
-	lx := NewLexer("t.vl", "let x = 1 // why\n")
+	lx := NewLexer("t.scd", "let x = 1 // why\n")
 	lx.KeepComments = true
 	toks := lx.Scan()
 

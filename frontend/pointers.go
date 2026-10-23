@@ -31,7 +31,7 @@ func (c *Checker) deref(x *Unary) *Type {
 }
 
 // addrOf types `&place`. Only memory has an address: a field of an
-// extern struct, *p, or p[i]. A Veyl variable lives in a register or a
+// extern struct, *p, or p[i]. A Scandiacus variable lives in a register or a
 // stack slot the collector and the register allocator both move
 // things around in, so it has no address to give out.
 func (c *Checker) addrOf(x *Unary) *Type {
@@ -71,7 +71,7 @@ func (c *Checker) addrOf(x *Unary) *Type {
 		}
 	}
 	c.ErrorAt(x, "'&' takes the address of memory: a field of an extern struct, *p or p[i] - "+
-		"a Veyl variable has no fixed address")
+		"a Scandiacus variable has no fixed address")
 	return Unknown
 }
 
@@ -159,7 +159,7 @@ func (c *Checker) externFieldType(f *StructField) *Type {
 
 // ptrTarget explains what is wrong with the thing a pointer type points
 // at, or returns "". Only memory with a C layout can be pointed at: a
-// Veyl struct is an object the collector owns and may move.
+// Scandiacus struct is an object the collector owns and may move.
 func (c *Checker) ptrTarget(t *Type) string {
 	for t.IsPtr() && t.Elem != nil && t.Elem.IsPtr() {
 		t = t.Elem
@@ -172,7 +172,7 @@ func (c *Checker) ptrTarget(t *Type) string {
 		return "unknown type \"" + t.Elem.Name + "\""
 	}
 	if !d.Extern {
-		return t.Elem.Name + " is a Veyl struct, and a pointer can only point at memory with a C " +
+		return t.Elem.Name + " is a Scandiacus struct, and a pointer can only point at memory with a C " +
 			"layout - make it an extern struct"
 	}
 	return ""

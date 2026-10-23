@@ -1,7 +1,7 @@
 'use strict';
 
 // Just enough of the vscode module for extension.js to run under plain
-// node, so its protocol code is tested against a real veyl lsp. It
+// node, so its protocol code is tested against a real scandiacus lsp. It
 // records what the extension registers and what it reports.
 
 const listeners = { open: [], change: [], close: [], config: [], closeTerminal: [] };
@@ -14,7 +14,7 @@ let configPath = '';
 class Uri {
     constructor(s) {
         this.s = s;
-        // file:///C:/x.vl and file:///tmp/x.vl, as the platform writes them.
+        // file:///C:/x.scd and file:///tmp/x.scd, as the platform writes them.
         const p = s.replace(/^file:\/\//, '');
         this.fsPath = /^\/[A-Za-z]:/.test(p) ? p.slice(1).replace(/\//g, '\\') : p;
     }

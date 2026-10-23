@@ -1,4 +1,4 @@
-/* Fixture for the static-linking golden test (tests/staticlib.vl).
+/* Fixture for the static-linking golden test (tests/staticlib.scd).
  *
  * Rebuild the archive beside it with the MinGW cross tools:
  *   x86_64-w64-mingw32-gcc -c -O2 -D__USE_MINGW_ANSI_STDIO=0 \

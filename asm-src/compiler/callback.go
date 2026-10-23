@@ -1,6 +1,6 @@
 package main
 
-// Callbacks: a Veyl function handed to native code as a C function
+// Callbacks: a Scandiacus function handed to native code as a C function
 // pointer.
 //
 //	extern fn EnumWindows(each: fn(ptr, ptr) -> bool, data: ptr) -> bool from "user32"
@@ -8,15 +8,15 @@ package main
 //	fn onWindow(hwnd: int, data: int) -> bool { ... }
 //	EnumWindows(onWindow, 0)
 //
-// A Veyl function already follows the Windows x64 convention - the
+// A Scandiacus function already follows the Windows x64 convention - the
 // arguments in rcx, rdx, r8, r9 or xmm0 to xmm3 by position, the rest on
 // the stack, the result in rax or xmm0, and nothing the caller relies on
 // left changed - so native code can call one directly. task.go starts
-// threads on Veyl functions for the same reason.
+// threads on Scandiacus functions for the same reason.
 //
 // What does not line up is width. A C int or BOOL is 32 bits, and the
 // top half of the 64-bit register it arrives in is whatever the caller
-// left there, where Veyl reads every int as the whole register. So the
+// left there, where Scandiacus reads every int as the whole register. So the
 // pointer native code is given is not the function itself but a stub
 // that sign-extends each argument the callback type declares as `int`,
 // normalises each `bool` to 0 or 1, and jumps to the function. The
@@ -41,12 +41,12 @@ type widenArg struct {
 
 	// kind, when set, is the mem* width of a fixed-width argument: an
 	// integer is extended from it, an f32 (memF32) widened to the
-	// double Veyl holds it as. A pos of -1 with memF32 is an f32
+	// double Scandiacus holds it as. A pos of -1 with memF32 is an f32
 	// return, narrowed on the way back out.
 	kind int64
 }
 
-// A Thunk is one stub: its own symbol, the Veyl function it enters, and
+// A Thunk is one stub: its own symbol, the Scandiacus function it enters, and
 // the arguments to widen on the way.
 type Thunk struct {
 	Sym    string
@@ -199,7 +199,7 @@ var (
 
 // thunk writes one callback stub. At entry the return address is at
 // [rsp] and argument i from the fifth on is at [rsp+8+8*i], which is
-// where the caller put it and where the Veyl function will look.
+// where the caller put it and where the Scandiacus function will look.
 func (e *Emitter) thunk(t Thunk) {
 	if t.Adapt && (targetLinux() || targetMac()) {
 		e.sysvThunk(t)
@@ -240,7 +240,7 @@ func (e *Emitter) thunk(t Thunk) {
 		e.line("mov %s, rax", at)
 	}
 	if retF32 {
-		// The Veyl function returns a double; native code wants a
+		// The Scandiacus function returns a double; native code wants a
 		// single. Called rather than jumped to, so there is a way back
 		// through here. The checker allows this with register arguments
 		// only, whose places do not move when this frame is pushed.
@@ -257,8 +257,8 @@ func (e *Emitter) thunk(t Thunk) {
 // sysvThunk is the stub on Linux and macOS, where native code calls
 // with the System V convention: integers in rdi, rsi, rdx, rcx, r8 and
 // r9 and floats in xmm0 to xmm7, each counted separately, the rest on
-// the stack, and no shadow space. A Veyl function takes the Windows x64
-// convention, which every Veyl call on every system uses, so the stub
+// the stack, and no shadow space. A Scandiacus function takes the Windows x64
+// convention, which every Scandiacus call on every system uses, so the stub
 // saves the incoming registers, lays the arguments out the Windows way
 // - positions 0 to 3 in registers, the rest above 32 bytes of shadow
 // space - widening each as thunk does, and calls the function. The
@@ -365,7 +365,7 @@ func (e *Emitter) sysvThunk(t Thunk) {
 // The 16-bit names of the argument registers.
 var argRegs16 = [4]string{"cx", "dx", "r8w", "r9w"}
 
-// thunkFixed widens one fixed-width argument into the form Veyl holds
+// thunkFixed widens one fixed-width argument into the form Scandiacus holds
 // it in: an integer extended from its width, an f32 made a double.
 func (e *Emitter) thunkFixed(w widenArg) {
 	if w.kind == memF32 {

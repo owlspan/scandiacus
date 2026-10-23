@@ -2,10 +2,10 @@ package frontend
 
 // Warnings: things that are allowed but are almost always a mistake.
 //
-//	x.vl:4:5: warning: "total" is declared but never used
-//	x.vl:9:5: warning: this can never run - it comes after a return
+//	x.scd:4:5: warning: "total" is declared but never used
+//	x.scd:9:5: warning: this can never run - it comes after a return
 //
-// They do not stop a build. veyl build and veyl check print them, and
+// They do not stop a build. scandiacus build and scandiacus check print them, and
 // the language server shows them as warnings rather than errors. A name
 // that starts with an underscore is exempt from the first, which is the
 // way to say a value is kept on purpose.
@@ -29,7 +29,7 @@ func (c *Checker) WarnAt(n Node, format string, args ...any) {
 }
 
 // inLibrary reports whether the code being checked is the compiler's
-// own - the prelude and the library written in Veyl - which has no file.
+// own - the prelude and the library written in Scandiacus - which has no file.
 func (c *Checker) inLibrary() bool {
 	return c.curFn != nil && c.curFn.File == "" && c.instFile == ""
 }

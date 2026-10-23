@@ -1,7 +1,7 @@
-# Learn Veyl in 20 minutes
+# Learn Scandiacus in 20 minutes
 
 This is the fast tour. It assumes you can already program in something -
-Python, JavaScript, a bit of C - and just want to know how Veyl does
+Python, JavaScript, a bit of C - and just want to know how Scandiacus does
 it.
 
 For the full rules see [SYNTAX.md](SYNTAX.md). For how the compiler
@@ -27,29 +27,29 @@ works see the [README](../README.md).
 
 ## Hello
 
-Put this in `hello.vl`:
+Put this in `hello.scd`:
 
-```veyl
+```scandiacus
 print("Hello, world!")
 ```
 
 ```
-veyl run hello.vl
+scandiacus run hello.scd
 ```
 
 No `main`, no imports, no semicolons. Top-level statements run in order.
 
-`veyl build hello.vl` gives you `hello.exe` instead - one file, no
+`scandiacus build hello.scd` gives you `hello.exe` instead - one file, no
 runtime to install, nothing to ship alongside it.
 
-> Nothing else has to be installed. `veyl` writes the `.exe` itself,
+> Nothing else has to be installed. `scandiacus` writes the `.exe` itself,
 > with no assembler, linker or C compiler behind it.
 
 ---
 
 ## Values
 
-```veyl
+```scandiacus
 let count = 0            // can change
 const LIMIT = 10         // cannot
 let name: str = "ada"    // say the type if you want to
@@ -57,7 +57,7 @@ let name: str = "ada"    // say the type if you want to
 
 Six types you will use constantly:
 
-```veyl
+```scandiacus
 let n     = 42            // int
 let ratio = 2.5           // float
 let word  = "hello"       // str
@@ -66,24 +66,24 @@ let xs    = [1, 2, 3]     // []int
 let ages  = {"ada": 36}   // {str: int}
 ```
 
-**Veyl never converts between types for you.** This is the rule that
+**Scandiacus never converts between types for you.** This is the rule that
 surprises people first:
 
-```veyl
+```scandiacus
 let n = 5
 print("count: " + n)        // error: cannot add str and int
 ```
 
 Two ways to fix it, and the second is nicer:
 
-```veyl
+```scandiacus
 print("count: " + str(n))
 print("count: {n}")         // anything in {} is inserted
 ```
 
 That `{}` works with any expression:
 
-```veyl
+```scandiacus
 print("{n} squared is {n * n}")
 print("shouting: {upper(word)}")
 ```
@@ -91,7 +91,7 @@ print("shouting: {upper(word)}")
 One exception to the no-conversion rule: a plain number *literal* will
 become a float where one is needed. A variable will not.
 
-```veyl
+```scandiacus
 let radius = 2.5
 let area = PI * radius * radius   // fine
 let wide = radius * 2             // fine, 2 becomes 2.0
@@ -104,7 +104,7 @@ let ok   = radius * float(two)    // fine
 **Text with backslashes goes in backticks**, where nothing is escaped
 and nothing is interpolated:
 
-```veyl
+```scandiacus
 const PATTERN = `\d{4}-\d{2}-\d{2}`
 ```
 
@@ -114,7 +114,7 @@ const PATTERN = `\d{4}-\d{2}-\d{2}`
 
 No parentheses around conditions. Braces always.
 
-```veyl
+```scandiacus
 if score >= 90 {
     print("A")
 } else if score >= 80 {
@@ -126,7 +126,7 @@ if score >= 90 {
 
 The condition has to be a `bool`. `if 5` is an error, not a shortcut.
 
-```veyl
+```scandiacus
 for i in 0..5 { }             // 0 1 2 3 4
 for i in 1..=5 { }            // 1 2 3 4 5
 for i in 10..0 step -2 { }    // 10 8 6 4 2
@@ -143,7 +143,7 @@ while running {
 `match` when you are choosing between values. Arms do not fall through,
 so there is no `break` to forget:
 
-```veyl
+```scandiacus
 match code {
     200      => print("ok")
     301, 302 => print("redirect")
@@ -158,7 +158,7 @@ match code {
 Parameter types are required. The return type comes after `->`, and is
 left off when there isn't one.
 
-```veyl
+```scandiacus
 fn add(a: int, b: int) -> int {
     return a + b
 }
@@ -174,7 +174,7 @@ compiler checks.
 
 Functions are values, so they can be passed around and written inline:
 
-```veyl
+```scandiacus
 let double = fn(n: int) -> int { return n * 2 }
 
 fn twice(f: fn(int) -> int, start: int) -> int {
@@ -188,7 +188,7 @@ print(twice(double, 3))     // 12
 
 ## Lists and maps
 
-```veyl
+```scandiacus
 let nums = [3, 1, 2]
 push(nums, 4)
 print(nums[0], len(nums), sort(nums))
@@ -198,7 +198,7 @@ print(nums[0], len(nums), sort(nums))
 alone; everything that changes it - `push`, `pop`, `insert`, `clear` -
 says so by taking the list as its first argument.
 
-```veyl
+```scandiacus
 let ages = {"ada": 36}
 ages["alan"] = 41
 ages["ada"] += 1
@@ -210,7 +210,7 @@ print(keys(ages))           // sorted
 A missing key reads as the zero value - `0`, `""`, `false` - which is
 what makes counting a one-liner:
 
-```veyl
+```scandiacus
 let counts: {str: int} = {}
 for word in split("a b a", " ") {
     counts[word] += 1       // no need to check first
@@ -222,14 +222,14 @@ which gives you nothing rather than a zero.
 
 An **empty literal has no element type**, so it needs an annotation:
 
-```veyl
+```scandiacus
 let xs: []int = []
 let m: {str: int} = {}
 ```
 
 And the family that takes a function:
 
-```veyl
+```scandiacus
 print(map(nums, fn(n: int) -> int { return n * n }))
 print(filter(nums, fn(n: int) -> bool { return n > 1 }))
 print(reduce(nums, 0, fn(acc: int, n: int) -> int { return acc + n }))
@@ -240,7 +240,7 @@ print(sortBy(nums, fn(a: int, b: int) -> bool { return a > b }))
 
 ## Structs
 
-```veyl
+```scandiacus
 struct Point {
     x: float
     y: float
@@ -266,7 +266,7 @@ Fields you leave out take their zero value, so `Point{}` is the origin.
 
 **Assigning a struct copies it.** The two are independent afterwards:
 
-```veyl
+```scandiacus
 let a = Point{x: 1.0, y: 1.0}
 let b = a
 b.x = 99.0
@@ -282,21 +282,21 @@ A method is the exception - it acts on the original, which is what lets
 
 A plain type can **never** be nil. `?T` is the one that can.
 
-```veyl
+```scandiacus
 let note: ?str = nil
 ```
 
 You cannot use it until you have proved it is there, and checking it
 narrows the type inside the block:
 
-```veyl
+```scandiacus
 if note != nil {
     print(upper(note))      // note is a plain str in here
 }
 print(upper(note))          // error: ?str might be nil
 ```
 
-This is the main thing Veyl offers over most languages: there is no
+This is the main thing Scandiacus offers over most languages: there is no
 such thing as a nil `str`, so there is no such thing as a
 nil-dereference crash.
 
@@ -307,13 +307,13 @@ nil-dereference crash.
 `T!` is either a `T` or a reason it is missing. Anything in the library
 that can fail returns one:
 
-```veyl
+```scandiacus
 let text = os.file.read("notes.txt")    // str!, not str
 ```
 
 Four ways to deal with it:
 
-```veyl
+```scandiacus
 must(text)                  // the value, or stop with the reason
 valueOr(text, "")           // the value, or a fallback
 isOk(text)                  // check first
@@ -323,7 +323,7 @@ errorOf(text)               // the reason, "" if it worked
 And the fifth, which is why the type is worth having. Inside a function
 that can itself fail, `?` unwraps or hands the failure upward:
 
-```veyl
+```scandiacus
 fn wordCount(path: str) -> int! {
     let text = os.file.read(path)?
     return len(split(trim(text), " "))
@@ -333,7 +333,7 @@ fn wordCount(path: str) -> int! {
 That single character is the whole `if err != nil` dance. Write your own
 failures with `fail`:
 
-```veyl
+```scandiacus
 fn parsePort(text: str) -> int! {
     if !isInt(text) {
         return fail("{text} is not a number")
@@ -348,7 +348,7 @@ fn parsePort(text: str) -> int! {
 
 No imports, ever. The library is grouped under dotted names:
 
-```veyl
+```scandiacus
 os.file.write("notes.txt", "hello")
 let page = valueOr(http.get("https://example.com"), "")
 let stamp = time.stamp()
@@ -362,7 +362,7 @@ print(re.findAll(`\d+`, "a1 b22 c333"))
 
 Doing several things at once is `map` with a different name:
 
-```veyl
+```scandiacus
 let pages = task.map(urls, fn(u: str) -> str {
     return valueOr(http.get(u), "")
 })
@@ -370,27 +370,27 @@ let pages = task.map(urls, fn(u: str) -> str {
 
 Everything has finished by the time it returns.
 
-**A whole program** is in `examples\wordfreq.vl` - arguments, a file
+**A whole program** is in `examples\wordfreq.scd` - arguments, a file
 that might not be there, a pattern, a map, a struct, and sorting with
 your own comparison, in about sixty lines:
 
 ```
-veyl run examples\wordfreq.vl SYNTAX.md 10
+scandiacus run examples\wordfreq.scd SYNTAX.md 10
 ```
 
 ---
 
 ## Several files
 
-```veyl
-import "helpers.vl"
+```scandiacus
+import "helpers.scd"
 ```
 
 The path is relative to the file that writes it. A declaration is
 private unless marked `pub`:
 
-```veyl
-// helpers.vl
+```scandiacus
+// helpers.scd
 pub const TAU = 6.283185307179586
 
 pub fn shout(text: str) -> str {
@@ -411,8 +411,8 @@ program body and is not.
 ## Where to go next
 
 ```
-veyl ir yourfile.vl       the intermediate representation
-veyl asm yourfile.vl      the x86-64 it generates
+scandiacus ir yourfile.scd       the intermediate representation
+scandiacus asm yourfile.scd      the x86-64 it generates
 ```
 
 `ir` is the best debugging tool here. When something behaves oddly,

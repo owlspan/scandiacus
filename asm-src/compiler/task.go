@@ -8,7 +8,7 @@ package main
 // writes to rather than pushing onto a shared list.
 //
 // The thread entry is an ordinary function lowered by this compiler.
-// That works because a Veyl function already takes its argument in rcx
+// That works because a Scandiacus function already takes its argument in rcx
 // and returns in rax, which is exactly what Windows wants of a
 // LPTHREAD_START_ROUTINE, so no hand-written trampoline is needed. It
 // has to be a named function rather than a closure, since a lifted
@@ -269,7 +269,7 @@ func taskShape(elem, ret vty, hasArg bool) string {
 	return sanitizeSym(s) + "_" + sanitizeSym(ret.String())
 }
 
-// fnSym is the symbol a Veyl function is emitted under. A generic
+// fnSym is the symbol a Scandiacus function is emitted under. A generic
 // instance's name, max<int> or Box<str>.get, holds characters no
 // assembler takes in a symbol, so a name with any is spelled out in hex;
 // every other name is kept as it is.

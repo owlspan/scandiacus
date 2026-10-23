@@ -148,7 +148,7 @@ let h = new [n]i32
 		t.Fatalf("errors: %v", errs)
 	}
 	bad := []struct{ src, want string }{
-		{"struct P { x: int }\nlet p = new P", "is a Veyl struct"},
+		{"struct P { x: int }\nlet p = new P", "is a Scandiacus struct"},
 		{"let p = new str", "new allocates C memory"},
 		{"let p = new [1.5]u8", "must be an integer"},
 		{"extern struct V { x: f32 }\nlet p = new V{y: 1}", "no field"},

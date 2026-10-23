@@ -3,13 +3,13 @@ package main
 // The math library.
 //
 // Almost none of it is here. sin, cos, tan, asin, acos, atan, atan2,
-// exp, log, log2, log10, pow, cbrt and hypot are all written in Veyl, in
+// exp, log, log2, log10, pow, cbrt and hypot are all written in Scandiacus, in
 // prelude_math.go, and this file only routes a call to them - see
 // prelude.go for why calling msvcrt instead would be a different
 // function rather than a different implementation.
 //
 // What is left here is the handful that are one comparison or one call
-// and would be sillier as Veyl source than as five lines of IR.
+// and would be sillier as Scandiacus source than as five lines of IR.
 
 func (l *lowerer) mathBuiltin(c *Call, name string) (Reg, bool) {
 	arity := func(n int) bool {
@@ -21,7 +21,7 @@ func (l *lowerer) mathBuiltin(c *Call, name string) (Reg, bool) {
 	}
 
 	// Everything transcendental is a call into the prelude, which is
-	// Veyl source compiled by this compiler - see prelude.go. Routing it
+	// Scandiacus source compiled by this compiler - see prelude.go. Routing it
 	// here rather than renaming the callee earlier keeps the error a
 	// user sees naming `sin` rather than `__vy_sin`.
 	if fn, ok := preludeOf[name]; ok {

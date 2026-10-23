@@ -10,7 +10,7 @@ package main
 // Both offsets are fixed, which is the whole reason the environment is
 // a separate object rather than the captures sitting inline. A call site
 // knows neither how many captures a value has nor whether it has any -
-// `steps` in functions2.vl is a list holding two capture-free values and
+// `steps` in functions2.scd is a list holding two capture-free values and
 // one that captured ten - so the code address has to be somewhere the
 // call site can name without knowing.
 //

@@ -4,18 +4,18 @@ package main
 // its own environment variable so a suspect pass can be turned off
 // without touching the rest:
 //
-//	VEYL_NOFOLD      constant and branch folding
-//	VEYL_NODCE       dead code elimination
-//	VEYL_NOFORWARD   redundant load elimination
-//	VEYL_NOCSE       repeated memory loads, element addresses and
+//	SCANDIACUS_NOFOLD      constant and branch folding
+//	SCANDIACUS_NODCE       dead code elimination
+//	SCANDIACUS_NOFORWARD   redundant load elimination
+//	SCANDIACUS_NOCSE       repeated memory loads, element addresses and
 //	                 bounds checks within a block
-//	VEYL_NOLICM      header words and fields read once before a loop
+//	SCANDIACUS_NOLICM      header words and fields read once before a loop
 //	                 that cannot change them
-//	VEYL_NOROTATE    a loop's test copied to the bottom
-//	VEYL_NOINLINE    small functions copied into their callers
-//	VEYL_NOSLOTPACK  frame slot packing
+//	SCANDIACUS_NOROTATE    a loop's test copied to the bottom
+//	SCANDIACUS_NOINLINE    small functions copied into their callers
+//	SCANDIACUS_NOSLOTPACK  frame slot packing
 //
-// VEYL_NOOPT=1 turns every pass off and leaves the output identical to
+// SCANDIACUS_NOOPT=1 turns every pass off and leaves the output identical to
 // what the unoptimized compiler emits.
 
 import (
@@ -30,51 +30,51 @@ func envOff(name string) bool { return os.Getenv(name) == "1" }
 // after Lower has reported no errors, so the IR it sees always came
 // from a program that checked clean.
 func Optimize(m *Module) {
-	if envOff("VEYL_NOOPT") {
+	if envOff("SCANDIACUS_NOOPT") {
 		return
 	}
-	if !envOff("VEYL_NOINLINE") {
+	if !envOff("SCANDIACUS_NOINLINE") {
 		inlineCalls(m)
 	}
 	for _, fn := range m.Funcs {
-		if !envOff("VEYL_NOFOLD") {
+		if !envOff("SCANDIACUS_NOFOLD") {
 			fold(m, fn)
 		}
-		if !envOff("VEYL_NODCE") {
+		if !envOff("SCANDIACUS_NODCE") {
 			dce(fn)
 		}
 		// Before forwarding: the copy of a loop's test must not leave
 		// the body reading registers the top's test defined, and until
 		// forwarding the body loads its locals for itself.
-		if !envOff("VEYL_NOROTATE") {
+		if !envOff("SCANDIACUS_NOROTATE") {
 			rotateLoops(fn)
 		}
-		if !envOff("VEYL_NOFORWARD") {
+		if !envOff("SCANDIACUS_NOFORWARD") {
 			forwardLoads(fn)
 			dropDeadStores(fn)
-			if !envOff("VEYL_NODCE") {
+			if !envOff("SCANDIACUS_NODCE") {
 				// Sweep once more: forwarding just turned loads into
 				// plain register mentions, which can leave the loaded
 				// constants they fed with no remaining readers.
 				dce(fn)
 			}
 		}
-		if !envOff("VEYL_NOPOLLS") {
+		if !envOff("SCANDIACUS_NOPOLLS") {
 			dropPolls(fn, m.Threaded)
 		}
 		// After the polls are gone: each is a call, and a call forgets
 		// every load.
-		if !envOff("VEYL_NOCSE") {
+		if !envOff("SCANDIACUS_NOCSE") {
 			cse(m, fn)
 		}
-		if !envOff("VEYL_NOLICM") {
+		if !envOff("SCANDIACUS_NOLICM") {
 			licm(m, fn)
-			if !envOff("VEYL_NODCE") {
+			if !envOff("SCANDIACUS_NODCE") {
 				dce(fn) // the loads of locals the moved words were read through
 			}
 		}
 
-		if !envOff("VEYL_NOSLOTPACK") {
+		if !envOff("SCANDIACUS_NOSLOTPACK") {
 			packSlots(fn)
 		}
 	}
@@ -444,7 +444,7 @@ func deadOK(op Op) bool {
 //     paragraph did.
 //
 // Equivalences survive calls. Frame slots are not addressable from
-// Veyl, boxes live on the heap rather than in the frame, and today
+// Scandiacus, boxes live on the heap rather than in the frame, and today
 // every register value physically lives in its own stack slot across a
 // call. The one exception is a slot handed out by OpSlotAddr: a C
 // function with an out-parameter writes it behind our back, anywhere

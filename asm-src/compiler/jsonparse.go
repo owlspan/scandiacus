@@ -1,6 +1,6 @@
 package main
 
-// JSON parsing: text to a tree, and the tree to a Veyl value.
+// JSON parsing: text to a tree, and the tree to a Scandiacus value.
 //
 // Two halves that do not know about each other. The parser is a runtime
 // walk over the characters, producing nodes that carry their own kind -

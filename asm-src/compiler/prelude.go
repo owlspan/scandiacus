@@ -1,6 +1,6 @@
 package main
 
-// The prelude: library functions written in Veyl and compiled by this
+// The prelude: library functions written in Scandiacus and compiled by this
 // compiler like any other code.
 //
 // Why this exists. The guarantee of this backend is that a program
@@ -14,9 +14,9 @@ package main
 // implementation of these functions, it is a different function.
 //
 // So they are implemented, from Go's own algorithms. What this file adds
-// is that they are implemented *in Veyl* rather than by hand-writing
+// is that they are implemented *in Scandiacus* rather than by hand-writing
 // calls into the IR builder. `y = z + z*(zz*((P0*zz+P1)*zz+P2)/D)` is
-// one line of Veyl and about twenty lines of emit calls, and the twenty
+// one line of Scandiacus and about twenty lines of emit calls, and the twenty
 // lines cannot be read against the algorithm they came from. Writing it
 // in the language the compiler already compiles gets the lowering, the
 // type checking and the byte writer for nothing.
@@ -30,7 +30,7 @@ package main
 // Two private builtins exist only for this file: `__bits` and
 // `__frombits` reinterpret a float as its IEEE 754 bit pattern and back.
 // Go's Frexp, Ldexp, Modf and the special-case tests are all written in
-// terms of that, and there is no way to say it in Veyl otherwise. They
+// terms of that, and there is no way to say it in Scandiacus otherwise. They
 // are not in the language and a user program naming one gets the
 // ordinary "not on the assembly backend yet" error, because they are
 // registered for the prelude's own compilation and nowhere else.
@@ -40,7 +40,7 @@ import (
 	"sync"
 )
 
-// preludeOf maps a builtin to the Veyl function that implements it.
+// preludeOf maps a builtin to the Scandiacus function that implements it.
 // A builtin absent from here is either lowered directly in the IR or is
 // not on this backend at all.
 var preludeOf = map[string]string{
@@ -513,7 +513,7 @@ func preludeChunks() map[string]string {
 	return chunkText
 }
 
-// preludeSource is the Veyl text. It is split into named chunks only so
+// preludeSource is the Scandiacus text. It is split into named chunks only so
 // that the algorithms can carry the comments explaining where their
 // constants came from.
 var preludeSource = strings.Join([]string{

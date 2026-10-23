@@ -5,7 +5,7 @@
 *.go        text eol=lf
 *.mod       text eol=lf
 *.md        text eol=lf
-*.vl        text eol=lf
+*.scd        text eol=lf
 *.json      text eol=lf
 
 # Windows tooling wants its own endings.

@@ -10,9 +10,9 @@ import (
 // that is all a test needs to reach.
 func parseExterns(t *testing.T, src string) (*Program, []string) {
 	t.Helper()
-	lx := NewLexer("t.vl", src)
+	lx := NewLexer("t.scd", src)
 	toks := lx.Scan()
-	ps := NewParser("t.vl", toks)
+	ps := NewParser("t.scd", toks)
 	prog := ps.ParseProgram()
 	return prog, append(append([]string{}, lx.Errors...), ps.Errors...)
 }

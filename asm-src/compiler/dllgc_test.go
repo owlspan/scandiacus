@@ -18,7 +18,7 @@ func TestDLLCollects(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("a DLL runs on Windows")
 	}
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 	dir := t.TempDir()
 	lib := `export fn churn(n: int) -> int {
     let total = 0
@@ -90,13 +90,13 @@ print("wrong answers: {atomic.get(bad)}")
 print("collected: {collections() > 0}")
 print("heap under 64 MB: {used() < 67108864}")
 `
-	os.WriteFile(filepath.Join(dir, "gcmod.vl"), []byte(lib), 0o644)
-	os.WriteFile(filepath.Join(dir, "host.vl"), []byte(host), 0o644)
+	os.WriteFile(filepath.Join(dir, "gcmod.scd"), []byte(lib), 0o644)
+	os.WriteFile(filepath.Join(dir, "host.scd"), []byte(host), 0o644)
 	for _, args := range [][]string{
-		{"build", "--dll", filepath.Join(dir, "gcmod.vl")},
-		{"build", filepath.Join(dir, "host.vl")},
+		{"build", "--dll", filepath.Join(dir, "gcmod.scd")},
+		{"build", filepath.Join(dir, "host.scd")},
 	} {
-		if out, err := exec.Command(veyl, args...).CombinedOutput(); err != nil {
+		if out, err := exec.Command(scandiacus, args...).CombinedOutput(); err != nil {
 			t.Fatalf("%v: %v\n%s", args, err, out)
 		}
 	}

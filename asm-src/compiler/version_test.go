@@ -28,13 +28,13 @@ func TestVersionsAgree(t *testing.T) {
 		return string(b)
 	}
 
-	iss := read("asm-src/installer/veyl.iss")
+	iss := read("asm-src/installer/scandiacus.iss")
 	for _, name := range []string{"AppVersion", "ExtVersion"} {
 		m := regexp.MustCompile(`#define ` + name + ` "([^"]+)"`).FindStringSubmatch(iss)
 		if m == nil {
-			t.Errorf("veyl.iss has no %s", name)
+			t.Errorf("scandiacus.iss has no %s", name)
 		} else if m[1] != Version {
-			t.Errorf("veyl.iss %s is %s, the compiler is %s", name, m[1], Version)
+			t.Errorf("scandiacus.iss %s is %s, the compiler is %s", name, m[1], Version)
 		}
 	}
 
@@ -46,8 +46,8 @@ func TestVersionsAgree(t *testing.T) {
 		t.Errorf("editors/vscode/package.json is %s, the compiler is %s", pkg.Version, Version)
 	}
 
-	if !strings.Contains(read("editors/vscode/README.md"), "veyl-lang-"+Version+".vsix") {
-		t.Errorf("editors/vscode/README.md does not name veyl-lang-%s.vsix", Version)
+	if !strings.Contains(read("editors/vscode/README.md"), "scandiacus-lang-"+Version+".vsix") {
+		t.Errorf("editors/vscode/README.md does not name scandiacus-lang-%s.vsix", Version)
 	}
 
 	syntax := read("docs/SYNTAX.md")

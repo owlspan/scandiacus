@@ -4,7 +4,7 @@ package main
 // raw command line.
 //
 // Neither is in the language. __chr exists because percent-decoding has
-// to turn a number back into a character and Veyl has no way to say
+// to turn a number back into a character and Scandiacus has no way to say
 // that; __cmdline exists because a program built here has no C runtime
 // startup, so there is no argv to read and the command line has to come
 // from Windows directly.

@@ -1,10 +1,10 @@
-<img src="icons/veyl.svg" width="96" alt="Veyl">
+<img src="icons/scandiacus.svg" width="96" alt="Scandiacus">
 
-# veyl - the Veyl compiler
+# scandiacus - the Scandiacus compiler
 
-Veyl compiles to x86-64, with no Go anywhere.
+Scandiacus compiles to x86-64, with no Go anywhere.
 
-It used to work the other way. The old compiler translated Veyl to Go
+It used to work the other way. The old compiler translated Scandiacus to Go
 source and handed that to the Go toolchain. It produced genuinely
 native executables and it was the only thing that did for a long time.
 What it cost was a runtime, a 2.4 MB floor on binary size, a 177 MB Go
@@ -12,33 +12,33 @@ toolchain inside the installer, and any hope of pointers or manual
 memory.
 
 This is how those got bought back. The old one is on the
-[`veylgo`](../../../tree/veylgo) branch, discontinued. This one is
-Veyl now.
+[`scandiacusgo`](../../../tree/scandiacusgo) branch, discontinued. This one is
+Scandiacus now.
 
 ```
-hello.vl  ->  [veyl]  ->  hello.exe
+hello.scd  ->  [scandiacus]  ->  hello.exe
 ```
 
-Nothing in that arrow is another program. veyl encodes the
+Nothing in that arrow is another program. scandiacus encodes the
 instructions, links, and writes the PE itself, so a build needs nothing
 installed.
 
 It also builds for Linux and macOS, from any of the three:
 
 ```
-hello.vl  ->  [veyl --linux]  ->  hello
+hello.scd  ->  [scandiacus --linux]  ->  hello
 ```
 
 From Windows or macOS a Linux build, and from Windows or Linux a macOS
-one, goes through zig's linker: `veyl cross install` fetches it once
+one, goes through zig's linker: `scandiacus cross install` fetches it once
 (the Windows installer offers it as "Cross compiling").
 
 The Linux executable runs the same instructions as the Windows one. The
 generated code is left exactly as it is; every library call it makes is
 answered by a small runtime that does the same job on POSIX under the
-Windows calling convention. `linuxrt/veylrt.c` is the C runtime and the
-process, file and thread calls; `linuxrt/veylgdi.c` is a software
-implementation of the drawing calls; `linuxrt/veylwin.c` puts a window on
+Windows calling convention. `linuxrt/scandiacusrt.c` is the C runtime and the
+process, file and thread calls; `linuxrt/scandiacusgdi.c` is a software
+implementation of the drawing calls; `linuxrt/scandiacuswin.c` puts a window on
 the screen and reads input through X11, and plays sound through
 PulseAudio, both loaded with dlopen. So a graphical game - the window,
 the frame buffer, the keyboard and mouse, the HUD text, images and sound
@@ -100,7 +100,7 @@ pipeline:
 - the list library: `first`, `last`, `pop`, `sum`, `reverse`, `sort`,
   `slice`, `join`, `insert`, `removeAt`, `contains`, `indexOf`, and
   `split`, `chars`, `lines` turning a string into a list
-- multi-file programs: `import "other.vl"`, with `pub`, and top-level
+- multi-file programs: `import "other.scd"`, with `pub`, and top-level
   consts as real globals in static storage
 - the `os` library: `file.read`, `write`, `append`, `lines`, `exists`,
   `size`, `delete`, `rename`, `readOr`; `dir.is`, `list`, `make`,
@@ -114,17 +114,17 @@ pipeline:
   `task.all`, on real Windows threads, results in list order
 - the `bytes` type, and `hash`: md5, sha1, sha256, sha512, crc32, hex
   and base64 both ways, and `hash.file`
-- `re`: a backtracking engine written in Veyl, matching Go's
+- `re`: a backtracking engine written in Scandiacus, matching Go's
   leftmost-first semantics
 - `json` encode and decode, and `csv` parse, write, read and save
 - the math, time, bits, args, url, stats, term and rand libraries, all
-  written in Veyl in the prelude
+  written in Scandiacus in the prelude
 - a mark-and-sweep collector, conservative over roots
 
 - `net` TCP sockets and an `http` server and client, through WinSock
 - `win`: a window with a game loop, drawing, keyboard and mouse,
   immediate-mode widgets, `.png` images with alpha and `.bmp` with a
-  colour key, a PNG decoder written in Veyl, text
+  colour key, a PNG decoder written in Scandiacus, text
   measurement, and off-screen canvases; `sound` plays a WAV
 - `extern fn`: declare a function that lives in a DLL and call it -
   the Windows API, the C runtime, or any library a package ships
@@ -132,9 +132,9 @@ pipeline:
   width from `u8` to `f64`, `mem.protect` and `mem.scan`, and
   `extern struct`, a C layout laid over an address, with natural
   alignment or offsets given by hand
-- callbacks: a Veyl function handed to native code as a C function
+- callbacks: a Scandiacus function handed to native code as a C function
   pointer
-- `veyl build --dll`: a DLL whose top level runs on load, exporting
+- `scandiacus build --dll`: a DLL whose top level runs on load, exporting
   every `export fn`
 - `var` globals every function can change, and enums, with a `match`
   on one checked for every variant
@@ -188,14 +188,14 @@ missing file is FormatMessage's sentence, and strerror's is a
 different one.
 
 ```
-$ veyl run examples/floats.vl
+$ scandiacus run examples/floats.scd
 5.5
 -2.5
 6
 0.375
 ```
 
-`examples/collatz.vl` is the benchmark - nested loops, 10,000 iterations
+`examples/collatz.scd` is the benchmark - nested loops, 10,000 iterations
 of real integer work - through both backends:
 
 The two assembly columns are the same compiler. Only the linking
@@ -228,13 +228,13 @@ runs by itself, at the start of a statement, once the live heap passes
 a threshold: 4 MB, then twice what survived the last collection. A
 statement boundary is safe because every pointer is in a stack slot or
 a global there - the register allocator never takes one - and the test
-suite runs with `VEYL_GC=eager`, which collects at nearly every
+suite runs with `SCANDIACUS_GC=eager`, which collects at nearly every
 statement, to hold it to that. With threads running it stops all of
 them, each at a statement or while it waits in a blocking call, and
 scans every thread's stack (`gcthreads.go`). In a DLL, each host thread
 that calls an export is made known to it on the way in and parks on
 the way out (`dllgc.go`).
-`VEYL_GC=off` turns it off.
+`SCANDIACUS_GC=off` turns it off.
 
 `s += t` on a local string appends in place when nothing else can see
 the string, so building one in a loop is linear (`strappend.go`).
@@ -259,11 +259,11 @@ must be one instruction whose bytes we could write ourselves, and
 
 ```
 frontend/           lexer, parser, AST, types and the type checker,
-                    shared with the Go backend on the veylgo branch
+                    shared with the Go backend on the scandiacusgo branch
 asm-src/
   go.mod            requires ../frontend
   compiler/
-    veyl.go         the driver and the command line
+    scandiacus.go         the driver and the command line
     frontend.go     type aliases onto the shared front end
     library.go      asmLibrary - the builtin table, for the checker
     ir.go           AST -> three-address IR over virtual registers
@@ -277,13 +277,13 @@ asm-src/
     fixed.go        i8 to u64 and f32: wrapping, unsigned ops, rounding
     cstruct.go      new and delete, and variables kept in memory for &x
     winmedia.go     images, canvases, text measurement and sound
-    prelude_png.go  the PNG decoder and DEFLATE, in Veyl
-    callback.go     Veyl functions called from native code
+    prelude_png.go  the PNG decoder and DEFLATE, in Scandiacus
+    callback.go     Scandiacus functions called from native code
     dll.go          DLL output: the entry point and the export table
     encode*.go      x86-64 text -> machine code
     link.go, pe.go  the linker and the PE writer
     gc*.go          the collector
-    prelude*.go     library code written in Veyl, compiled with the program
+    prelude*.go     library code written in Scandiacus, compiled with the program
     *.go            one file per built-in library: list, map, os, net,
                     http, json, task, db, win, and the rest
   examples/         top-level ones are tests, with their output beside them
@@ -291,7 +291,7 @@ asm-src/
   installer/        the Inno Setup script and its build script
   scripts/          make-installer.bat and .sh, saferun.ps1, metrics.ps1
 docs/               SYNTAX.md and TUTORIAL.md
-editors/            VS Code (highlighting and a client for veyl lsp),
+editors/            VS Code (highlighting and a client for scandiacus lsp),
                     Sublime, Vim and Notepad++ highlighting
 ```
 
@@ -318,20 +318,20 @@ closest real name offered.
 ## Commands
 
 ```
-veyl f.vl          compile and run
-veyl run   f.vl    the same thing, spelled out
-veyl build f.vl    write an executable next to the source
-veyl asm   f.vl    print the generated assembly
-veyl ir    f.vl    print the intermediate representation
-veyl vscode        install the VS Code extension (the installer runs it)
-veyl check f.vl    errors and warnings, without building
-veyl doc   f.vl    a reference from the declarations and their comments
-veyl test  f.vl    run the file's test "name" { } blocks, each in its own process
-veyl fmt   f.vl    lay the file out the standard way (--check to only ask)
-veyl lsp           the language server editors start, on stdin and stdout
+scandiacus f.scd          compile and run
+scandiacus run   f.scd    the same thing, spelled out
+scandiacus build f.scd    write an executable next to the source
+scandiacus asm   f.scd    print the generated assembly
+scandiacus ir    f.scd    print the intermediate representation
+scandiacus vscode        install the VS Code extension (the installer runs it)
+scandiacus check f.scd    errors and warnings, without building
+scandiacus doc   f.scd    a reference from the declarations and their comments
+scandiacus test  f.scd    run the file's test "name" { } blocks, each in its own process
+scandiacus fmt   f.scd    lay the file out the standard way (--check to only ask)
+scandiacus lsp           the language server editors start, on stdin and stdout
 ```
 
-`asm` and `ir` matter more here than `veyl emit` does on the Go
+`asm` and `ir` matter more here than `scandiacus emit` does on the Go
 backend. When a register allocator produces something wrong, reading
 the instruction stream is the only way to see it.
 
@@ -346,7 +346,7 @@ Every program in `tests/` and the top level of `examples/` is run and
 its output compared byte for byte with the `.out` file beside it. On
 Linux the programs are built as Linux executables and run directly,
 against the same `.out` files; the few that need a Windows-only library
-are skipped. `VEYL_TARGET=windows` runs the Windows build instead,
+are skipped. `SCANDIACUS_TARGET=windows` runs the Windows build instead,
 through `wine`.
 
 Until the Go backend was retired, the examples were compared against it
@@ -363,16 +363,16 @@ it does not understand is worse than one that refuses.
 
 ## Requirements
 
-To build a program: nothing on Windows. veyl encodes, links and writes
+To build a program: nothing on Windows. scandiacus encodes, links and writes
 the PE itself. On Linux: `as`, `objcopy` and a C compiler, which any
 machine that builds software has (`apt install build-essential`).
 
 To run the tests: Go, and MinGW's `as` and `gcc` (on Linux, `x86_64-w64-mingw32-as`
 and `wine`). `encode_test.go` checks every byte
-this compiler emits against GNU `as`, and `VEYL_LINK=mingw` takes the
+this compiler emits against GNU `as`, and `SCANDIACUS_LINK=mingw` takes the
 old route through `gcc` so a program that runs one way and not the
 other localises the bug to the half that changed. Both are found on
-`PATH`, at the usual MSYS2 and MinGW locations, or via `VEYL_MINGW`.
+`PATH`, at the usual MSYS2 and MinGW locations, or via `SCANDIACUS_MINGW`.
 Without them those two checks skip and everything else runs.
 
 ## Installing
@@ -381,7 +381,7 @@ Without them those two checks skip and everything else runs.
 scripts\make-installer.bat
 ```
 
-Double-click it. It builds `asm-src\dist\veyl-<version>-setup.exe`,
+Double-click it. It builds `asm-src\dist\scandiacus-<version>-setup.exe`,
 which is about 5 MB because there is no toolchain to bundle. The Go
 backend's installer is roughly 90, most of it a trimmed copy of Go. It
 needs Go and Inno Setup (`winget install JRSoftware.InnoSetup`).
@@ -389,11 +389,11 @@ needs Go and Inno Setup (`winget install JRSoftware.InnoSetup`).
 Inno Setup installed into the wine prefix.
 
 Every release on GitHub carries the same installer, built by
-`.github/workflows/release.yml` on a Windows runner. A push to `veyl`
+`.github/workflows/release.yml` on a Windows runner. A push to `scandiacus`
 that bumps the version releases it, tag included; so does pushing a
 `v*` tag by hand. The version lives in four places - `Version` in
-`asm-src/compiler/veyl.go`, `AppVersion` and `ExtVersion` in
-`installer/veyl.iss`, and `editors/vscode/package.json` - and
+`asm-src/compiler/scandiacus.go`, `AppVersion` and `ExtVersion` in
+`installer/scandiacus.iss`, and `editors/vscode/package.json` - and
 `version_test.go` fails when they disagree.
 
 ## How it got here
@@ -435,7 +435,7 @@ without anyone maintaining a list of what is missing.
 
 The one that had to come before writing many of them was the **error
 type `T!`**, which is now done - see below. Every library function in
-Veyl reports failure as `T!` rather than panicking, so without results
+Scandiacus reports failure as `T!` rather than panicking, so without results
 here they could only have been ported in a lying form.
 
 **3. Maps. Done.** Keys and values in two parallel arrays, found
@@ -530,7 +530,7 @@ other barriers, with no label inside the span. Frames stay as slot
 packing made them - every value keeps its slot - but straight-line
 arithmetic stops round-tripping through memory, which is most of the 30%
 the allocator adds to the optimisation stack's runtime win. Off with
-`VEYL_NORA=1`, which reproduces the previous output byte for byte.
+`SCANDIACUS_NORA=1`, which reproduces the previous output byte for byte.
 
 Stack frames were large here because nothing was reused: a 60-line
 program could need 3,000 virtual registers. That was a size problem, not
@@ -558,7 +558,7 @@ collection with a million objects alive takes about 35 ms.
 line of assembly into machine code, checked byte for byte against GNU
 `as`, and `pe.go` writes the executable with its import table. This is
 what removed the MinGW dependency; `x64.go` did not change when it
-landed. `VEYL_LINK=mingw` still takes the old route through `gcc`.
+landed. `SCANDIACUS_LINK=mingw` still takes the old route through `gcc`.
 
 **13. Optimisation.** Constant and branch folding, dead code
 elimination, redundant load elimination, slot packing, an assembly
@@ -567,11 +567,11 @@ peephole and the register allocator from step 10. On top of those:
 - **Slot promotion.** The busiest integer and bool locals of each
   function live in rbx, rsi, rdi and r12-r15 for its whole life, across
   calls and loops, instead of in frame slots. Off with
-  `VEYL_NOPROMOTE=1`.
+  `SCANDIACUS_NOPROMOTE=1`.
 - **Collection checks where they can matter.** Each statement's check
   of the heap is dropped when no path reaches it having allocated since
   the last one, so a loop that only does arithmetic has none. Off with
-  `VEYL_NOPOLLS=1`.
+  `SCANDIACUS_NOPOLLS=1`.
 - **Fused branches.** A compare whose only reader is the branch after
   it becomes one `cmp` and one conditional jump.
 - **Instruction selection.** An operation is done in its result's own
@@ -613,10 +613,10 @@ peephole and the register allocator from step 10. On top of those:
   next call in a callee-saved register; and a frame only has words for
   the values that are not in registers.
 
-`VEYL_NOOPT=1` turns all of it off. Against `gcc -O2` on the same
+`SCANDIACUS_NOOPT=1` turns all of it off. Against `gcc -O2` on the same
 programs, best of three on one machine:
 
-| | Veyl | gcc -O2 |
+| | Scandiacus | gcc -O2 |
 | --- | ---: | ---: |
 | fib(32), recursive calls | 122 ms | 99 ms |
 | 200M iterations of `total += (i * i) % 7` | 417 ms | 406 ms |
@@ -625,7 +625,7 @@ programs, best of three on one machine:
 | summing a `*i32` of 10M elements, ten times | 195 ms | 132 ms |
 | 300k int map inserts and lookups | 249 ms | 133 ms |
 
-The C map is a hand-written open-addressed table. The Veyl list is
+The C map is a hand-written open-addressed table. The Scandiacus list is
 bounds-checked on every access, and the C array is not.
 
 ## What comes next

@@ -296,7 +296,7 @@ func unescapeAsm(arg string) (string, error) {
 
 // stripComment removes a trailing assembler comment.
 //
-// It has to know about quotes. A Veyl string literal reaches the
+// It has to know about quotes. A Scandiacus string literal reaches the
 // assembly inside .asciz, and a program printing a "#" would otherwise
 // have the rest of its own text deleted here - wrong output rather than
 // an error, and only in programs that happen to contain that character.

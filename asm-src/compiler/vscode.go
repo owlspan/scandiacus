@@ -1,6 +1,6 @@
 package main
 
-// veyl vscode: put the Veyl extension into Visual Studio Code.
+// scandiacus vscode: put the Scandiacus extension into Visual Studio Code.
 //
 // The installer used to copy the extension folder into
 // ~/.vscode/extensions and leave it there. VS Code no longer works that
@@ -10,17 +10,17 @@ package main
 // no highlighting. So this packs the folder as a .vsix, the format VS
 // Code installs from, and hands it to VS Code's own command line:
 //
-//	code --install-extension veyl-lang-0.58.0.vsix --force
+//	code --install-extension scandiacus-lang-0.58.0.vsix --force
 //
 // which writes the registry entry itself. Folders an older installer
 // copied in by hand are removed afterwards, since nothing loads them.
 //
-//	veyl vscode               install (the installer runs this)
-//	veyl vscode --vsix FILE   only write the .vsix, for Install from VSIX...
-//	veyl vscode --uninstall   remove it again
+//	scandiacus vscode               install (the installer runs this)
+//	scandiacus vscode --vsix FILE   only write the .vsix, for Install from VSIX...
+//	scandiacus vscode --uninstall   remove it again
 //
-// The extension folder is found beside veyl.exe (editors\vscode, where
-// the installer puts it) or in a source checkout. VEYL_CODE names the
+// The extension folder is found beside scandiacus.exe (editors\vscode, where
+// the installer puts it) or in a source checkout. SCANDIACUS_CODE names the
 // VS Code command line when it is not one of the usual places.
 
 import (
@@ -67,9 +67,9 @@ func vscodeCommand(args []string) {
 	if uninstall {
 		code := findCode()
 		if code == nil {
-			fail("VS Code's command line (code) was not found; uninstall Veyl from VS Code's Extensions view")
+			fail("VS Code's command line (code) was not found; uninstall Scandiacus from VS Code's Extensions view")
 		}
-		out, err := runCode(code, "--uninstall-extension", "veyl.veyl-lang")
+		out, err := runCode(code, "--uninstall-extension", "scandiacus.scandiacus-lang")
 		fmt.Print(out)
 		if err != nil {
 			os.Exit(1)
@@ -103,7 +103,7 @@ func vscodeCommand(args []string) {
 			"In VS Code, run Extensions: Install from VSIX... and pick that file.", p)
 	}
 
-	tmp, err := os.MkdirTemp("", "veyl-vsix-*")
+	tmp, err := os.MkdirTemp("", "scandiacus-vsix-*")
 	if err != nil {
 		fail("%v", err)
 	}
@@ -118,7 +118,7 @@ func vscodeCommand(args []string) {
 		fail("VS Code did not install the extension: %v", err)
 	}
 	removeHandCopies(m)
-	fmt.Printf("Veyl %s is installed in VS Code. Reload any open window to pick it up.\n", m.Version)
+	fmt.Printf("Scandiacus %s is installed in VS Code. Reload any open window to pick it up.\n", m.Version)
 }
 
 func readExtManifest(dir string) (*extManifest, error) {
@@ -137,7 +137,7 @@ func readExtManifest(dir string) (*extManifest, error) {
 }
 
 // findExtensionDir is where the installer puts the extension, beside
-// veyl.exe, or the editors folder of a source checkout.
+// scandiacus.exe, or the editors folder of a source checkout.
 func findExtensionDir() string {
 	exe, err := os.Executable()
 	if err == nil {
@@ -152,13 +152,13 @@ func findExtensionDir() string {
 			}
 		}
 	}
-	fail("the VS Code extension was not found beside veyl; name its folder: veyl vscode path\\to\\editors\\vscode")
+	fail("the VS Code extension was not found beside scandiacus; name its folder: scandiacus vscode path\\to\\editors\\vscode")
 	return ""
 }
 
 // findCode is the command that runs VS Code's command line, or nil.
 func findCode() []string {
-	if c := os.Getenv("VEYL_CODE"); c != "" {
+	if c := os.Getenv("SCANDIACUS_CODE"); c != "" {
 		return strings.Fields(c)
 	}
 	names := []string{"code", "code-insiders", "codium"}
@@ -205,7 +205,7 @@ func runCode(code []string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// removeHandCopies deletes the veyl.veyl-lang-* folders an older
+// removeHandCopies deletes the scandiacus.scandiacus-lang-* folders an older
 // installer copied into ~/.vscode/extensions, which the registry does not
 // list and so nothing loads. One the registry does list is left alone.
 func removeHandCopies(m *extManifest) {
@@ -342,8 +342,8 @@ func writeVSIX(path, dir string, m *extManifest) error {
 	return f.Close()
 }
 
-// withServerPath sets the default of the veyl.path setting to this veyl,
-// so the language server starts whether or not veyl is on PATH - the
+// withServerPath sets the default of the scandiacus.path setting to this scandiacus,
+// so the language server starts whether or not scandiacus is on PATH - the
 // installer's PATH entry is optional, and a PATH change reaches only
 // programs started after it. A user setting still wins.
 func withServerPath(pkg []byte) []byte {
@@ -361,7 +361,7 @@ func withServerPath(pkg []byte) []byte {
 	contrib, _ := m["contributes"].(map[string]any)
 	conf, _ := contrib["configuration"].(map[string]any)
 	props, _ := conf["properties"].(map[string]any)
-	setting, _ := props["veyl.path"].(map[string]any)
+	setting, _ := props["scandiacus.path"].(map[string]any)
 	if setting == nil {
 		return pkg
 	}

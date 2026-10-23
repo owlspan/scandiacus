@@ -8,15 +8,15 @@ import (
 	"testing"
 )
 
-// The icon veyl.exe itself shows in Explorer. Go links any .syso in the
+// The icon scandiacus.exe itself shows in Explorer. Go links any .syso in the
 // package into a Windows build, so rsrc_windows_amd64.syso is a COFF
 // object holding a .rsrc section made by buildResources from
-// icons/veyl.ico. This test fails when the two drift apart;
-// VEYL_REGEN=1 rewrites the object.
+// icons/scandiacus.ico. This test fails when the two drift apart;
+// SCANDIACUS_REGEN=1 rewrites the object.
 const sysoName = "rsrc_windows_amd64.syso"
 
 func TestIconSysoUpToDate(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "icons", "veyl.ico"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "icons", "scandiacus.ico"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func TestIconSysoUpToDate(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := resourceObject(imgs)
-	if os.Getenv("VEYL_REGEN") == "1" {
+	if os.Getenv("SCANDIACUS_REGEN") == "1" {
 		if err := os.WriteFile(sysoName, want, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -33,7 +33,7 @@ func TestIconSysoUpToDate(t *testing.T) {
 	}
 	got, err := os.ReadFile(sysoName)
 	if err != nil || !bytes.Equal(got, want) {
-		t.Fatalf("%s does not match icons/veyl.ico; run the test with VEYL_REGEN=1", sysoName)
+		t.Fatalf("%s does not match icons/scandiacus.ico; run the test with SCANDIACUS_REGEN=1", sysoName)
 	}
 }
 

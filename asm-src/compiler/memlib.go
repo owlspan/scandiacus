@@ -281,7 +281,7 @@ func (l *lowerer) rawMemBuiltin(c *Call, name string) (Reg, bool) {
 
 	case "mem.addr":
 		// Where a bytes, a str or an extern struct lives. A bytes or a
-		// str allocated by Veyl stays put for as long as something
+		// str allocated by Scandiacus stays put for as long as something
 		// still refers to it.
 		if !arity(1) {
 			return l.junk(), true

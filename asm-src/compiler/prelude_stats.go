@@ -1,6 +1,6 @@
 package main
 
-// stats and term, in Veyl.
+// stats and term, in Scandiacus.
 //
 // stats is arithmetic over a list of floats, so it is exactly what the
 // prelude is for. term is string decoration plus one question the

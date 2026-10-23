@@ -7,14 +7,14 @@ package main
 // macOS as it is. A Linux or macOS executable is linked by a C toolchain
 // for that system, which the system itself has and the others do not.
 // Zig carries one for every target in a single download (clang, lld, and
-// the libc headers and stubs of glibc and macOS), so it is what veyl
-// uses when the target is not the system it runs on. `veyl cross install`
+// the libc headers and stubs of glibc and macOS), so it is what scandiacus
+// uses when the target is not the system it runs on. `scandiacus cross install`
 // fetches a pinned release of it into the cache directory, checked
 // against a pinned hash; the Windows installer offers to do that as its
 // "Cross compiling" component.
 //
-// Where zig is looked for, first match wins: VEYL_ZIG (the zig program),
-// a zig folder beside the veyl executable, the one `veyl cross install`
+// Where zig is looked for, first match wins: SCANDIACUS_ZIG (the zig program),
+// a zig folder beside the scandiacus executable, the one `scandiacus cross install`
 // put in the cache, and zig on PATH.
 
 import (
@@ -35,7 +35,7 @@ const zigVersion = "0.13.0"
 
 // zigWheels are the zig releases as the ziglang Python wheels, which are
 // zip files on every system - Go reads zip, not the .tar.xz the other
-// downloads come in. Keyed by GOOS/GOARCH of the system veyl runs on.
+// downloads come in. Keyed by GOOS/GOARCH of the system scandiacus runs on.
 var zigWheels = map[string]struct{ url, sha256 string }{
 	"windows/amd64": {"https://files.pythonhosted.org/packages/e0/0c/66f4710aedf5544e15779ff9c6e770322986e15daf9299b1a4df0be19e09/ziglang-0.13.0-py3-none-win_amd64.whl",
 		"b64b2aa936ebbfeecfbb2611df331a5474edebe1246b98c2f56d6ae4d58b71fc"},
@@ -61,18 +61,18 @@ func zigExe() string {
 	return "zig"
 }
 
-// zigCacheDir is where `veyl cross install` puts zig by default.
+// zigCacheDir is where `scandiacus cross install` puts zig by default.
 func zigCacheDir() string {
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		dir = os.TempDir()
 	}
-	return filepath.Join(dir, "veyl", "zig-"+zigVersion)
+	return filepath.Join(dir, "scandiacus", "zig-"+zigVersion)
 }
 
 // findZig is the zig program to cross compile with, or "".
 func findZig() string {
-	if env := os.Getenv("VEYL_ZIG"); env != "" {
+	if env := os.Getenv("SCANDIACUS_ZIG"); env != "" {
 		return env
 	}
 	var dirs []string
@@ -98,7 +98,7 @@ func crossCC(zigTarget, system string) []string {
 	z := findZig()
 	if z == "" {
 		fail("building for %s from %s needs the cross toolchain, which is not installed.\n"+
-			"        Run `veyl cross install` once (about 80 MB), then build again.",
+			"        Run `scandiacus cross install` once (about 80 MB), then build again.",
 			system, hostName())
 	}
 	return []string{z, "cc", "-target", zigTarget}
@@ -114,13 +114,13 @@ func hostName() string {
 	return "Windows"
 }
 
-// crossCommand is `veyl cross`.
+// crossCommand is `scandiacus cross`.
 func crossCommand(args []string) {
 	if len(args) == 0 || args[0] == "status" {
 		if z := findZig(); z != "" {
 			fmt.Printf("cross compiling is set up: %s\n", z)
 		} else {
-			fmt.Println("cross compiling is not set up; run `veyl cross install`")
+			fmt.Println("cross compiling is not set up; run `scandiacus cross install`")
 		}
 		return
 	}
@@ -236,7 +236,7 @@ func extractFile(f *zip.File, dst string, mode os.FileMode) error {
 // time, since there is no libsqlite3 to link against here.
 func buildLinuxCross(asmText string, externs []string, wrapperC string, wrapperLibs []string, out string) {
 	cc := crossCC(zigLinuxTarget, "Linux")
-	tmp, err := os.MkdirTemp("", "veyl-cross-*")
+	tmp, err := os.MkdirTemp("", "scandiacus-cross-*")
 	if err != nil {
 		fail("%v", err)
 	}
@@ -263,7 +263,7 @@ func buildLinuxCross(asmText string, externs []string, wrapperC string, wrapperL
 	if needsSqlite(externs) {
 		src := strings.ReplaceAll(macSqliteSource, "/usr/lib/libsqlite3.dylib", "libsqlite3.so")
 		src = strings.ReplaceAll(src, "libsqlite3.dylib", "libsqlite3.so.0")
-		args = append(args, write("veylsqlite.c", src))
+		args = append(args, write("scandiacussqlite.c", src))
 	}
 	args = append(args, "-lm", "-lpthread", "-ldl")
 	args = append(args, wrapperLibs...)

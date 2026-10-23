@@ -84,9 +84,9 @@ var CompoundOp = map[Kind]Kind{
 }
 
 // AssignOpText spells a compound assignment operator, for error
-// messages. Veyl and Go happen to agree on all of these, which is why
+// messages. Scandiacus and Go happen to agree on all of these, which is why
 // this used to live in the Go backend under a name that implied it was
-// about Go. It is not: it is how the operator is written in Veyl.
+// about Go. It is not: it is how the operator is written in Scandiacus.
 func AssignOpText(k Kind) string {
 	switch k {
 	case PLUSEQ:
@@ -113,7 +113,7 @@ func AssignOpText(k Kind) string {
 	return "="
 }
 
-// OpText spells a binary operator, for error messages. Veyl and Go
+// OpText spells a binary operator, for error messages. Scandiacus and Go
 // agree on all of them, which is why this used to live in the Go
 // backend under a name implying it was about Go. It is not.
 func OpText(k Kind) string {

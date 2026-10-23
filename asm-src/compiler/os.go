@@ -217,7 +217,7 @@ func (l *lowerer) osBuiltin(c *Call, name string) (Reg, bool) {
 
 // readFile reads a whole file into a string.
 //
-// A Veyl string on this backend is NUL-terminated bytes, so a file
+// A Scandiacus string on this backend is NUL-terminated bytes, so a file
 // holding a zero byte reads back short where the Go backend, which
 // carries a length, reads it whole. That is a real difference and it is
 // the reason `bytes` will have to be its own type here rather than a str

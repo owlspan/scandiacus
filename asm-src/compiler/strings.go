@@ -2,7 +2,7 @@ package main
 
 // The string library, lowered in the IR out of byte loads and stores.
 //
-// A Veyl string is a pointer to its bytes, like a C string, and like a
+// A Scandiacus string is a pointer to its bytes, like a C string, and like a
 // C string they end in a zero byte, so any C function can take one as it
 // is. But the length is not found by looking for that zero: it is in
 // the object header in front of the bytes, the size word every heap

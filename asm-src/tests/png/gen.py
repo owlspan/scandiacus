@@ -1,4 +1,4 @@
-# Writes the PNG fixtures for tests/png.vl: every colour type, the palette
+# Writes the PNG fixtures for tests/png.scd: every colour type, the palette
 # depths, each row filter, stored and compressed data, and the IDAT split
 # over two chunks. It prints the cases with the hash of the premultiplied
 # BGRA pixels the decoder has to produce. Needs Pillow for pillow.png.
@@ -84,7 +84,7 @@ cases.append(('pillow.png', expected(px, W, H)))
 # And a 16-bit one, which has to be refused.
 Image.new('I;16', (4, 4)).save('deep.png')
 
-with open('cases.vl', 'w') as fh:
+with open('cases.scd', 'w') as fh:
     fh.write('const cases = [\n')
     for n, h in cases:
         fh.write(f'    ["{n}", "{h}"],\n')

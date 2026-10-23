@@ -79,7 +79,7 @@ func (l *lowerer) winhttpFetch(args []Reg) Reg {
 			}
 
 			session := l.ccall("WinHttpOpen",
-				[]Reg{l.toWide(l.strLit("veyl")),
+				[]Reg{l.toWide(l.strLit("scandiacus")),
 					l.constant(winhttpAccessDefaultProxy),
 					l.constant(0), l.constant(0), l.constant(0)},
 				[]vty{vInt, vInt, vInt, vInt, vInt}, vInt, false, false)

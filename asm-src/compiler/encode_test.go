@@ -16,7 +16,7 @@ import (
 // For every example, the same assembly text goes to GNU as and to the
 // encoder here, and the machine code has to come out identical. There is
 // no reasoning to check and no table to trust: the assembler is the
-// definition, exactly as the Go backend is the definition of what Veyl
+// definition, exactly as the Go backend is the definition of what Scandiacus
 // means.
 //
 // Only the bytes are compared, not the relocations. An instruction that
@@ -26,19 +26,19 @@ import (
 func TestEncoderMatchesAssembler(t *testing.T) {
 	as, _, binDir := findToolchainForTest(t)
 
-	programs, err := filepath.Glob(filepath.Join("..", "examples", "*.vl"))
+	programs, err := filepath.Glob(filepath.Join("..", "examples", "*.scd"))
 	if err != nil || len(programs) == 0 {
 		t.Fatalf("no examples to encode: %v", err)
 	}
 
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 
 	for _, src := range programs {
 		src := src
 		t.Run(filepath.Base(src), func(t *testing.T) {
 			t.Parallel()
 
-			out, err := exec.Command(veyl, "asm", src).Output()
+			out, err := exec.Command(scandiacus, "asm", src).Output()
 			if err != nil {
 				t.Fatalf("could not produce assembly: %v", err)
 			}
@@ -224,7 +224,7 @@ func itoa(n int) string {
 
 func findToolchainForTest(t *testing.T) (as, cc, binDir string) {
 	t.Helper()
-	if env := os.Getenv("VEYL_MINGW"); env != "" {
+	if env := os.Getenv("SCANDIACUS_MINGW"); env != "" {
 		return filepath.Join(env, "as.exe"), filepath.Join(env, "gcc.exe"), env
 	}
 	// Off Windows the host `as` writes ELF, which is not what this

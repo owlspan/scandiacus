@@ -32,7 +32,7 @@ import (
 	"fmt"
 	"strings"
 
-	front "veylfront"
+	front "scandiacusfront"
 )
 
 func vFixed(name string) vty {

@@ -5,7 +5,7 @@ package main
 //	crash: access violation - an address that is not valid was read or written
 //	    in parse
 //
-// A Veyl runtime error explains itself (see where.go). A crash is
+// A Scandiacus runtime error explains itself (see where.go). A crash is
 // different: a bad address handed to mem.*, a native function writing
 // where it should not, a stack that ran out. Windows would end the
 // program with no word at all. Instead a vectored exception handler,

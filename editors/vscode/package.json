@@ -1,9 +1,9 @@
 {
-  "name": "veyl-lang",
-  "displayName": "Veyl",
-  "description": "Highlighting, errors as you type, completion, go to definition, and a button to run or build the file, for the Veyl programming language",
+  "name": "scandiacus-lang",
+  "displayName": "Scandiacus",
+  "description": "Highlighting, errors as you type, completion, go to definition, and a button to run or build the file, for the Scandiacus programming language",
   "version": "1.84.0",
-  "publisher": "veyl",
+  "publisher": "scandiacus",
   "license": "MIT",
   "engines": {
     "vscode": "^1.82.0"
@@ -13,37 +13,37 @@
   ],
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:veyl",
-    "onCommand:veyl.run",
-    "onCommand:veyl.build"
+    "onLanguage:scandiacus",
+    "onCommand:scandiacus.run",
+    "onCommand:scandiacus.build"
   ],
   "contributes": {
     "languages": [
       {
-        "id": "veyl",
+        "id": "scandiacus",
         "aliases": [
-          "Veyl",
-          "veyl"
+          "Scandiacus",
+          "scandiacus"
         ],
         "extensions": [
-          ".vl"
+          ".scd"
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./icons/veyl-file.png",
-          "dark": "./icons/veyl-file.png"
+          "light": "./icons/scandiacus-file.png",
+          "dark": "./icons/scandiacus-file.png"
         }
       }
     ],
     "grammars": [
       {
-        "language": "veyl",
-        "scopeName": "source.veyl",
-        "path": "./syntaxes/veyl.tmLanguage.json"
+        "language": "scandiacus",
+        "scopeName": "source.scandiacus",
+        "path": "./syntaxes/scandiacus.tmLanguage.json"
       }
     ],
     "configurationDefaults": {
-      "[veyl]": {
+      "[scandiacus]": {
         "editor.insertSpaces": true,
         "editor.tabSize": 4,
         "files.trimTrailingWhitespace": true,
@@ -51,84 +51,84 @@
       }
     },
     "configuration": {
-      "title": "Veyl",
+      "title": "Scandiacus",
       "properties": {
-        "veyl.path": {
+        "scandiacus.path": {
           "type": "string",
           "default": "",
-          "description": "The veyl executable used for the language server and the run and build buttons. Empty means veyl on PATH."
+          "description": "The scandiacus executable used for the language server and the run and build buttons. Empty means scandiacus on PATH."
         }
       }
     },
     "commands": [
       {
-        "command": "veyl.run",
-        "title": "Run Veyl File",
-        "category": "Veyl",
+        "command": "scandiacus.run",
+        "title": "Run Scandiacus File",
+        "category": "Scandiacus",
         "icon": "$(play)"
       },
       {
-        "command": "veyl.build",
-        "title": "Build Veyl Executable",
-        "category": "Veyl",
+        "command": "scandiacus.build",
+        "title": "Build Scandiacus Executable",
+        "category": "Scandiacus",
         "icon": "$(package)"
       }
     ],
     "menus": {
       "editor/title/run": [
         {
-          "command": "veyl.run",
-          "when": "resourceLangId == veyl",
+          "command": "scandiacus.run",
+          "when": "resourceLangId == scandiacus",
           "group": "navigation@0"
         },
         {
-          "command": "veyl.build",
-          "when": "resourceLangId == veyl",
+          "command": "scandiacus.build",
+          "when": "resourceLangId == scandiacus",
           "group": "navigation@1"
         }
       ],
       "editor/context": [
         {
-          "command": "veyl.run",
-          "when": "resourceLangId == veyl",
-          "group": "veyl@0"
+          "command": "scandiacus.run",
+          "when": "resourceLangId == scandiacus",
+          "group": "scandiacus@0"
         },
         {
-          "command": "veyl.build",
-          "when": "resourceLangId == veyl",
-          "group": "veyl@1"
+          "command": "scandiacus.build",
+          "when": "resourceLangId == scandiacus",
+          "group": "scandiacus@1"
         }
       ],
       "explorer/context": [
         {
-          "command": "veyl.run",
-          "when": "resourceLangId == veyl",
-          "group": "veyl@0"
+          "command": "scandiacus.run",
+          "when": "resourceLangId == scandiacus",
+          "group": "scandiacus@0"
         },
         {
-          "command": "veyl.build",
-          "when": "resourceLangId == veyl",
-          "group": "veyl@1"
+          "command": "scandiacus.build",
+          "when": "resourceLangId == scandiacus",
+          "group": "scandiacus@1"
         }
       ],
       "commandPalette": [
         {
-          "command": "veyl.run",
-          "when": "editorLangId == veyl"
+          "command": "scandiacus.run",
+          "when": "editorLangId == scandiacus"
         },
         {
-          "command": "veyl.build",
-          "when": "editorLangId == veyl"
+          "command": "scandiacus.build",
+          "when": "editorLangId == scandiacus"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "veyl.run",
+        "command": "scandiacus.run",
         "key": "ctrl+f5",
-        "when": "editorLangId == veyl"
+        "when": "editorLangId == scandiacus"
       }
     ]
   },
-  "icon": "icons/veyl.png"
+  "icon": "icons/scandiacus.png"
 }

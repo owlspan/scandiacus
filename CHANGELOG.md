@@ -23,7 +23,7 @@ still names it.
 a copy, so the function cannot change the caller's value. When the
 function only reads the parameter's fields, writes no fields at all and
 calls nothing that could, the copy is skipped: it is the same value
-either way. `tests/structargs.vl` covers both sides.
+either way. `tests/structargs.scd` covers both sides.
 
 **Also faster:** string map keys (hashed a word at a time, compared by
 length first), `for` loops over a list or a map (the loop test moves to
@@ -43,11 +43,11 @@ Best of three, against 1.83.0:
 | a million inserts into an `{int: int}` | 686 ms | 238 ms |
 
 **Callbacks on Linux and macOS.** Native code there calls with the
-System V convention, so a callback stub that only jumped to the Veyl
+System V convention, so a callback stub that only jumped to the Scandiacus
 function handed it its arguments in the wrong registers. Off Windows
-the stub now moves them where a Veyl function takes them:
+the stub now moves them where a Scandiacus function takes them:
 `qsort`'s comparator and `mem.callback` addresses work on all three
-systems (`tests/callbacks_c.vl`).
+systems (`tests/callbacks_c.scd`).
 
 **Fix: float arguments to `mem.call`.** A call through an address with
 integer arguments in r8 or r9 and a float after them lost an integer
@@ -65,31 +65,31 @@ at each other, collections in the middle - with identical output.
 
 **Interfaces in HTML and CSS.** The new `ui` library opens a window
 whose contents are a web page, so an interface can have the layout,
-fonts and look of anything a browser shows, driven by a Veyl program:
+fonts and look of anything a browser shows, driven by a Scandiacus program:
 
-```veyl
+```scandiacus
 let app = must(ui.open("To do", 560, 640))
 ui.html(app, page)
 while ui.poll(app) {
     for m in ui.messages(app) {
-        // what the page sent with veyl.send(...)
+        // what the page sent with scandiacus.send(...)
     }
 }
 ```
 
-The page gets a `veyl` object: `veyl.send(x)` reaches `ui.messages`,
-and `veyl.onmessage` receives `ui.send`. `ui.file` shows an HTML file
+The page gets a `scandiacus` object: `scandiacus.send(x)` reaches `ui.messages`,
+and `scandiacus.onmessage` receives `ui.send`. `ui.file` shows an HTML file
 with its own stylesheets and scripts beside it, `ui.eval` runs
 JavaScript in the page. On Windows it is WebView2, the Edge engine
 every updated Windows 10 and 11 already has, so nothing ships with the
 program; the window follows dark mode and is sharp on high-DPI
-screens. `examples/ui/todo.vl` is a complete to-do list. Linux and
+screens. `examples/ui/todo.scd` is a complete to-do list. Linux and
 macOS are not done yet.
 
 **`mem.callback(f)`** gives the address of a stub that native code can
 call to run `f` - a window procedure, or the methods of a COM object
 the program builds itself. The `ui` library is built on it: WebView2's
-completion and message handlers are COM objects made in Veyl.
+completion and message handlers are COM objects made in Scandiacus.
 
 **Empty `[]` and `{}` take their type from where they go.** Assigning
 to a variable whose type is known (`xs = []`), pushing into a list of
@@ -138,7 +138,7 @@ The generated code was checked against the unoptimised build on about
 could stop the build with "the generated assembly could not be
 encoded" - setting a field of a list element from a variable
 (`ws[0].speed = v`), from a builtin such as `max()`, or from a value
-clamped in an `if`. Those now compile; `tests/floatfields.vl` covers
+clamped in an `if`. Those now compile; `tests/floatfields.scd` covers
 them.
 
 ## 1.82.0
@@ -152,12 +152,12 @@ optional fourth argument, any part of a device's name, and
 `audio.devices(output)` lists them - so a voice changer can send its
 sound straight to a virtual cable:
 
-```veyl
+```scandiacus
 let out = must(audio.output(48000, 1, 480, "cable"))
 ```
 
-`examples/audio/robot.vl` takes `--in` and `--out`, and the new
-`examples/audio/check.vl` lists the devices and times a stream each
+`examples/audio/robot.scd` takes `--in` and `--out`, and the new
+`examples/audio/check.scd` lists the devices and times a stream each
 way. On Windows and macOS a stream keeps time from the start; on Linux
 PulseAudio may take a second or two to start the first one if it had
 an idle device suspended, then keeps time.
@@ -169,7 +169,7 @@ and the speakers as streams of float samples, read and written a block
 at a time, which is what a voice changer, a tuner or a synthesizer
 needs:
 
-```veyl
+```scandiacus
 let mic = must(audio.input(48000, 1, 480))
 let out = must(audio.output(48000, 1, 480))
 while true {
@@ -177,7 +177,7 @@ while true {
 }
 ```
 
-`examples/audio/robot.vl` is a working voice changer - a robot voice or
+`examples/audio/robot.scd` is a working voice changer - a robot voice or
 an echo. To use it in Discord or a game, route the output through a
 virtual audio cable such as VB-Audio Cable. Windows uses winmm; Linux
 uses PulseAudio and works, but its delay has not been measured on real
@@ -276,7 +276,7 @@ definition, hover and completion work on `geo.area`.
 
 ## 1.76.1
 
-**HTTPS works on Apple Silicon Macs.** A Veyl program runs there as
+**HTTPS works on Apple Silicon Macs.** A Scandiacus program runs there as
 x86-64 under Rosetta, and the OpenSSL Homebrew installs on those Macs
 is arm64, so it could not be loaded and every `https://` fetch failed.
 When no OpenSSL loads, the program now uses the system's own TLS,
@@ -295,7 +295,7 @@ the next append copies once before growing again. `s = s + t` takes
 the same path. 200000 appends building a 1.3 MB string went from 22
 seconds to 85 milliseconds.
 
-**Namespaced imports.** `import "geometry.vl" as geo` puts everything
+**Namespaced imports.** `import "geometry.scd" as geo` puts everything
 the file declares under `geo`: `geo.area(2.0)`, `geo.Vec{...}`,
 `let v: geo.Vec`, `geo.Kind.Round`, `geo.TAU`. Two files that export
 the same names no longer collide. Generics work across namespaces. A
@@ -343,12 +343,12 @@ there. It now gets `-arch x86_64`.
 two: `--linux` and `--macos` from Windows, `--windows` and `--linux`
 from macOS, `--windows` and `--macos` from Linux.
 
-A Windows executable already needed nothing but veyl, which writes the
+A Windows executable already needed nothing but scandiacus, which writes the
 PE itself. A Linux or macOS one is linked by a C toolchain for that
-system, so from another system veyl uses zig's: `veyl cross install`
+system, so from another system scandiacus uses zig's: `scandiacus cross install`
 downloads zig 0.13.0 once (about 80 MB, checked against a pinned hash)
 into the user cache folder, and the Windows installer has an optional
-"Cross compiling" component that does the same. `veyl cross` says
+"Cross compiling" component that does the same. `scandiacus cross` says
 whether it is set up. The symbol renames objcopy does in a native Linux
 build are made in the assembly text instead, and sqlite is loaded at
 run time, since there is no libsqlite3 to link against.
@@ -400,7 +400,7 @@ the meantime. A thread that ends is forgotten when Windows says so.
 
 ## 0.71.0
 
-**Fewer antivirus false positives.** A Windows executable from Veyl
+**Fewer antivirus false positives.** A Windows executable from Scandiacus
 used to stand out from what mainstream linkers write: no DOS stub, no
 address space layout randomisation, a zero checksum and timestamp, no
 version information and no manifest. Engines that score a file on its
@@ -433,19 +433,19 @@ land outside the destination, before writing anything.
 ## 0.70.0
 
 **A new logo.** A cube with its front corner carved out, in the
-installer, the file icon for `.vl`, the VS Code extension, the README,
-and now `veyl.exe` itself, which had no icon before. `icons/veyl.svg` is
+installer, the file icon for `.scd`, the VS Code extension, the README,
+and now `scandiacus.exe` itself, which had no icon before. `icons/scandiacus.svg` is
 the source and every size is drawn from the same shape.
 
-**`veyl build --icon game.ico`** gives a Windows program its own icon:
+**`scandiacus build --icon game.ico`** gives a Windows program its own icon:
 the one Explorer, the taskbar and shortcuts show. Every size in the
 `.ico` is kept. A Linux or macOS build says it left the icon out, since
 those executables carry none.
 
-**`veyl build -o path`** writes the executable where it says, making the
+**`scandiacus build -o path`** writes the executable where it says, making the
 folder if need be. It used to be ignored, and every build landed next
 to its source. Build's options can now come after the file too:
-`veyl build game.vl -o dist/game.exe --icon game.ico`.
+`scandiacus build game.scd -o dist/game.exe --icon game.ico`.
 
 **The vulkan package draws indexed meshes**: `vkIndices` and
 `vkDrawIndexed`, so a vertex shared by several triangles is stored once.
@@ -483,7 +483,7 @@ was built for: `"windows"`, `"linux"` or `"macos"`.
 can attach something of its own to a win window and keep `win.poll`
 and the input functions. The new `gl` package uses it for OpenGL:
 
-```veyl
+```scandiacus
 import "gl"
 
 let w = must(win.open("cube", 800, 600))
@@ -495,15 +495,15 @@ while win.poll(w) {
 }
 ```
 
-`veyl get gl` installs it, and `veyl get vulkan` the same for Vulkan:
+`scandiacus get gl` installs it, and `scandiacus get vulkan` the same for Vulkan:
 a swapchain with vsync, depth, pipelines from SPIR-V and push
 constants, with every Vulkan function also callable directly. Both
 are Windows only so far; off Windows the handle is the runtime's own
 window record.
 
-**Run from the editor.** VS Code shows a run button on a `.vl` file,
+**Run from the editor.** VS Code shows a run button on a `.scd` file,
 as it does for Python, with Build in its menu and Ctrl+F5 for Run. The
-program runs in a terminal called Veyl in the file's folder. Sublime
+program runs in a terminal called Scandiacus in the file's folder. Sublime
 gets a build system (Ctrl+B builds, Run as a variant) and Vim an
 ftplugin (`:make`, F5 to run).
 
@@ -513,10 +513,10 @@ warns that `id` is never used.
 
 ## 0.65.0
 
-**`veyl doc`.** Writes a reference for a file from its declarations and
+**`scandiacus doc`.** Writes a reference for a file from its declarations and
 the comments directly above them:
 
-```veyl
+```scandiacus
 // The area of a w by h rectangle.
 pub fn area(w: int, h: int) -> int {
     return w * h
@@ -524,9 +524,9 @@ pub fn area(w: int, h: int) -> int {
 ```
 
 ```
-veyl doc shapes.vl                  Markdown on the console
-veyl doc shapes.vl -o shapes.md     into a file
-veyl doc shapes.vl -o shapes.html   a web page
+scandiacus doc shapes.scd                  Markdown on the console
+scandiacus doc shapes.scd -o shapes.md     into a file
+scandiacus doc shapes.scd -o shapes.html   a web page
 ```
 
 Functions, structs with their methods, enums, interfaces, consts and
@@ -541,18 +541,18 @@ Test: TestDoc.
 
 ## 0.64.0
 
-**Warnings, and `veyl check`.** The compiler now warns about things that
+**Warnings, and `scandiacus check`.** The compiler now warns about things that
 are allowed but almost always a mistake:
 
 ```
-calc.vl:2:5: warning: "spare" is declared but never used
-calc.vl:4:5: warning: this can never run - it comes after a return
+calc.scd:2:5: warning: "spare" is declared but never used
+calc.scd:4:5: warning: this can never run - it comes after a return
 ```
 
 A `let` nothing reads is reported (assigning to it does not count),
 unless its name starts with `_`; so is code after a `return`, `break` or
-`continue`. Warnings never stop a build. `veyl build` prints them,
-`veyl run` does not, and the new `veyl check` prints errors and
+`continue`. Warnings never stop a build. `scandiacus build` prints them,
+`scandiacus run` does not, and the new `scandiacus check` prints errors and
 warnings without building anything. In VS Code they show as warnings,
 not errors.
 
@@ -560,10 +560,10 @@ Test: TestWarnings.
 
 ## 0.63.0
 
-**`veyl test`.** Tests are written in Veyl, in `test` blocks beside the
+**`scandiacus test`.** Tests are written in Scandiacus, in `test` blocks beside the
 code:
 
-```veyl
+```scandiacus
 test "adds" {
     expect(add(1, 2) == 3)
     expectEq(add(2, 2), 4)
@@ -571,8 +571,8 @@ test "adds" {
 ```
 
 ```
-veyl test calc.vl
-PASS  calc.vl: adds (0.00s)
+scandiacus test calc.scd
+PASS  calc.scd: adds (0.00s)
 1 passed, 0 failed
 ```
 
@@ -580,29 +580,29 @@ PASS  calc.vl: adds (0.00s)
 by contents for lists, maps and structs. A failure is reported with its
 line - `expectEq` says what both sides were - and the test carries on, so
 one run shows everything wrong. Each test runs in its own process, so a
-crash fails that test alone. `veyl test` exits 1 when anything failed;
+crash fails that test alone. `scandiacus test` exits 1 when anything failed;
 `--run text` picks tests by name, and a folder runs every file with
-tests. `veyl run` and `veyl build` leave test blocks out.
+tests. `scandiacus run` and `scandiacus build` leave test blocks out.
 
 **Benchmarks.** `bench "name" { ... }` blocks are timed by
-`veyl test --bench`, which repeats each until a round takes half a
+`scandiacus test --bench`, which repeats each until a round takes half a
 second and reports the time per run.
 
-Test: TestVeylTest.
+Test: TestScandiacusTest.
 
 ## 0.62.0
 
-**`veyl fmt`.** Lays a file out the standard way: four-space indents,
+**`scandiacus fmt`.** Lays a file out the standard way: four-space indents,
 one space around operators and after commas, at most one blank line in
 a row, no trailing whitespace. Comments are kept, nothing is reordered
 or reflowed, and a file that does not lex is left alone. Give it files
-or folders; `veyl fmt --check` changes nothing, lists what would change
+or folders; `scandiacus fmt --check` changes nothing, lists what would change
 and fails if anything would, for a CI step.
 
 ```
-veyl fmt game.vl
-veyl fmt .
-veyl fmt --check src
+scandiacus fmt game.scd
+scandiacus fmt .
+scandiacus fmt --check src
 ```
 
 In VS Code, **Format Document** (Shift+Alt+F) does the same through the
@@ -614,11 +614,11 @@ stable.
 
 ## 0.61.0
 
-**A language server, and VS Code uses it.** `veyl lsp` speaks the
+**A language server, and VS Code uses it.** `scandiacus lsp` speaks the
 Language Server Protocol, and the VS Code extension now starts it, so
-editing a `.vl` file gets:
+editing a `.scd` file gets:
 
-- errors as you type, the same ones `veyl build` reports;
+- errors as you type, the same ones `scandiacus build` reports;
 - completion of names in scope and the library, and after a dot a
   struct's fields and methods, a library's functions, or an enum's
   variants;
@@ -626,28 +626,28 @@ editing a `.vl` file gets:
 - hover, for a variable's type or a function's signature;
 - the outline of the file (Ctrl+Shift+O).
 
-The extension runs the veyl that installed it, so nothing needs to be on
-PATH; the new **Veyl: Path** setting picks another. Any other editor with
-an LSP client can start `veyl lsp` itself.
+The extension runs the scandiacus that installed it, so nothing needs to be on
+PATH; the new **Scandiacus: Path** setting picks another. Any other editor with
+an LSP client can start `scandiacus lsp` itself.
 
 Tests: TestLanguageServer, and TestVSCodeClient, which runs the
-extension's client under node against a real `veyl lsp`.
+extension's client under node against a real `scandiacus lsp`.
 
 ## 0.60.0
 
 **Unwind tables.** Windows executables now carry a `.pdata` section, so
-Windows can walk the stack through Veyl functions. A native debugger
-(Visual Studio, WinDbg) shows the whole call stack of a Veyl program
+Windows can walk the stack through Scandiacus functions. A native debugger
+(Visual Studio, WinDbg) shows the whole call stack of a Scandiacus program
 instead of one frame, a crash dump has a stack, and
 `RtlCaptureStackBackTrace` finds every caller - before, it lost its way
-at the first Veyl function. The debugger shows the calls, not Veyl
+at the first Scandiacus function. The debugger shows the calls, not Scandiacus
 variables or source lines; there are no debug symbols yet.
 
 A function that calls itself without end is reported as
 `crash: stack overflow - probably a function that calls itself without
 end`, now covered by a test.
 
-Tests: TestUnwindTable, tests/unwind.vl, and a stack overflow in
+Tests: TestUnwindTable, tests/unwind.scd, and a stack overflow in
 TestErrorLocations.
 
 ## 0.59.0
@@ -666,7 +666,7 @@ threads running too, where it used to do nothing.
 
 A program without threads pays nothing for any of this.
 
-Test: tests/gcthreads.vl runs four workers making garbage while each
+Test: tests/gcthreads.scd runs four workers making garbage while each
 keeps a list alive, a thread blocked on a channel and one spinning on
 an atomic, with main collecting, and checks every kept value survived,
 collections ran while the threads did, and the heap stayed bounded.
@@ -676,17 +676,17 @@ collections ran while the threads did, and the heap stayed bounded.
 **VS Code highlighting works again.** The installer used to copy the
 extension into `.vscode\extensions`, and current VS Code ignores a
 folder there unless it is listed in its `extensions.json` registry -
-which exists as soon as any other extension is installed - so `.vl`
+which exists as soon as any other extension is installed - so `.scd`
 files stopped being colored, with no error. The installer now installs
-the extension through VS Code itself, with the new `veyl vscode`
+the extension through VS Code itself, with the new `scandiacus vscode`
 command: it packs the extension as a `.vsix` and runs
 `code --install-extension`, then removes the old copies that were never
 loaded. Reload VS Code after installing.
 
-If VS Code's `code` command is not found, `veyl vscode` leaves the
+If VS Code's `code` command is not found, `scandiacus vscode` leaves the
 `.vsix` in the temp folder and says how to install it with
-**Extensions: Install from VSIX...**. `veyl vscode --vsix FILE` writes
-the package anywhere, and `veyl vscode --uninstall` removes it.
+**Extensions: Install from VSIX...**. `scandiacus vscode --vsix FILE` writes
+the package anywhere, and `scandiacus vscode --uninstall` removes it.
 
 ## 0.57.0
 
@@ -694,7 +694,7 @@ the package anywhere, and `veyl vscode --uninstall` removes it.
 `remove`, `keys`, equality and `for k, v in m`, with the keys printing
 by name in the order the enum declares them.
 
-```veyl
+```scandiacus
 let seen: {Dir: int} = {}
 seen[Dir.West] += 1
 seen[Dir.North] += 2
@@ -706,7 +706,7 @@ refused as a key, now with "a map key must be str, int or a plain enum".
 An annotation that is wrong is reported once, not again as an untyped
 `{}` or `[]`.
 
-Test: tests/enummaps.vl.
+Test: tests/enummaps.scd.
 
 ## 0.56.0
 
@@ -717,8 +717,8 @@ assembly backend yet". The checker now reports them itself, in the
 same list, and offers the closest real name when one is a likely slip:
 
 ```
-hello.vl:5:7: undefined variable "totl" - did you mean "total"?
-hello.vl:6:7: undefined function "lenn" - did you mean "len"?
+hello.scd:5:7: undefined variable "totl" - did you mean "total"?
+hello.scd:6:7: undefined function "lenn" - did you mean "len"?
 ```
 
 A const or var computed from a `let` in the program body now gets the
@@ -758,10 +758,10 @@ unchanged. The Location can be a full url, a path on the same host, or
 a path relative to the current one. A redirect to `https://` fails with
 the same reason a direct `https://` url does off Windows.
 
-**`http.redirect(url)`** builds a 302 for a Veyl server, and `Response`
+**`http.redirect(url)`** builds a 302 for a Scandiacus server, and `Response`
 has a `location` field, sent as the `Location` header when it is set.
 
-Test: tests/httpclient.vl covers each redirect kind, the loop limit and
+Test: tests/httpclient.scd covers each redirect kind, the loop limit and
 a redirect to https.
 
 ## 0.53.0
@@ -770,13 +770,13 @@ a redirect to https.
 `http.download` now work off Windows for `http://` urls. On Windows the
 calls still go through WinHTTP (which does TLS, redirects and chunked
 bodies); on Linux and macOS the same `__winhttp` builtin is lowered to a
-socket client written in Veyl over the `net` library, so the plain-HTTP
+socket client written in Scandiacus over the `net` library, so the plain-HTTP
 case behaves the same - same return value, same "server replied 404" on
 a 4xx. Content-Length and chunked response bodies are both handled.
 Redirects are not followed yet, and an `https://` url fails with a clear
 message rather than a wrong answer, because TLS is not written by hand.
 
-Test: tests/httpclient.vl runs the Veyl http server in a thread and
+Test: tests/httpclient.scd runs the Scandiacus http server in a thread and
 fetches from it over the loopback; skipped on Windows, which reaches the
 same library through WinHTTP.
 
@@ -792,7 +792,7 @@ ms_abi wrapper that forwards to the real one, the same bridge every other
 runtime call uses, and sqlite is linked only when a program actually uses
 `db`.
 
-Test: tests/db.vl opens an in-memory database, inserts and queries rows,
+Test: tests/db.scd opens an in-memory database, inserts and queries rows,
 and checks changes and lastId; skipped on Windows, which reaches the same
 library through the packaged DLL.
 
@@ -806,7 +806,7 @@ instead of closesocket, and a translation of the SOL_SOCKET /
 SO_REUSEADDR constants; sockaddr_in and struct hostent already have the
 layout the library builds by hand.
 
-Test: tests/sockets.vl runs a client and a server over the loopback;
+Test: tests/sockets.scd runs a client and a server over the loopback;
 skipped on Windows, which reaches the same library through WinSock.
 
 ## 0.50.0
@@ -833,12 +833,12 @@ without a Mac to test on.
 ## 0.48.0
 
 **macOS windows and input (Cocoa).** A windowed program now builds for
-macOS with a Cocoa backend (compiler/linuxrt/veylmac.c), the counterpart
+macOS with a Cocoa backend (compiler/linuxrt/scandiacusmac.c), the counterpart
 to the X11 one on Linux. It is plain C: the Objective-C runtime and the
 AppKit and CoreGraphics frameworks are loaded with dlopen and called
 through objc_msgSend, so it needs no Objective-C compiler, no linked
 framework and no macOS SDK to build - a Mac has all of them at run time.
-A window's pixels (drawn by the shared software GDI, veylgdi.c) are shown
+A window's pixels (drawn by the shared software GDI, scandiacusgdi.c) are shown
 by handing them to a CoreGraphics image set as the view's layer contents;
 mouse and keyboard come from the Cocoa event queue, mapped to the same
 WM_* messages win.poll reads.
@@ -850,16 +850,16 @@ unaffected.
 
 ## 0.47.0
 
-**macOS target.** `veyl build --macos` produces an x86-64 Mach-O
+**macOS target.** `scandiacus build --macos` produces an x86-64 Mach-O
 executable, which runs natively on Intel Macs and through Rosetta on
 Apple Silicon. It works the same way as the Linux target: the generated
 code is unchanged and the same runtime answers its calls under the
 Windows calling convention. A new file, compiler/macos.go, rewrites the
 assembly for the Mach-O assembler - its section names, byte alignment,
 and the leading underscore on the symbols that cross into the runtime -
-and the runtime (veylrt.c) grew the handful of macOS spellings it needed
+and the runtime (scandiacusrt.c) grew the handful of macOS spellings it needed
 (thread id, stack bounds, the crash context). The build runs the system
-`cc` on a Mac, or a cross compiler named in VEYL_MACCC elsewhere (zig
+`cc` on a Mac, or a cross compiler named in SCANDIACUS_MACCC elsewhere (zig
 cross-compiles it from Linux).
 
 Console and off-screen-drawing programs work on macOS. The on-screen
@@ -872,9 +872,9 @@ on Linux are Windows-only on macOS too.
 **Graphics, input and sound on Linux.** The `win` library now works on
 Linux, not just Windows: opening a window, the frame buffer, the keyboard
 and mouse, `win.rect`/`line`/`circle`/`text`, images, and the `sound`
-library. Drawing is done in software (`linuxrt/veylgdi.c`); the window
+library. Drawing is done in software (`linuxrt/scandiacusgdi.c`); the window
 and input go through X11 and sound through PulseAudio, both loaded at run
-time with dlopen (`linuxrt/veylwin.c`), so a program that opens no window
+time with dlopen (`linuxrt/scandiacuswin.c`), so a program that opens no window
 needs neither installed. A graphical game built with `--linux` runs the
 same as on Windows.
 
@@ -885,9 +885,9 @@ static libraries) and are skipped there. CI runs the Linux suite too.
 
 ## 0.45.0
 
-**Linux.** veyl builds Linux executables as well as Windows ones.
-`--linux` and `--windows` choose; the default is the system veyl runs
-on, so on Linux `veyl run app.vl` just runs.
+**Linux.** scandiacus builds Linux executables as well as Windows ones.
+`--linux` and `--windows` choose; the default is the system scandiacus runs
+on, so on Linux `scandiacus run app.scd` just runs.
 
 The program's code is the same on both systems. Every library call it
 makes is answered on Linux by a small runtime that does the same job on
@@ -921,7 +921,7 @@ the `.pdata`/`.xdata` unwind tables. Each is reported as a clear error.
 **Static libraries.** A `from` clause ending in `.lib`, `.a`, `.obj` or
 `.o` names a static library instead of a DLL:
 
-```veyl
+```scandiacus
 extern fn vy_add(a: int, b: int) -> int from "mathlib.a"
 ```
 
@@ -956,8 +956,8 @@ failure), `com.addRef` / `com.release`, `com.guid(text)` and
 and `mem.wstr(p)` reads one back, for COM and for any Windows function
 with a W in its name.
 
-`examples/ffi/adapters.vl` lists the display adapters through DXGI.
-Implementing an interface in Veyl, for an API that calls back through
+`examples/ffi/adapters.scd` lists the display adapters through DXGI.
+Implementing an interface in Scandiacus, for an API that calls back through
 one, is not here yet.
 
 ## 0.41.0
@@ -978,7 +978,7 @@ things, where 0.40.0 was reading and writing them.
   the readable memory of a process. It walks the regions itself, so it
   needs no start or size, and reads a megabyte at a time.
 
-All of it is still Veyl over `mem.symbol` and `mem.call`; nothing needs
+All of it is still Scandiacus over `mem.symbol` and `mem.call`; nothing needs
 `extern`. A process that cannot be looked into gives an empty list or
 `0`.
 
@@ -997,14 +997,14 @@ bytes, `proc.readU8` / `readI32` / `readI64` and `writeI32` / `writeI64`
 for typed access, and `proc.scan(h, start, size, pattern)` for a byte
 pattern with `??` wildcards.
 
-It is written in Veyl on top of `mem.symbol` and `mem.call`, so it adds
+It is written in Scandiacus on top of `mem.symbol` and `mem.call`, so it adds
 no import-table plumbing. A call the operating system refuses comes back
 `0`, an empty `bytes`, or `-1`, never a crash, so a scan over a range
 does not have to know in advance which parts are readable.
 
 Listing a process's modules and threads, and finding one by name, are
 not here yet; the toolhelp calls still go through `extern`, as in
-`examples/ffi/memreader.vl`.
+`examples/ffi/memreader.scd`.
 
 ## 0.39.0
 
@@ -1033,7 +1033,7 @@ the rest of the register.
 **new and delete.** `new T`, `new [n]T` and `new T{x: 1}` allocate
 zeroed C-layout memory from the C heap and give back a `*T`;
 `delete(p)` frees it. It is never collected or moved, and native code
-can free what Veyl allocated and the other way round. Methods can be
+can free what Scandiacus allocated and the other way round. Methods can be
 called through a pointer to an extern struct.
 
 **&local.** `&x` gives the address of a local variable or parameter -
@@ -1055,7 +1055,7 @@ draw pixel by pixel at the speed of writing memory rather than one
 call into Windows per line. GDI drawing - text, lines, images - still
 works on the same pixels.
 
-`examples/gui/render3d.vl` is a software 3D renderer built on it: four
+`examples/gui/render3d.scd` is a software 3D renderer built on it: four
 shapes, flat shading, a depth buffer, delta time, several hundred
 frames a second.
 
@@ -1111,7 +1111,7 @@ is a plain value, not a nullable.
 
 **Runtime errors say where.** An index out of range or a failed `must`
 prints the same first line as before, then the file, line and function:
-`at game.vl:42 in update`. Each place that can fail knows its statement
+`at game.scd:42 in update`. Each place that can fail knows its statement
 when it is compiled and hands the location over only when it fails, so
 a program that runs normally pays nothing for it.
 
@@ -1294,7 +1294,7 @@ result, `a.me().get()`, compiles on the assembly backend.
 with a transparent background draws the way it looks in an editor.
 `win.drawScaled` blends too.
 
-The decoder is written in Veyl, in the prelude: DEFLATE, the PNG
+The decoder is written in Scandiacus, in the prelude: DEFLATE, the PNG
 chunks and the five row filters. Every colour type is supported at 8
 bits, and palette images at 1, 2, 4 and 8 bits with a tRNS chunk.
 Interlaced and 16-bit images are refused with a message. Fixtures for
@@ -1319,7 +1319,7 @@ Every drawing function works on one.
 **Sound.** `sound.play`, `sound.loop` and `sound.stop` play a WAV in
 the background.
 
-`examples/gui/sprites.vl` uses all of it.
+`examples/gui/sprites.scd` uses all of it.
 
 Fixed: a window's state lived on the collected heap behind an `int`
 handle, so since automatic collection a window kept in a struct or a
@@ -1330,7 +1330,7 @@ list could have been freed while still open.
 **Global variables.** A top-level `var` is visible inside every
 function and can be changed from any of them:
 
-```veyl
+```scandiacus
 var score = 0
 fn award(points: int) { score += points }
 ```
@@ -1340,7 +1340,7 @@ so and suggests `var`, instead of "undefined variable".
 
 **Enums.**
 
-```veyl
+```scandiacus
 enum State { Idle, Running, Done }
 var state = State.Idle
 print(state)                // Idle
@@ -1366,7 +1366,7 @@ start of a statement once the live heap passes 4 MB, and after that
 once it doubles what survived the last collection. A loop that makes
 garbage forever now runs in bounded memory. It waits while `task`
 threads run, since it only scans its own stack, and it stays off in a
-DLL. `VEYL_GC=off` turns it off; `VEYL_GC=eager` collects at nearly
+DLL. `SCANDIACUS_GC=off` turns it off; `SCANDIACUS_GC=eager` collects at nearly
 every statement, and CI runs the whole suite that way.
 
 **Maps are fast.** Lookups are a binary search instead of a scan, and
@@ -1385,10 +1385,10 @@ answering 1.
 
 ## 0.22.0
 
-**Callbacks.** A function type on an `extern fn` parameter takes a Veyl
+**Callbacks.** A function type on an `extern fn` parameter takes a Scandiacus
 function that native code calls back:
 
-```veyl
+```scandiacus
 extern fn EnumWindows(each: fn(ptr, ptr) -> bool, data: ptr) -> bool from "user32"
 fn onWindow(hwnd: int, data: int) -> bool { return true }
 EnumWindows(onWindow, 0)
@@ -1399,7 +1399,7 @@ callback type declares as C `int`, normalises each `bool`, and jumps to
 the function, which then returns straight to its caller. A callback
 may allocate and run the collector.
 
-**DLLs.** `veyl build --dll mod.vl` writes `mod.dll`. The top level
+**DLLs.** `scandiacus build --dll mod.scd` writes `mod.dll`. The top level
 runs once, on load; every `export fn` is in the export table. The image
 is relocatable with no fix-ups, since nothing in it holds an absolute
 address, so a DLL loads wherever Windows puts it.
@@ -1412,7 +1412,7 @@ needs to find and patch code.
 by byte, as on the Go backend. The checker accepted them and the
 backend refused them.
 
-`examples/ffi/plugin.vl` is a DLL to start from.
+`examples/ffi/plugin.scd` is a DLL to start from.
 
 ## 0.21.0
 
@@ -1426,7 +1426,7 @@ is ordinary arithmetic.
 
 **`extern struct`**, a C layout over an address:
 
-```veyl
+```scandiacus
 extern struct Player {
     hp: i32
     pos: Vec3
@@ -1445,7 +1445,7 @@ literal allocates zeroed memory for filling in a Win32 structure.
 **`bytes` crosses into `extern fn`** as a pointer to its data, for
 functions that fill in a buffer.
 
-**`examples/ffi/memreader.vl`**: lists running programs, finds where
+**`examples/ffi/memreader.scd`**: lists running programs, finds where
 one is loaded, and follows a pointer chain through its memory.
 
 What it took: width-specific loads and stores in the IR, and the
@@ -1457,7 +1457,7 @@ conversions, each checked against GNU as.
 **Reading input.** `input()`, `input(prompt)` and `pause()`. A line
 comes back without its ending, and the end of input reads as `""`.
 
-```veyl
+```scandiacus
 let name = input("Your name: ")
 print("hi, {name}")
 ```
@@ -1498,34 +1498,34 @@ Tests:
 
 ## 0.19.0
 
-**`extern fn`: native functions declared in Veyl source.**
+**`extern fn`: native functions declared in Scandiacus source.**
 
-```veyl
+```scandiacus
 extern fn Beep(freq: int, ms: int) -> bool
 extern fn mz_extract(zip: str, dest: str) -> int from "miniz"
 ```
 
 The declaration compiles to a real import-table entry and an x64 call.
 There is no wrapper to write and nothing to install, which turns a
-package into a plain `.vl` file of declarations. See
+package into a plain `.scd` file of declarations. See
 [Native functions](docs/SYNTAX.md#native-functions-extern).
 
 Fixed:
 
-- `veyl run app.vl --verbose` now passes `--verbose` to the program.
+- `scandiacus run app.scd --verbose` now passes `--verbose` to the program.
   The usage text promised it; `os.args()` came back empty.
-- The installer now ships `examples/mod`, which `examples/imports.vl`
+- The installer now ships `examples/mod`, which `examples/imports.scd`
   needs, and `examples/ffi`.
 - Every version string agrees. The installer and the VS Code extension
   said 0.18.1 and the extension's install instructions said 0.10.0.
   A test now fails when they drift.
 - The docs no longer describe the Go backend as the compiler, or
-  mention `veyl fmt`, `veyl emit`, `veyl builtins` and warnings, none
+  mention `scandiacus fmt`, `scandiacus emit`, `scandiacus builtins` and warnings, none
   of which this compiler has.
 
 Tooling:
 
-- `veyl run` starts the program through `wine` on a non-Windows host,
+- `scandiacus run` starts the program through `wine` on a non-Windows host,
   so the whole test suite runs on Linux.
 - CI runs every test on Windows against the reference backend, and a
   version tag builds the installer and publishes the release.

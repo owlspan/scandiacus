@@ -26,7 +26,7 @@ import "strings"
 // could have written over.
 //
 // What a store could have written over is decided by the kind of object
-// its address points into. Veyl objects of different kinds are
+// its address points into. Scandiacus objects of different kinds are
 // different allocations, so a list's header, the buffer holding a
 // list's elements, a struct of each type, a map, a string and a bytes
 // never overlap one another. An address that is just a number -

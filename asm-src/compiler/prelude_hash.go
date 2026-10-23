@@ -1,8 +1,8 @@
 package main
 
-// sha256, sha1 and md5, in Veyl.
+// sha256, sha1 and md5, in Scandiacus.
 //
-// Standard implementations over 32-bit words. Veyl ints are signed and
+// Standard implementations over 32-bit words. Scandiacus ints are signed and
 // 64-bit, so every step masks back to 32 bits. The right shifts are safe
 // because a masked value is never negative.
 

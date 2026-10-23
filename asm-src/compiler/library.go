@@ -18,7 +18,7 @@ package main
 import (
 	"strings"
 
-	front "veylfront"
+	front "scandiacusfront"
 )
 
 type asmLibrary struct{}
@@ -80,7 +80,7 @@ var sigs = map[string]front.Signature{
 
 	// Private to the prelude. These reinterpret a float as its IEEE 754
 	// bit pattern and back, which Frexp, Ldexp and the special-case
-	// tests are all written in terms of and which Veyl otherwise cannot
+	// tests are all written in terms of and which Scandiacus otherwise cannot
 	// say. They are in this table because the prelude is checked by this
 	// checker like any other code; nothing stops a user program calling
 	// one, and nothing needs to - the names are reserved by the same
@@ -246,7 +246,7 @@ var sigs = map[string]front.Signature{
 	"hash.fromBase64": {Params: []*Type{Str}, Ret: ResultOf(Str)},
 
 	// Windows. A window is an opaque int handle, the same way a socket
-	// is, so the UI layer above can be written in Veyl.
+	// is, so the UI layer above can be written in Scandiacus.
 	"win.open":      {Params: []*Type{Str, Int, Int}, Ret: ResultOf(Int)},
 	"win.poll":      {Params: []*Type{Int}, Ret: Bool},
 	"win.present":   {Params: []*Type{Int}, Ret: Void},
@@ -289,7 +289,7 @@ var sigs = map[string]front.Signature{
 	"sound.loop":        {Params: []*Type{Str}, Ret: Bool},
 	"sound.stop":        {Ret: Void},
 
-	// The widgets, written in Veyl in the prelude on top of the above.
+	// The widgets, written in Scandiacus in the prelude on top of the above.
 	// SQLite. A connection is an opaque int handle, and every value
 	// comes back as str because a column is dynamically typed and there
 	// is no way yet to say what a query returns.
@@ -332,7 +332,7 @@ var sigs = map[string]front.Signature{
 	"http.header":   {Params: []*Type{StructOf("Request"), Str}, Ret: Str},
 
 	// Sockets. A socket is the int handle Windows hands back, which is
-	// what lets the http layer above be written in Veyl.
+	// what lets the http layer above be written in Scandiacus.
 	"net.listen":  {Params: []*Type{Int}, Ret: ResultOf(Int)},
 	"net.accept":  {Params: []*Type{Int}, Ret: ResultOf(Int)},
 	"net.recv":    {Params: []*Type{Int}, Ret: ResultOf(Str)},
@@ -485,7 +485,7 @@ var sigs = map[string]front.Signature{
 	"ui.messages": {Params: []*Type{Int}, Ret: ListOf(Str)},
 	"ui.close":    {Params: []*Type{Int}, Ret: Void},
 
-	// Private to the prelude: the macOS streams in veylmac.c.
+	// Private to the prelude: the macOS streams in scandiacusmac.c.
 	"__audioMacOpen":  {Params: []*Type{Int, Int, Int, Bool}, Ret: Int},
 	"__audioMacRead":  {Params: []*Type{Int, Int, Int}, Ret: Int},
 	"__audioMacWrite": {Params: []*Type{Int, Int, Int}, Ret: Int},

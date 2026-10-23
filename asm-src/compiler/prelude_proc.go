@@ -1,6 +1,6 @@
 package main
 
-// proc: read and write another process's memory, in Veyl.
+// proc: read and write another process's memory, in Scandiacus.
 //
 // This is the standard Windows debugging surface - OpenProcess,
 // ReadProcessMemory, WriteProcessMemory - the same calls a debugger,

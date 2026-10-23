@@ -1,6 +1,6 @@
 package main
 
-// Multi-file programs: `import "helpers.vl"`.
+// Multi-file programs: `import "helpers.scd"`.
 //
 // A file import folds another file's declarations into this program
 // before anything is checked, so from the checker down there is one
@@ -59,17 +59,17 @@ func (l *importLoader) resolve(prog *Program, from string) {
 		target := imp.Path
 
 		// A bare name is an installed package: `import "sqlite"` finds
-		// veyl_modules/sqlite/sqlite.vl. A path ending in .vl is a file,
+		// scandiacus_modules/sqlite/sqlite.scd. A path ending in .scd is a file,
 		// relative to the importing file as before.
-		if !strings.HasSuffix(target, ".vl") {
+		if !strings.HasSuffix(target, ".scd") {
 			if strings.ContainsAny(target, `/\`) {
 				l.errorAt(imp, "an import is either a package name or a path to a "+
-					".vl file, and %q is neither", imp.Path)
+					".scd file, and %q is neither", imp.Path)
 				continue
 			}
-			pkg := filepath.Join(filepath.Dir(from), modulesDir, target, target+".vl")
+			pkg := filepath.Join(filepath.Dir(from), modulesDir, target, target+".scd")
 			if _, err := os.Stat(pkg); err != nil {
-				l.errorAt(imp, "no package named %q - install it with `veyl get %s`",
+				l.errorAt(imp, "no package named %q - install it with `scandiacus get %s`",
 					target, target)
 				continue
 			}

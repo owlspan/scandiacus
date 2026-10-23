@@ -13,10 +13,10 @@ import (
 func asmBackend(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	out := filepath.Join(dir, "veyl.exe")
+	out := filepath.Join(dir, "scandiacus.exe")
 	build := exec.Command("go", "build", "-o", out, ".")
 	if outp, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("building veyl failed: %v\n%s", err, outp)
+		t.Fatalf("building scandiacus failed: %v\n%s", err, outp)
 	}
 	return out
 }
@@ -26,7 +26,7 @@ func asmBackend(t *testing.T) string {
 // mis-compiles what it does not understand is worse than one that
 // refuses, and this is the whole reason the subset is safe to ship.
 func TestUnsupportedIsAnError(t *testing.T) {
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 	dir := t.TempDir()
 
 	// Keep this list honest as the subset grows. `while` and comparisons
@@ -59,11 +59,11 @@ func TestUnsupportedIsAnError(t *testing.T) {
 			// One file per case: these subtests run in parallel, and a
 			// shared path would have them overwriting each other's source
 			// and passing for the wrong reason.
-			p := filepath.Join(dir, strings.ReplaceAll(name, " ", "_")+".vl")
+			p := filepath.Join(dir, strings.ReplaceAll(name, " ", "_")+".scd")
 			if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			out, err := exec.Command(veyl, "run", p).CombinedOutput()
+			out, err := exec.Command(scandiacus, "run", p).CombinedOutput()
 			if err == nil {
 				t.Fatalf("expected a compile error, but it compiled and printed:\n%s", out)
 			}

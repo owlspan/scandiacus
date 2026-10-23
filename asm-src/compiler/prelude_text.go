@@ -1,6 +1,6 @@
 package main
 
-// Text builtins, in Veyl: reading a line, parsing a float, padding,
+// Text builtins, in Scandiacus: reading a line, parsing a float, padding,
 // counting, and indexing a string by character rather than by byte.
 //
 // substr, charAt and chars count characters on the Go backend, which

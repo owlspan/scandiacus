@@ -1,0 +1,74 @@
+// The http client over net, on Linux and macOS. A Scandiacus http server runs
+// in a thread and the main program fetches from it over the loopback,
+// the same way sockets.scd exercises net. On Windows http.get goes
+// through WinHTTP instead, so this is skipped there.
+thread.spawn(fn() {
+    must(http.serve(18091, fn(req: Request) -> Response {
+        if req.path == "/json" {
+            return http.json(json.encode({"ok": true}))
+        }
+        if req.path == "/kept" {
+            return http.ok("kept " + req.method + " " + req.body)
+        }
+        if req.method == "POST" && req.path != "/form" && req.path != "/keep" {
+            return http.ok("got:" + req.body)
+        }
+        if req.path == "/after" {
+            return http.ok("after " + req.method + " [" + req.body + "]")
+        }
+        if req.path == "/missing" {
+            return http.notFound()
+        }
+        if req.path == "/old" {
+            return http.redirect("/new")
+        }
+        if req.path == "/a/rel" {
+            return http.redirect("there")
+        }
+        if req.path == "/full" {
+            return http.redirect("http://localhost:18091/landed")
+        }
+        if req.path == "/loop" {
+            return http.redirect("/loop")
+        }
+        if req.path == "/tls" {
+            return http.redirect("https://localhost:1/x")
+        }
+        if req.path == "/form" {
+            return Response{status: 303, contentType: "text/plain", body: "", location: "/after"}
+        }
+        if req.path == "/keep" {
+            return Response{status: 307, contentType: "text/plain", body: "", location: "/kept"}
+        }
+        return http.ok("hello " + req.path)
+    }))
+})
+sleep(200)
+print(must(http.get("http://localhost:18091/world")))
+print(must(http.get("http://localhost:18091/json")))
+print(must(http.post("http://localhost:18091/echo", "payload")))
+let r = http.get("http://localhost:18091/missing")
+if isOk(r) {
+    print("unexpected ok")
+} else {
+    print("error: " + errorOf(r))
+}
+let h = http.get("https://localhost:1/x")
+if isOk(h) {
+    print("unexpected https ok")
+} else {
+    print("https to a closed port: " + errorOf(h))
+}
+print(must(http.get("http://localhost:18091/old")))
+print(must(http.get("http://localhost:18091/a/rel")))
+print(must(http.get("http://localhost:18091/full")))
+print(must(http.post("http://localhost:18091/form", "x=1")))
+print(must(http.post("http://localhost:18091/keep", "y=2")))
+let lp = http.get("http://localhost:18091/loop")
+if !isOk(lp) {
+    print("error: " + errorOf(lp))
+}
+let tl = http.get("http://localhost:18091/tls")
+if !isOk(tl) {
+    print("redirect to https followed: " + errorOf(tl))
+}

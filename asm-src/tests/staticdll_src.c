@@ -1,4 +1,4 @@
-/* Fixture for the static-linking golden test tests/staticdll.vl, the case
+/* Fixture for the static-linking golden test tests/staticdll.scd, the case
  * where a static library's own code calls into a DLL (here msvcrt, the C
  * runtime). Rebuild the archive beside it with:
  *   x86_64-w64-mingw32-gcc -c -O2 -D__USE_MINGW_ANSI_STDIO=0 \

@@ -10,7 +10,7 @@ package main
 // for it to finish. Beside them: a mutex (a critical section), a
 // condition variable, and atomic words, each operation one locked
 // instruction. Channel<T>, in prelude_channel.go, is built on those in
-// Veyl.
+// Scandiacus.
 //
 // Collecting while they run is gcthreads.go: every thread registers a
 // record, and a collection stops them all and reads every stack. The

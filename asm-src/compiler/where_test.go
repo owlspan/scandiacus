@@ -12,20 +12,20 @@ import (
 // TestErrorLocations holds the second line of a runtime error, and the
 // crash handler's report, to the text they must print.
 func TestErrorLocations(t *testing.T) {
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 	dir := t.TempDir()
 	cases := []struct {
 		name, src, want string
 	}{
 		{"bounds",
 			"fn get(xs: []int, i: int) -> int {\n    return xs[i]\n}\nprint(get([1, 2, 3], 1))\nprint(get([1, 2, 3], 5))\n",
-			"2\nruntime error: index 5 is out of range for a list of length 3\n    at bounds.vl:2 in get\n"},
+			"2\nruntime error: index 5 is out of range for a list of length 3\n    at bounds.scd:2 in get\n"},
 		{"must",
 			"fn check(n: int) -> int! {\n    if n < 0 {\n        return fail(\"negative\")\n    }\n    return n\n}\nprint(must(check(4)))\nprint(must(check(-1)))\n",
-			"4\nruntime error: negative\n    at must.vl:8 in the top level\n"},
+			"4\nruntime error: negative\n    at must.scd:8 in the top level\n"},
 		{"method",
 			"struct Grid { cells: []int }\nimpl Grid {\n    fn at(self, i: int) -> int {\n        return self.cells[i]\n    }\n}\nlet g = Grid{cells: [7]}\nprint(g.at(0))\nprint(g.at(3))\n",
-			"7\nruntime error: index 3 is out of range for a list of length 1\n    at method.vl:4 in Grid.at\n"},
+			"7\nruntime error: index 3 is out of range for a list of length 1\n    at method.scd:4 in Grid.at\n"},
 		{"crash",
 			"fn poke(p: int) -> int {\n    return mem.readI64(p)\n}\nprint(\"before\")\nprint(poke(16))\n",
 			"before\ncrash: access violation - an address that is not valid was read or written\n    in poke\n"},
@@ -42,11 +42,11 @@ func TestErrorLocations(t *testing.T) {
 				t.Skip("a stack overflow under wine is not reported the way Windows reports it")
 			}
 			t.Parallel()
-			p := filepath.Join(dir, c.name+".vl")
+			p := filepath.Join(dir, c.name+".scd")
 			if err := os.WriteFile(p, []byte(c.src), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			out, err := exec.Command(veyl, "run", p).CombinedOutput()
+			out, err := exec.Command(scandiacus, "run", p).CombinedOutput()
 			if err == nil {
 				t.Fatalf("expected the program to fail, it printed:\n%s", out)
 			}
@@ -61,21 +61,21 @@ func TestErrorLocations(t *testing.T) {
 // TestImportedErrorNamesItsFile holds an error the lowerer finds in an
 // imported file to that file's name, not the name of the file built.
 func TestImportedErrorNamesItsFile(t *testing.T) {
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "lib.vl"),
+	if err := os.WriteFile(filepath.Join(dir, "lib.scd"),
 		[]byte("pub fn twice(n: int) -> int {\n    return mem.addr(n)\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	main := filepath.Join(dir, "main.vl")
-	if err := os.WriteFile(main, []byte("import \"lib.vl\"\n\nprint(twice(3))\n"), 0o644); err != nil {
+	main := filepath.Join(dir, "main.scd")
+	if err := os.WriteFile(main, []byte("import \"lib.scd\"\n\nprint(twice(3))\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command(veyl, "build", main, "-o", filepath.Join(dir, "main.exe")).CombinedOutput()
+	out, err := exec.Command(scandiacus, "build", main, "-o", filepath.Join(dir, "main.exe")).CombinedOutput()
 	if err == nil {
 		t.Fatalf("expected the build to fail, it said:\n%s", out)
 	}
-	if !strings.Contains(string(out), "lib.vl:2:") || strings.Contains(string(out), "main.vl:2:") {
-		t.Fatalf("the error should name lib.vl:2, got:\n%s", out)
+	if !strings.Contains(string(out), "lib.scd:2:") || strings.Contains(string(out), "main.scd:2:") {
+		t.Fatalf("the error should name lib.scd:2, got:\n%s", out)
 	}
 }

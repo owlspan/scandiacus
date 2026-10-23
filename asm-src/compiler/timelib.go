@@ -3,7 +3,7 @@ package main
 // The clock, and the three things only the operating system can answer.
 //
 // Everything above these - formatting, parsing, the calendar - is in the
-// prelude, in Veyl. What is here is what has to be a call: reading the
+// prelude, in Scandiacus. What is here is what has to be a call: reading the
 // wall clock, turning a Unix second into a local calendar, and turning a
 // local calendar back into a Unix second.
 //

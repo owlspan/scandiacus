@@ -41,7 +41,7 @@ func (c *Checker) newExpr(x *NewExpr) *Type {
 		case c.isExternStruct(t):
 			elem, ptr = t, PtrOf(t)
 		case t.Kind == KStruct:
-			c.ErrorAt(x, "%s is a Veyl struct, which the collector owns - make one with %s{...}, "+
+			c.ErrorAt(x, "%s is a Scandiacus struct, which the collector owns - make one with %s{...}, "+
 				"or declare it extern struct to give it a C layout new can allocate", t, t)
 			return Unknown
 		default:

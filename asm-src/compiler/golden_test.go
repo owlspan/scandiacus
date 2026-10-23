@@ -18,7 +18,7 @@ import (
 // it when there is one.
 //
 // The examples used to be compared against the old Go backend on the
-// veylgo branch instead. Their .out files are that backend's output,
+// scandiacusgo branch instead. Their .out files are that backend's output,
 // frozen when it was retired.
 func TestGolden(t *testing.T) {
 	// On Linux and macOS the programs are built for that system and run directly; the
@@ -30,13 +30,13 @@ func TestGolden(t *testing.T) {
 	}
 	var programs []string
 	for _, dir := range []string{"tests", "examples"} {
-		found, err := filepath.Glob(filepath.Join("..", dir, "*.vl"))
+		found, err := filepath.Glob(filepath.Join("..", dir, "*.scd"))
 		if err != nil || len(found) == 0 {
 			t.Fatalf("no golden programs in %s: %v", dir, err)
 		}
 		programs = append(programs, found...)
 	}
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 
 	for _, src := range programs {
 		src := src
@@ -50,7 +50,7 @@ func TestGolden(t *testing.T) {
 			if !targetLinux() && !targetMac() && unixOnlyProgram(filepath.Base(src)) {
 				t.Skip("calls C libraries by their Linux/macOS names, which Windows does not have")
 			}
-			base := strings.TrimSuffix(src, ".vl")
+			base := strings.TrimSuffix(src, ".scd")
 			want, err := os.ReadFile(base + ".out")
 			if err != nil {
 				t.Fatalf("no expected output: %v", err)
@@ -61,8 +61,8 @@ func TestGolden(t *testing.T) {
 			// and runs at once, and slow machines exist.
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, veyl, "run", src)
-			// Killing veyl at the deadline leaves the program it started
+			cmd := exec.CommandContext(ctx, scandiacus, "run", src)
+			// Killing scandiacus at the deadline leaves the program it started
 			// running and holding the output pipe, and Wait would block
 			// on that forever: a release run sat ten minutes on one.
 			cmd.WaitDelay = 10 * time.Second
@@ -92,8 +92,8 @@ func TestGolden(t *testing.T) {
 // unixOnlyProgram names programs that call C libraries by their Unix
 // names (libm.so, libc.so), which only resolve on Linux and macOS.
 func unixOnlyProgram(name string) bool {
-	return name == "ffi.vl" || name == "sockets.vl" || name == "db.vl" ||
-		name == "httpclient.vl"
+	return name == "ffi.scd" || name == "sockets.scd" || name == "db.scd" ||
+		name == "httpclient.scd"
 }
 
 // windowsOnlyProgram names the golden programs that test a Windows
@@ -105,8 +105,8 @@ func unixOnlyProgram(name string) bool {
 // something that only pretends to be Windows.
 func windowsOnlyProgram(name string) bool {
 	switch name {
-	case "com.vl", "native.vl", "nativecall.vl", "proc.vl", "proc_list.vl",
-		"staticlib.vl", "staticdll.vl", "unwind.vl", "winhandle.vl":
+	case "com.scd", "native.scd", "nativecall.scd", "proc.scd", "proc_list.scd",
+		"staticlib.scd", "staticdll.scd", "unwind.scd", "winhandle.scd":
 		return true
 	}
 	return false

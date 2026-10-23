@@ -3,8 +3,8 @@ package main
 // The primitives under the text builtins in prelude_text.go.
 //
 // input, pause, toFloat, isFloat, count, padLeft, padRight and the
-// character-indexed substr, charAt and chars are all written in Veyl.
-// What they need from here is the few things Veyl cannot say: one byte
+// character-indexed substr, charAt and chars are all written in Scandiacus.
+// What they need from here is the few things Scandiacus cannot say: one byte
 // of a str without copying it, one byte from standard input, and the C
 // runtime's decimal-to-float conversion.
 

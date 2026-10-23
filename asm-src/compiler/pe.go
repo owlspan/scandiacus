@@ -168,7 +168,7 @@ const (
 // control never reaches them, so the pages are allowed more than they
 // are used for, never less. The region is kept eight-byte aligned,
 // because float loads read pooled doubles straight out of it.
-// Disabled with VEYL_NOMERGE=1, which puts .rdata back in its own
+// Disabled with SCANDIACUS_NOMERGE=1, which puts .rdata back in its own
 // section exactly as before.
 // peOptions is what differs between an executable and a DLL.
 type peOptions struct {
@@ -185,7 +185,7 @@ func writePE(obj *object, out string, opt peOptions) error {
 	// Where the read-only data begins inside the merged text, or -1
 	// when the two stay separate sections.
 	rdataAt := -1
-	if !envOff("VEYL_NOMERGE") && !envOff("VEYL_NOOPT") && len(obj.rdata) > 0 {
+	if !envOff("SCANDIACUS_NOMERGE") && !envOff("SCANDIACUS_NOOPT") && len(obj.rdata) > 0 {
 		for len(text)%8 != 0 {
 			text = append(text, 0)
 		}

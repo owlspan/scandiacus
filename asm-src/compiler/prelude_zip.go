@@ -1,6 +1,6 @@
 package main
 
-// zip archives, in Veyl: zip.make, zip.list and zip.extract.
+// zip archives, in Scandiacus: zip.make, zip.list and zip.extract.
 //
 // An archive is each file's local header and data, then a central
 // directory listing them all, then a 22-byte end record pointing at the

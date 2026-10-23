@@ -1,34 +1,34 @@
 #!/bin/sh
 # Builds the Windows installer on Linux, through wine. The same steps as
-# installer/build.ps1: build veyl.exe, check every version string agrees
+# installer/build.ps1: build scandiacus.exe, check every version string agrees
 # with it, prove it compiles and runs a program, then run Inno Setup.
 #
 #     scripts/make-installer.sh
 #
-# Needs Go, wine able to run both 64-bit programs (veyl.exe) and 32-bit
+# Needs Go, wine able to run both 64-bit programs (scandiacus.exe) and 32-bit
 # ones (ISCC.exe), and Inno Setup 6 installed into the wine prefix. ISCC
 # is looked for under C:\InnoSetup and the usual Program Files folders;
 # set ISCC to its Windows path to point somewhere else.
 #
-# The result is dist/veyl-<version>-setup.exe, as on Windows.
+# The result is dist/scandiacus-<version>-setup.exe, as on Windows.
 
 set -eu
 
 cd "$(dirname "$0")/.."
 repo=$(pwd)
 
-echo '==> building veyl.exe'
-GOOS=windows GOARCH=amd64 go build -o veyl.exe ./compiler
+echo '==> building scandiacus.exe'
+GOOS=windows GOARCH=amd64 go build -o scandiacus.exe ./compiler
 
-version=$(wine veyl.exe version 2>/dev/null | tr -d '\r')
-want=$(echo "$version" | sed -n 's/^veyl \([^ ]*\).*/\1/p')
+version=$(wine scandiacus.exe version 2>/dev/null | tr -d '\r')
+want=$(echo "$version" | sed -n 's/^scandiacus \([^ ]*\).*/\1/p')
 echo "    $version"
 
-have=$(sed -n 's/^#define AppVersion "\(.*\)".*/\1/p' installer/veyl.iss | tr -d '\r')
-ext=$(sed -n 's/^#define ExtVersion "\(.*\)".*/\1/p' installer/veyl.iss | tr -d '\r')
+have=$(sed -n 's/^#define AppVersion "\(.*\)".*/\1/p' installer/scandiacus.iss | tr -d '\r')
+ext=$(sed -n 's/^#define ExtVersion "\(.*\)".*/\1/p' installer/scandiacus.iss | tr -d '\r')
 pkg=$(sed -n 's/^ *"version": "\(.*\)".*/\1/p' ../editors/vscode/package.json)
 if [ "$want" != "$have" ] || [ "$want" != "$ext" ] || [ "$want" != "$pkg" ]; then
-    echo "version mismatch: veyl.exe says $want, AppVersion $have, ExtVersion $ext," \
+    echo "version mismatch: scandiacus.exe says $want, AppVersion $have, ExtVersion $ext," \
          "editors/vscode/package.json $pkg" >&2
     exit 1
 fi
@@ -36,8 +36,8 @@ fi
 echo '==> checking the compiler builds a program'
 probe=$(mktemp -d)
 trap 'rm -rf "$probe"' EXIT
-echo 'print("installer probe {2 + 2}")' > "$probe/probe.vl"
-out=$(wine veyl.exe run "$(winepath -w "$probe/probe.vl")" 2>/dev/null | tr -d '\r')
+echo 'print("installer probe {2 + 2}")' > "$probe/probe.scd"
+out=$(wine scandiacus.exe run "$(winepath -w "$probe/probe.scd")" 2>/dev/null | tr -d '\r')
 if [ "$out" != "installer probe 4" ]; then
     echo "unexpected probe output: $out" >&2
     exit 1
@@ -61,5 +61,5 @@ fi
 
 echo '==> compiling the installer'
 mkdir -p dist
-wine "$iscc" /Q "$(winepath -w "$repo/installer/veyl.iss")"
-ls -l "dist/veyl-$want-setup.exe"
+wine "$iscc" /Q "$(winepath -w "$repo/installer/scandiacus.iss")"
+ls -l "dist/scandiacus-$want-setup.exe"

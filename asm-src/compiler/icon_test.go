@@ -12,16 +12,16 @@ import (
 	"testing"
 )
 
-// TestBuildIconAndOut checks `veyl build --icon` and `-o`: the program
+// TestBuildIconAndOut checks `scandiacus build --icon` and `-o`: the program
 // still runs, lands where -o said, and carries a resource tree with an
 // RT_ICON per image of the .ico and one RT_GROUP_ICON. On Windows the
 // shell is asked to find the icon too.
 func TestBuildIconAndOut(t *testing.T) {
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 	dir := t.TempDir()
-	src := filepath.Join(dir, "hi.vl")
+	src := filepath.Join(dir, "hi.scd")
 	os.WriteFile(src, []byte("print(\"iconic\")\n"), 0o644)
-	ico, err := filepath.Abs(filepath.Join("..", "..", "icons", "veyl.ico"))
+	ico, err := filepath.Abs(filepath.Join("..", "..", "icons", "scandiacus.ico"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestBuildIconAndOut(t *testing.T) {
 	// Options after the file, and an output in a folder that does not
 	// exist yet.
 	exe := filepath.Join(dir, "out", "game.exe")
-	cmd := exec.Command(veyl, "build", "--windows", src, "--icon", ico, "-o", exe)
+	cmd := exec.Command(scandiacus, "build", "--windows", src, "--icon", ico, "-o", exe)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
@@ -109,9 +109,9 @@ func TestBuildIconAndOut(t *testing.T) {
 	}
 
 	// Something that is not an .ico is refused, naming the file.
-	cmd = exec.Command(veyl, "build", "--windows", "--icon", src, src)
+	cmd = exec.Command(scandiacus, "build", "--windows", "--icon", src, src)
 	out, err := cmd.CombinedOutput()
 	if err == nil || !strings.Contains(string(out), "not an .ico file") {
-		t.Errorf("a .vl given as the icon: %v\n%s", err, out)
+		t.Errorf("a .scd given as the icon: %v\n%s", err, out)
 	}
 }

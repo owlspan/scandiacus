@@ -43,13 +43,13 @@ func TestVSIX(t *testing.T) {
 		t.Errorf("package.json lost its main")
 	}
 	for _, want := range []string{"extension/extension.js", "extension.vsixmanifest", "[Content_Types].xml", "extension/package.json",
-		"extension/syntaxes/veyl.tmLanguage.json", "extension/language-configuration.json",
-		"extension/icons/veyl.png", "extension/readme.md"} {
+		"extension/syntaxes/scandiacus.tmLanguage.json", "extension/language-configuration.json",
+		"extension/icons/scandiacus.png", "extension/readme.md"} {
 		if _, ok := have[want]; !ok {
 			t.Errorf("the package has no %s", want)
 		}
 	}
-	id := `<Identity Language="en-US" Id="veyl-lang" Version="` + Version + `" Publisher="veyl" />`
+	id := `<Identity Language="en-US" Id="scandiacus-lang" Version="` + Version + `" Publisher="scandiacus" />`
 	if !strings.Contains(have["extension.vsixmanifest"], id) {
 		t.Errorf("manifest does not carry %s:\n%s", id, have["extension.vsixmanifest"])
 	}

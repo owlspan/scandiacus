@@ -228,7 +228,7 @@ fn __vy_audioOpenPulse(s: int, rate: int, out: bool, device: str) -> int! {
         full = __vy_audioDevices(out)[at]
         dev = mem.addr(full)
     }
-    let p = mem.call(make, 0, "veyl", dir, dev, "audio", spec, 0, attr, s + 80)
+    let p = mem.call(make, 0, "scandiacus", dir, dev, "audio", spec, 0, attr, s + 80)
     mem.free(spec)
     mem.free(attr)
     if p == 0 {
@@ -240,7 +240,7 @@ fn __vy_audioOpenPulse(s: int, rate: int, out: bool, device: str) -> int! {
     return s
 }
 
-// macOS: an AudioQueue in the runtime (veylmac.c), which keeps a ring
+// macOS: an AudioQueue in the runtime (scandiacusmac.c), which keeps a ring
 // of samples between its own thread and this one; read and write block
 // on it. Only the default devices for now.
 fn __vy_audioOpenMac(s: int, rate: int, out: bool, device: str) -> int! {

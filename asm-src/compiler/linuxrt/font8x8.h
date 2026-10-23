@@ -1,9 +1,9 @@
 /* An 8x8 bitmap font for ASCII 0x20-0x7E: the public-domain font8x8_basic
  * (by Daniel Hepper, CC0). Bit 0 of each byte is the leftmost column, so
  * row R, column C is set when font[ch][R] & (1 << C). Characters outside
- * the range draw as a hollow box. Used only by TextOutA in veylgdi.c. */
-#ifndef VEYL_FONT8X8_H
-#define VEYL_FONT8X8_H
+ * the range draw as a hollow box. Used only by TextOutA in scandiacusgdi.c. */
+#ifndef SCANDIACUS_FONT8X8_H
+#define SCANDIACUS_FONT8X8_H
 
 static const unsigned char FONT8X8[95][8] = {
 	{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, /* space */

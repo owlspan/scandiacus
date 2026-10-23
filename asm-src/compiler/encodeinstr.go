@@ -781,7 +781,7 @@ func (b *block) encodeMovsx(ops []operand) error {
 }
 
 // The single-precision instructions, which are only ever used to cross
-// between a float in memory and the double every Veyl float is:
+// between a float in memory and the double every Scandiacus float is:
 // cvtss2sd widens, cvtsd2ss narrows, movss loads or stores four bytes.
 func (b *block) encodeSingle(m string, ops []operand) error {
 	if len(ops) != 2 {

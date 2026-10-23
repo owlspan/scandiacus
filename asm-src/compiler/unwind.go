@@ -9,9 +9,9 @@ package main
 // return address. A function with no entry is taken to be a leaf that
 // never moved rsp, which for anything else gives a wrong return address
 // and ends the walk. Without these, a native debugger showed one frame of
-// a Veyl program, a crash dump said nothing useful, and anything that
+// a Scandiacus program, a crash dump said nothing useful, and anything that
 // unwinds - RtlCaptureStackBackTrace, the stack-overflow report - went
-// wrong at the first Veyl frame.
+// wrong at the first Scandiacus frame.
 //
 // Every function this compiler writes starts the same way:
 //
@@ -35,7 +35,7 @@ package main
 // stack walk does not need it - only the return addresses - but a
 // debugger shows those registers in a caller's frame as they are in the
 // callee. Exception unwinding would need it to restore them, and nothing
-// here unwinds through a Veyl frame to resume execution.
+// here unwinds through a Scandiacus frame to resume execution.
 //
 // A function is found by its bytes, not its name: a text symbol whose
 // first four bytes are 55 48 89 E5 starts a frame of this shape. The

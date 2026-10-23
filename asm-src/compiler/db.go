@@ -11,8 +11,8 @@ package main
 //	db.close(conn)
 //
 // The library is here in the compiler; the DLL comes from a package.
-// `veyl get sqlite` installs sqlite3.dll into veyl_modules, and
-// `veyl build` copies it next to the executable. A program that never
+// `scandiacus get sqlite` installs sqlite3.dll into scandiacus_modules, and
+// `scandiacus build` copies it next to the executable. A program that never
 // calls db.* never imports it and never carries it, which is the whole
 // reason SQLite is not in the installer.
 //

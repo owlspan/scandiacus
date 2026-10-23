@@ -1,6 +1,6 @@
 package main
 
-// veyl test: tests written in Veyl.
+// scandiacus test: tests written in Scandiacus.
 //
 //	test "adds" {
 //	    expect(add(1, 2) == 3)
@@ -10,7 +10,7 @@ package main
 // A test block is a function with no parameters, which only a test build
 // compiles. That build replaces the program body with a harness that
 // runs the one test named by its first argument and exits 1 if any
-// expectation failed, and veyl test runs the executable once per test. A
+// expectation failed, and scandiacus test runs the executable once per test. A
 // test that crashes, or stops on a runtime error, is then one failed
 // test rather than the end of the run, and each is timed on its own.
 //
@@ -47,11 +47,11 @@ func compileTests(src, path string) (*Module, []string, []bool) {
 	return mod, testNames, testBenches
 }
 
-// benchLine turns the harness's "__veyl_bench N NANOS" into what is shown.
+// benchLine turns the harness's "__scandiacus_bench N NANOS" into what is shown.
 func benchLine(out string) string {
 	for _, line := range strings.Split(out, "\n") {
 		f := strings.Fields(line)
-		if len(f) == 3 && f[0] == "__veyl_bench" {
+		if len(f) == 3 && f[0] == "__scandiacus_bench" {
 			n, _ := strconv.ParseFloat(f[1], 64)
 			ns, _ := strconv.ParseFloat(f[2], 64)
 			per := ns / n
@@ -151,7 +151,7 @@ func testHarness(tests []*FnDecl) string {
         }
         let __dt = time.nanos() - __t0
         if __dt >= 500000000 || __n >= 1000000000 {
-            print("__veyl_bench {__n} {__dt}")
+            print("__scandiacus_bench {__n} {__dt}")
             break
         }
         __n = __n * 2
@@ -171,8 +171,8 @@ type testResult struct {
 	bench  string // for a bench: how many runs, and the time per run
 }
 
-// testCommand is veyl test: every test in the files named, or in each
-// .vl under a folder named.
+// testCommand is scandiacus test: every test in the files named, or in each
+// .scd under a folder named.
 func testCommand(args []string) {
 	filter := ""
 	bench := false
@@ -206,10 +206,10 @@ func testCommand(args []string) {
 			if err != nil {
 				return nil
 			}
-			if fi.IsDir() && (fi.Name() == "veyl_modules" || strings.HasPrefix(fi.Name(), ".") && path != p) {
+			if fi.IsDir() && (fi.Name() == "scandiacus_modules" || strings.HasPrefix(fi.Name(), ".") && path != p) {
 				return filepath.SkipDir
 			}
-			if !fi.IsDir() && strings.HasSuffix(fi.Name(), ".vl") {
+			if !fi.IsDir() && strings.HasSuffix(fi.Name(), ".scd") {
 				if b, err := os.ReadFile(path); err == nil && bytes.Contains(b, []byte("test \"")) {
 					files = append(files, path)
 				}
@@ -272,7 +272,7 @@ func runFileTests(file, filter string, bench bool) []testResult {
 		return nil
 	}
 
-	tmp, err := os.MkdirTemp("", "veyl-test-*")
+	tmp, err := os.MkdirTemp("", "scandiacus-test-*")
 	if err != nil {
 		fail("%v", err)
 	}

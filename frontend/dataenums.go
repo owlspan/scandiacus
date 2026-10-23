@@ -19,7 +19,7 @@ package frontend
 // where any variant carries something is kept in a struct: which
 // variant it is, in a field called #tag, and every variant's fields
 // beside it, named Circle.r, Rect.w and so on. Neither name can be
-// written in Veyl, so the fields are only reached through a match.
+// written in Scandiacus, so the fields are only reached through a match.
 //
 // The checker does the rest by rewriting. A variant built with its
 // values becomes that struct's literal, and a match becomes a chain of

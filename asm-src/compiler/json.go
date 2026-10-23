@@ -8,7 +8,7 @@ import "fmt"
 // the static type, writing into the buffer that strOf sets up. What
 // differs is the spelling - JSON quotes its keys, writes true and false
 // the same way, and escapes a string to its own rules rather than
-// Veyl's.
+// Scandiacus's.
 //
 // The Go backend hands this to encoding/json, so the target is whatever
 // json.Marshal produces: no spaces in the compact form, two spaces per
@@ -466,7 +466,7 @@ func (l *lowerer) jsonStruct(n Node, v Reg, t vty, indent bool, depth int) {
 			l.writeLit(",")
 		}
 		l.newline(indent, depth+1)
-		// The field name as written in Veyl, which is what the Go
+		// The field name as written in Scandiacus, which is what the Go
 		// backend's struct tags say too.
 		l.jsonString(l.strLit(f.name))
 		l.jsonColon(indent)

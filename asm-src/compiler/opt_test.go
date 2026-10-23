@@ -376,19 +376,19 @@ func TestFoldKillSwitches(t *testing.T) {
 		return &Module{Funcs: []*Func{fn}}
 	}
 
-	t.Setenv("VEYL_NOOPT", "1")
+	t.Setenv("SCANDIACUS_NOOPT", "1")
 	m := build()
 	Optimize(m)
 	if m.Funcs[0].Code[2].Op != OpAdd {
-		t.Fatal("VEYL_NOOPT did not disable folding")
+		t.Fatal("SCANDIACUS_NOOPT did not disable folding")
 	}
 
-	t.Setenv("VEYL_NOOPT", "")
-	t.Setenv("VEYL_NOFOLD", "1")
+	t.Setenv("SCANDIACUS_NOOPT", "")
+	t.Setenv("SCANDIACUS_NOFOLD", "1")
 	m = build()
 	Optimize(m)
 	if m.Funcs[0].Code[2].Op != OpAdd {
-		t.Fatal("VEYL_NOFOLD did not disable folding")
+		t.Fatal("SCANDIACUS_NOFOLD did not disable folding")
 	}
 }
 
@@ -553,18 +553,18 @@ func TestPackSwitch(t *testing.T) {
 		return &Module{Funcs: []*Func{fn}}
 	}
 
-	t.Setenv("VEYL_NOSLOTPACK", "1")
+	t.Setenv("SCANDIACUS_NOSLOTPACK", "1")
 	m := build()
 	Optimize(m)
 	if m.Funcs[0].NSlots != 10 || m.Funcs[0].Code[1].Imm != 5 {
-		t.Fatal("VEYL_NOSLOTPACK did not disable packing")
+		t.Fatal("SCANDIACUS_NOSLOTPACK did not disable packing")
 	}
 
-	t.Setenv("VEYL_NOSLOTPACK", "")
-	t.Setenv("VEYL_NOOPT", "1")
+	t.Setenv("SCANDIACUS_NOSLOTPACK", "")
+	t.Setenv("SCANDIACUS_NOOPT", "1")
 	m = build()
 	Optimize(m)
 	if m.Funcs[0].NSlots != 10 {
-		t.Fatal("VEYL_NOOPT did not disable packing")
+		t.Fatal("SCANDIACUS_NOOPT did not disable packing")
 	}
 }

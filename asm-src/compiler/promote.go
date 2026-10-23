@@ -266,7 +266,7 @@ func regUses(f *Func) map[Reg]int {
 // fuseBranch emits a compare whose only reader is the branch right
 // after it as one cmp and one conditional jump, rather than building a
 // 0 or 1, storing it, reading it back and testing it. Only with the
-// optimisations on, so VEYL_NOOPT keeps the plain form to compare with.
+// optimisations on, so SCANDIACUS_NOOPT keeps the plain form to compare with.
 // fuseFloatBranch is fuseBranch for a float comparison: comisd and a
 // jump on its flags, rather than a 0 or 1 made with set and tested.
 // The condition codes are the ones OpFGt and the rest use, chosen so a

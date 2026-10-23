@@ -104,11 +104,11 @@ func (l *lowerer) trackUnlocked(raw, bytes Reg) {
 // gcFirst is the live heap at which the first automatic collection runs.
 // Small programs never reach it, and so never pay for one.
 //
-// VEYL_GC=eager makes it zero, and keeps it there, so the automatic path
+// SCANDIACUS_GC=eager makes it zero, and keeps it there, so the automatic path
 // collects at nearly every statement - the test suite runs under it to
 // hold that path to the same standard as stress mode.
 var gcFirst = func() int64 {
-	if os.Getenv("VEYL_GC") == "eager" {
+	if os.Getenv("SCANDIACUS_GC") == "eager" {
 		return 0
 	}
 	return 4 << 20
@@ -146,7 +146,7 @@ func (l *lowerer) maybeCollect() {
 // now, or the floor. It is the collector's last act, so the -1 a stop
 // left in the threshold never outlives the stop.
 //
-// Under VEYL_GC=eager the threshold stays at zero, so every check
+// Under SCANDIACUS_GC=eager the threshold stays at zero, so every check
 // collects - except while other threads run, when it is 256 KB past what
 // is live. Stopping every thread at every statement of every thread made
 // the threaded tests take minutes; a stop per 256 KB of allocation is

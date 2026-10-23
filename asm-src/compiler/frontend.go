@@ -13,7 +13,7 @@ package main
 //
 // Generated once by hand; keep it sorted.
 
-import front "veylfront"
+import front "scandiacusfront"
 
 type (
 	AssignStmt   = front.AssignStmt

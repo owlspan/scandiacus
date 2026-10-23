@@ -1,6 +1,6 @@
 package main
 
-// com: calling COM interfaces, in Veyl.
+// com: calling COM interfaces, in Scandiacus.
 //
 // A COM object is a pointer to a pointer to a table of function
 // addresses, and calling a method is calling the address in one slot of
@@ -10,7 +10,7 @@ package main
 //
 // The call itself, com.call, is lowered in memlib.go beside mem.call,
 // because it takes whatever arguments the method does. Everything
-// around it is here and is ordinary Veyl: GUIDs from their text form,
+// around it is here and is ordinary Scandiacus: GUIDs from their text form,
 // CoCreateInstance, the three IUnknown methods every interface starts
 // with, and the UTF-16 strings COM passes.
 //

@@ -63,7 +63,7 @@ func (l *lowerer) rawWord() Reg {
 }
 
 // peekWord and pokeWord are raw memory access. The collector works on
-// words, not on Veyl values, so nothing here is typed.
+// words, not on Scandiacus values, so nothing here is typed.
 func (l *lowerer) peekWord(addr Reg, off int64) Reg {
 	d := l.newReg()
 	l.regTy[d] = vInt

@@ -10,10 +10,10 @@ import (
 // builtins, so what a test asserts is never about one backend's set.
 func checked(t *testing.T, src string) []string {
 	t.Helper()
-	lx := NewLexer("t.vl", src)
-	ps := NewParser("t.vl", lx.Scan())
+	lx := NewLexer("t.scd", src)
+	ps := NewParser("t.scd", lx.Scan())
 	prog := ps.ParseProgram()
-	ck := NewChecker("t.vl", EmptyLibrary{})
+	ck := NewChecker("t.scd", EmptyLibrary{})
 	ck.Check(prog)
 	return append(append(lx.Errors, ps.Errors...), ck.Errors...)
 }
@@ -84,27 +84,27 @@ var var = 1
 }
 
 func TestPubAcrossFiles(t *testing.T) {
-	lx := NewLexer("main.vl", "print(secret())\nprint(hidden)\nlet h = Box{n: 1}\nprint(open())\n")
-	prog := NewParser("main.vl", lx.Scan()).ParseProgram()
-	lib := NewParser("lib.vl", NewLexer("lib.vl",
+	lx := NewLexer("main.scd", "print(secret())\nprint(hidden)\nlet h = Box{n: 1}\nprint(open())\n")
+	prog := NewParser("main.scd", lx.Scan()).ParseProgram()
+	lib := NewParser("lib.scd", NewLexer("lib.scd",
 		"fn secret() -> int { return 1 }\nconst hidden = 2\nstruct Box { n: int }\npub fn open() -> int { return 3 }\n").Scan()).ParseProgram()
 	for _, f := range lib.Funcs {
-		f.File = "lib.vl"
+		f.File = "lib.scd"
 	}
 	for _, g := range lib.Globals {
-		g.File = "lib.vl"
+		g.File = "lib.scd"
 	}
 	for _, s := range lib.Structs {
-		s.File = "lib.vl"
+		s.File = "lib.scd"
 	}
 	prog.Funcs = append(prog.Funcs, lib.Funcs...)
 	prog.Globals = append(prog.Globals, lib.Globals...)
 	prog.Structs = append(prog.Structs, lib.Structs...)
-	ck := NewChecker("main.vl", EmptyLibrary{})
+	ck := NewChecker("main.scd", EmptyLibrary{})
 	ck.Check(prog)
 	errs := strings.Join(ck.Errors, "\n")
-	for _, want := range []string{`"secret" is private to lib.vl`, `"hidden" is private to lib.vl`,
-		`struct "Box" is private to lib.vl`} {
+	for _, want := range []string{`"secret" is private to lib.scd`, `"hidden" is private to lib.scd`,
+		`struct "Box" is private to lib.scd`} {
 		if !strings.Contains(errs, want) {
 			t.Errorf("want %q, got %q", want, errs)
 		}

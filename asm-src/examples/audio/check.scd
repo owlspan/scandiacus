@@ -1,0 +1,54 @@
+// What the audio library sees on this machine: the devices, and whether
+// a stream keeps time - half a second of a quiet tone should take about
+// half a second to play, and half a second of the microphone about half
+// a second to arrive. On Linux the first stream can take a second or
+// two longer, while PulseAudio wakes a device it had suspended.
+//
+//   scandiacus run check.scd
+
+print("microphones:")
+for d in audio.devices(false) {
+    print("  " + d)
+}
+print("outputs:")
+for d in audio.devices(true) {
+    print("  " + d)
+}
+
+let rate = 48000
+let out = audio.output(rate, 1, 480)
+if isOk(out) {
+    let o = must(out)
+    let t = time.millis()
+    let n = 0
+    for b in 0..50 {
+        let block: []float = []
+        for i in 0..480 {
+            push(block, 0.03 * sin(2.0 * PI * 440.0 * float(n) / float(rate)))
+            n += 1
+        }
+        audio.write(o, block)
+    }
+    audio.close(o)
+    print("played 0.5 s in {time.millis() - t} ms")
+} else {
+    print("output: " + errorOf(out))
+}
+
+let mic = audio.input(rate, 1, 480)
+if isOk(mic) {
+    let m = must(mic)
+    let t = time.millis()
+    let peak = 0.0
+    for b in 0..50 {
+        for v in audio.read(m) {
+            if abs(v) > peak {
+                peak = abs(v)
+            }
+        }
+    }
+    audio.close(m)
+    print("recorded 0.5 s in {time.millis() - t} ms, loudest {fixed(peak, 3)}")
+} else {
+    print("input: " + errorOf(mic))
+}

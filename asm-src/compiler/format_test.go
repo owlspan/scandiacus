@@ -13,9 +13,9 @@ import (
 // formatter: it must not change what a program does. Every golden
 // program is copied with its folder, formatted, and run against the same
 // expected output. Formatting must also reach a fixed point: a second
-// pass changes nothing, or veyl fmt would rewrite a file forever.
+// pass changes nothing, or scandiacus fmt would rewrite a file forever.
 func TestFormatPreservesBehaviour(t *testing.T) {
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 	work := t.TempDir()
 	var cases []string
 	for _, dir := range []string{"../tests", "../examples"} {
@@ -23,7 +23,7 @@ func TestFormatPreservesBehaviour(t *testing.T) {
 		if err := copyDir(dir, dst); err != nil {
 			t.Fatal(err)
 		}
-		srcs, _ := filepath.Glob(filepath.Join(dst, "*.vl"))
+		srcs, _ := filepath.Glob(filepath.Join(dst, "*.scd"))
 		cases = append(cases, srcs...)
 	}
 	for _, src := range cases {
@@ -33,23 +33,23 @@ func TestFormatPreservesBehaviour(t *testing.T) {
 			unixOnlyProgram(name) && !targetLinux() && !targetMac() || strings.HasPrefix(name, "input") {
 			continue
 		}
-		want, err := os.ReadFile(strings.TrimSuffix(src, ".vl") + ".out")
+		want, err := os.ReadFile(strings.TrimSuffix(src, ".scd") + ".out")
 		if err != nil {
 			continue
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			before, _ := os.ReadFile(src)
-			if out, err := exec.Command(veyl, "fmt", src).CombinedOutput(); err != nil {
+			if out, err := exec.Command(scandiacus, "fmt", src).CombinedOutput(); err != nil {
 				t.Fatalf("fmt: %v\n%s", err, out)
 			}
 			once, _ := os.ReadFile(src)
-			exec.Command(veyl, "fmt", src).Run()
+			exec.Command(scandiacus, "fmt", src).Run()
 			twice, _ := os.ReadFile(src)
 			if string(once) != string(twice) {
 				t.Errorf("not idempotent:\n%s", firstDiff(string(once), string(twice)))
 			}
-			cmd := exec.Command(veyl, "run", filepath.Base(src))
+			cmd := exec.Command(scandiacus, "run", filepath.Base(src))
 			cmd.Dir = filepath.Dir(src)
 			got, _ := cmd.CombinedOutput()
 			if strings.ReplaceAll(string(got), "\r\n", "\n") != string(want) {
@@ -131,14 +131,14 @@ func TestFormatCases(t *testing.T) {
 		"}))\n" +
 		"let r = load(p)?\n"
 	want = strings.Replace(want, "{x: 3}", "{v: 3}", 1)
-	got, ok := Format("t.vl", in)
+	got, ok := Format("t.scd", in)
 	if !ok {
 		t.Fatal("did not lex")
 	}
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s\n%s", got, want, firstDiff(got, want))
 	}
-	if again, _ := Format("t.vl", got); again != got {
+	if again, _ := Format("t.scd", got); again != got {
 		t.Errorf("not idempotent:\n%s", firstDiff(got, again))
 	}
 }

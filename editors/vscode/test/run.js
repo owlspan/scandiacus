@@ -1,6 +1,6 @@
 'use strict';
 
-// node run.js VEYL FILE: activates the extension against a fake vscode,
+// node run.js SCANDIACUS FILE: activates the extension against a fake vscode,
 // opens FILE, and checks the answers end to end. Prints "ok" or fails.
 
 const Module = require('module');
@@ -17,13 +17,13 @@ Module._resolveFilename = function (req, ...rest) {
     return resolve.call(this, req, ...rest);
 };
 
-const [veyl, file] = process.argv.slice(2);
-fake._setPath(veyl);
+const [scandiacus, file] = process.argv.slice(2);
+fake._setPath(scandiacus);
 const ext = require('../extension.js');
 
 function doc(text, version) {
     const uri = fake.Uri.parse('file://' + (file.startsWith('/') ? '' : '/') + file.replace(/\\/g, '/'));
-    return { uri, languageId: 'veyl', version, getText: () => text };
+    return { uri, languageId: 'scandiacus', version, getText: () => text };
 }
 
 function wait(cond) {
@@ -82,15 +82,15 @@ function wait(cond) {
     fake._change(doc(text.replace('let bad: int = "x"', 'let bad: int = 1'), 2));
     await wait(() => [...fake._reported.values()][0].every((x) => x.severity !== fake.DiagnosticSeverity.Error));
 
-    // The run button: unsaved edits are saved, then a terminal runs veyl
+    // The run button: unsaved edits are saved, then a terminal runs scandiacus
     // itself on the file, in the file's folder.
     let saved = false;
     d.isDirty = true;
     d.save = async () => { saved = true; d.isDirty = false; return true; };
     fake.window.activeTextEditor = { document: d };
-    const run = await fake._commands['veyl.run']();
+    const run = await fake._commands['scandiacus.run']();
     assert.ok(saved, 'run saves first');
-    assert.strictEqual(run.options.shellPath, veyl);
+    assert.strictEqual(run.options.shellPath, scandiacus);
     assert.deepStrictEqual(run.options.shellArgs, ['run', d.uri.fsPath]);
     assert.strictEqual(run.options.cwd, path.dirname(d.uri.fsPath));
     assert.ok(run.shown, 'the terminal is shown');
@@ -98,9 +98,9 @@ function wait(cond) {
     // Build from the explorer menu, which passes the file. The run's
     // terminal makes way for it.
     fake.window.activeTextEditor = undefined;
-    const build = await fake._commands['veyl.build'](d.uri);
+    const build = await fake._commands['scandiacus.build'](d.uri);
     assert.deepStrictEqual(build.options.shellArgs, ['build', d.uri.fsPath]);
-    assert.ok(run.disposed && !build.disposed, 'one Veyl terminal at a time');
+    assert.ok(run.disposed && !build.disposed, 'one Scandiacus terminal at a time');
 
     assert.deepStrictEqual(fake._warnings, []);
     context.subscriptions.forEach((s) => s.dispose && s.dispose());

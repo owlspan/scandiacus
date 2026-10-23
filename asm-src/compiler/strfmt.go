@@ -13,7 +13,7 @@ package main
 // The fix is not to stop using printf but to stop asking it to round.
 // Asked for enough digits it emits the exact decimal expansion, which a
 // binary float always has and which is what correct rounding needs; the
-// rounding then happens in the prelude, in Veyl, where it can be read.
+// rounding then happens in the prelude, in Scandiacus, where it can be read.
 
 // fmtSpec picks which format string the call uses. The values are the
 // numbers the prelude passes.

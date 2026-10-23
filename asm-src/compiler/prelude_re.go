@@ -1,6 +1,6 @@
 package main
 
-// Regular expressions, in Veyl.
+// Regular expressions, in Scandiacus.
 //
 // A pattern is parsed into a small program and run by a backtracking
 // VM. That is what Go's regexp gives for the same pattern: leftmost, and

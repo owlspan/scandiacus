@@ -43,7 +43,7 @@ func TestHTTPS(t *testing.T) {
 	}
 	t.Skip("no libssl on this machine")
 found:
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 	dir := t.TempDir()
 
 	ca, caKey := makeCA(t)
@@ -117,11 +117,11 @@ print(len(must(http.get("https://localhost:%[1]s/big"))))
 show(http.get("https://localhost:%[2]s/hello"))
 show(http.get("https://localhost:%[3]s/hello"))
 `, port(sGood), port(sWrong), port(sStranger))
-	p := filepath.Join(dir, "tls.vl")
+	p := filepath.Join(dir, "tls.scd")
 	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(veyl, "run", p)
+	cmd := exec.Command(scandiacus, "run", p)
 	cmd.Env = append(os.Environ(), "SSL_CERT_FILE="+caFile, "SSL_CERT_DIR="+dir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -156,7 +156,7 @@ func makeCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "veyl test CA"},
+		Subject:               pkix.Name{CommonName: "scandiacus test CA"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
 		IsCA:                  true,
@@ -181,7 +181,7 @@ func leafCert(t *testing.T, ca *x509.Certificate, caKey *ecdsa.PrivateKey, names
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
-		Subject:      pkix.Name{CommonName: "veyl test server"},
+		Subject:      pkix.Name{CommonName: "scandiacus test server"},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,

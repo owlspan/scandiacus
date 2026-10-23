@@ -1,11 +1,11 @@
 package main
 
-// veyl lsp: a language server, over stdin and stdout.
+// scandiacus lsp: a language server, over stdin and stdout.
 //
 // Any editor that speaks the Language Server Protocol can use it; the VS
 // Code extension in editors/vscode starts it. What it answers:
 //
-//   - errors as you type: the same ones veyl build reports, each at its
+//   - errors as you type: the same ones scandiacus build reports, each at its
 //     place in the file;
 //   - completion, of names in scope, the library, a struct's fields and
 //     methods after a dot, and an enum's variants;
@@ -13,7 +13,7 @@ package main
 //     interfaces, fields, globals and locals, across imported files;
 //   - hover, the type of a variable or the signature of a function;
 //   - the outline of a file;
-//   - formatting, the same as veyl fmt.
+//   - formatting, the same as scandiacus fmt.
 //
 // Each change runs the compiler's front half - parse, imports, prelude,
 // type check - over the text in the editor, never the copy on disk, and
@@ -42,7 +42,7 @@ import (
 	"strings"
 	"unicode/utf16"
 
-	front "veylfront"
+	front "scandiacusfront"
 )
 
 type rpcMsg struct {
@@ -187,7 +187,7 @@ func (s *lspServer) handle(m *rpcMsg) {
 				"documentSymbolProvider":     true,
 				"documentFormattingProvider": true,
 			},
-			"serverInfo": map[string]any{"name": "veyl", "version": Version},
+			"serverInfo": map[string]any{"name": "scandiacus", "version": Version},
 		})
 	case "shutdown":
 		s.reply(m.ID, nil)
@@ -230,7 +230,7 @@ func (s *lspServer) handle(m *rpcMsg) {
 			return
 		}
 		if h, doc := d.hover(p.Position); h != "" {
-			value := "```veyl\n" + h + "\n```"
+			value := "```scandiacus\n" + h + "\n```"
 			if doc != "" {
 				value += "\n\n" + doc
 			}
@@ -363,7 +363,7 @@ func (s *lspServer) analyze(d *lspDoc) {
 		start := lspPos{Line: line - 1, Character: utf16Col(lines, line, col)}
 		end := lspPos{Line: line - 1, Character: start.Character + wordLenAt(lines, line, col)}
 		diags = append(diags, map[string]any{
-			"range": lspRange{Start: start, End: end}, "severity": sev, "source": "veyl", "message": msg,
+			"range": lspRange{Start: start, End: end}, "severity": sev, "source": "scandiacus", "message": msg,
 		})
 	}
 	s.notify("textDocument/publishDiagnostics", map[string]any{"uri": d.uri, "diagnostics": diags})
@@ -391,7 +391,7 @@ func analyzeWithWarnings(text, path string) (idx *lspIndex, errs, warns []string
 	errs = append(errs, p.Errors...)
 	parsed := len(lex.Errors) == 0 && len(p.Errors) == 0
 
-	// Test and bench blocks are checked like functions, as veyl test
+	// Test and bench blocks are checked like functions, as scandiacus test
 	// would build them.
 	prog.Funcs = append(prog.Funcs, prog.Tests...)
 	stampImportedFile(prog, path)

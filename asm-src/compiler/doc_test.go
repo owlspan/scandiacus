@@ -35,15 +35,15 @@ fn helper() {
 
 let trailing = 1 // about this line only
 `
-	entries, errs := docEntries("geo.vl", src)
+	entries, errs := docEntries("geo.scd", src)
 	if len(errs) > 0 {
 		t.Fatal(errs)
 	}
 	got := docMarkdown("geo", docIntro(src), entries)
 	want := "# geo\n\nGeometry helpers.\n\n## Contents\n\n- [struct Point](#struct-point)\n- [fn add](#fn-add)\n\n" +
-		"## struct Point\n\n```veyl\nstruct Point {\n    x: int\n    y: int\n}\n```\n\nA point on the grid.\n\n" +
-		"### Point.manhattan\n\n```veyl\nfn manhattan(self) -> int\n```\n\nHow far from the origin, along the grid.\n\n" +
-		"## fn add\n\n```veyl\nfn add(a: Point, b: Point) -> Point\n```\n\nAdds two points.\n\n"
+		"## struct Point\n\n```scandiacus\nstruct Point {\n    x: int\n    y: int\n}\n```\n\nA point on the grid.\n\n" +
+		"### Point.manhattan\n\n```scandiacus\nfn manhattan(self) -> int\n```\n\nHow far from the origin, along the grid.\n\n" +
+		"## fn add\n\n```scandiacus\nfn add(a: Point, b: Point) -> Point\n```\n\nAdds two points.\n\n"
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s\n%s", got, want, firstDiff(got, want))
 	}

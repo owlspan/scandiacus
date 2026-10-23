@@ -26,9 +26,9 @@ import (
 )
 
 func TestExecutableStructure(t *testing.T) {
-	veyl := asmBackend(t)
+	scandiacus := asmBackend(t)
 
-	// dirs.vl reaches both libraries: Win32 for the file system and the
+	// dirs.scd reaches both libraries: Win32 for the file system and the
 	// C runtime for everything else. One program that imports from two
 	// DLLs exercises the whole import table.
 	//
@@ -36,16 +36,16 @@ func TestExecutableStructure(t *testing.T) {
 	// somewhere disposable rather than leaving an executable in
 	// examples/ for the next run to trip over.
 	dir := t.TempDir()
-	source, err := os.ReadFile(filepath.Join("..", "examples", "dirs.vl"))
+	source, err := os.ReadFile(filepath.Join("..", "examples", "dirs.scd"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	src := filepath.Join(dir, "dirs.vl")
+	src := filepath.Join(dir, "dirs.scd")
 	if err := os.WriteFile(src, source, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "dirs.exe")
-	if o, err := exec.Command(veyl, "build", "--windows", src).CombinedOutput(); err != nil {
+	if o, err := exec.Command(scandiacus, "build", "--windows", src).CombinedOutput(); err != nil {
 		t.Fatalf("could not build: %v\n%s", err, o)
 	}
 
@@ -120,7 +120,7 @@ func TestExecutableStructure(t *testing.T) {
 		}
 	}
 	if !seen["kernel32.dll"] || !seen["msvcrt.dll"] {
-		t.Errorf("dirs.vl imports from %v, want both libraries", seen)
+		t.Errorf("dirs.scd imports from %v, want both libraries", seen)
 	}
 }
 
@@ -175,7 +175,7 @@ func TestRdataMerge(t *testing.T) {
 	// alignment, at RVA 0x1008; the reference points there. The switch
 	// is cleared first, so the test says what it checks rather than
 	// inheriting it from whatever ran it.
-	t.Setenv("VEYL_NOMERGE", "")
+	t.Setenv("SCANDIACUS_NOMERGE", "")
 	bs, secs := write(t, build())
 	if secs != ".text .idata .reloc" {
 		t.Fatalf("the merged image has sections %s, want text and idata (and the relocations)", secs)
@@ -190,7 +190,7 @@ func TestRdataMerge(t *testing.T) {
 
 	// Separate. The switch puts everything back exactly as it was:
 	// three sections, the data on its own page at RVA 0x2000.
-	t.Setenv("VEYL_NOMERGE", "1")
+	t.Setenv("SCANDIACUS_NOMERGE", "1")
 	bs, secs = write(t, build())
 	if secs != ".text .rdata .idata .reloc" {
 		t.Fatalf("the separate image has sections %s, want text, rdata and idata", secs)

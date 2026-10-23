@@ -1,6 +1,6 @@
 package main
 
-// csv, in Veyl. Go's encoding/csv, with FieldsPerRecord at -1 so a
+// csv, in Scandiacus. Go's encoding/csv, with FieldsPerRecord at -1 so a
 // ragged file is read rather than refused.
 //
 // The reader's error text is Go's, down to the line and column, because

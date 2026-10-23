@@ -30,7 +30,7 @@ type Stmt interface {
 	stmtNode()
 }
 
-// Program is a whole .vl file: zero or more functions, plus the
+// Program is a whole .scd file: zero or more functions, plus the
 // top-level statements that become main().
 // Program is a whole compilation: the main file plus everything it
 // imported, flattened into one set of declarations. Which file each
@@ -44,7 +44,7 @@ type Program struct {
 	Main    []Stmt // top-level statements of the main file only
 
 	// Tests are the file's `test "name" { ... }` blocks, each a function
-	// with no parameters and TestName set. Only veyl test compiles them.
+	// with no parameters and TestName set. Only scandiacus test compiles them.
 	Tests   []*FnDecl
 	Imports []*ImportDecl
 
@@ -101,14 +101,14 @@ type InterfaceDecl struct {
 	File    string
 }
 
-// ImportDecl is `import "helpers.vl"`. The path is relative to the file
+// ImportDecl is `import "helpers.scd"`. The path is relative to the file
 // containing the import.
 type ImportDecl struct {
 	Span
 	Path string
 	File string // the file this import was written in
 
-	// As is the namespace from `import "geo.vl" as geo`, or "" for an
+	// As is the namespace from `import "geo.scd" as geo`, or "" for an
 	// import that folds the file's names in as they are.
 	As string
 }
@@ -252,7 +252,7 @@ type Call struct {
 	// Want is the type this call's result is expected to produce, when
 	// there is one - the annotation on `let p: Point = json.decode(s)`.
 	// Only builtins that ask for it ever see this; it is how a decoder
-	// learns what to decode into without Veyl having type arguments.
+	// learns what to decode into without Scandiacus having type arguments.
 	Want *Type
 
 	// ViaValue is set when the callee is a variable holding a function
@@ -397,7 +397,7 @@ type StructDecl struct {
 	Pkg    string // see FnDecl.Pkg
 
 	// Extern marks `extern struct`: a C layout laid over memory the
-	// program does not own, rather than a Veyl value. A value of one is
+	// program does not own, rather than a Scandiacus value. A value of one is
 	// the address of its first byte. Size and Align are filled in by
 	// the checker.
 	Extern bool
@@ -481,7 +481,7 @@ type FnDecl struct {
 	// TestName is set on a `test "name" { ... }` block, which the parser
 	// turns into a function with no parameters; see Program.Tests.
 	TestName string
-	Bench    bool // `bench "name" { ... }`: timed by veyl test --bench
+	Bench    bool // `bench "name" { ... }`: timed by scandiacus test --bench
 
 	// Export marks `export fn`: in a DLL build the function is in the
 	// export table under its own name, callable from native code.

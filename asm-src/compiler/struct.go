@@ -75,7 +75,7 @@ type structLayout struct {
 	nptr   int64
 
 	// view marks an extern struct: a C layout at an address, never
-	// copied, never allocated as a Veyl object. See views.go.
+	// copied, never allocated as a Scandiacus object. See views.go.
 	view bool
 }
 
