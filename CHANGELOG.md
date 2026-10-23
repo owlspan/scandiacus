@@ -3,6 +3,77 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.83.0
+
+**Interfaces in HTML and CSS.** The new `ui` library opens a window
+whose contents are a web page, so an interface can have the layout,
+fonts and look of anything a browser shows, driven by a Veyl program:
+
+```veyl
+let app = must(ui.open("To do", 560, 640))
+ui.html(app, page)
+while ui.poll(app) {
+    for m in ui.messages(app) {
+        // what the page sent with veyl.send(...)
+    }
+}
+```
+
+The page gets a `veyl` object: `veyl.send(x)` reaches `ui.messages`,
+and `veyl.onmessage` receives `ui.send`. `ui.file` shows an HTML file
+with its own stylesheets and scripts beside it, `ui.eval` runs
+JavaScript in the page. On Windows it is WebView2, the Edge engine
+every updated Windows 10 and 11 already has, so nothing ships with the
+program; the window follows dark mode and is sharp on high-DPI
+screens. `examples/ui/todo.vl` is a complete to-do list. Linux and
+macOS are not done yet.
+
+**`mem.callback(f)`** gives the address of a stub that native code can
+call to run `f` - a window procedure, or the methods of a COM object
+the program builds itself. The `ui` library is built on it: WebView2's
+completion and message handlers are COM objects made in Veyl.
+
+**Empty `[]` and `{}` take their type from where they go.** Assigning
+to a variable whose type is known (`xs = []`), pushing into a list of
+lists, passing to a parameter, filling a field and the fallback of
+`json.decodeOr` no longer ask for an annotation.
+
+**Faster code.** Several new optimisations, measured against C built
+with `zig cc -O2` on the same programs:
+
+| best of three | 1.82.1 | 1.83.0 | C |
+| --- | ---: | ---: | ---: |
+| 1000 structs moved 20,000 times | 556 ms | 93 ms | 86 ms |
+| 400x400 float matrix multiply over lists | 355 ms | 134 ms | 69 ms |
+| fib(37), recursive calls | 291 ms | 251 ms | 148 ms |
+| 400M iterations of integer arithmetic | 675 ms | 668 ms | 536 ms |
+| sieve over a 50M-element list | 1620 ms | 1433 ms | 470 ms |
+
+- A bounds check is one unsigned compare, with the failure out of line.
+- Within a block, the same list header, element, field or bounds check
+  is read once (`cse.go`); a store only forgets loads of its own kind
+  of object.
+- A list's length and data pointer, or a field, that a loop cannot
+  change is read once before the loop (`licm.go`).
+- A loop's test is copied to the bottom: one jump a trip instead of two.
+- Pointers get scratch registers between calls, spare callee-saved
+  registers join the pools, a result can take the register of an
+  operand that dies there, and frames only hold the values that are not
+  in registers.
+
+The sieve's remaining distance is memory: a `[]bool` keeps eight bytes
+per element, where C keeps one.
+
+**Fix: the assembly peephole removed a load.** Two identical lines
+`mov r11, qword ptr [r11]` in a row are two loads through a chain, not
+one load twice; the peephole dropped the second. Nothing produced that
+shape until the allocator started reusing an operand's register, but it
+now only drops a repeated move whose destination is not also read.
+
+The generated code was checked against the unoptimised build on about
+600 randomly generated programs - loops, aliased lists, struct fields,
+`break` and `continue`, calls that change lists - with identical output.
+
 ## 1.82.1
 
 **Fix: floats stored into struct fields.** Storing a float into a field
