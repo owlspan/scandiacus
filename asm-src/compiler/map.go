@@ -388,6 +388,8 @@ func (l *lowerer) forMap(st *ForStmt, m Reg, t vty) {
 	more := l.compare(OpLt, i, l.load(lenSlot, vInt))
 	l.emit(Instr{Op: OpJumpNot, A: more, Dst: NoReg, Imm: done})
 
+	// Read again, as forList does, so the test stands alone.
+	i = l.load(iSlot, vInt)
 	cur := l.load(mapSlot, t)
 	l.emit(Instr{Op: OpStore, A: l.cellAt(cur, mapKeysOff, i, t.keyType()),
 		Dst: NoReg, Imm: keySlot, Comment: st.Var})

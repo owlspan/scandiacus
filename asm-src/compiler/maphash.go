@@ -66,15 +66,26 @@ func (l *lowerer) ret(v Reg) {
 // keyEq is a == b on keys.
 func (l *lowerer) keyEq(a, b Reg, kk vkind) Reg {
 	if kk == kStr {
-		return l.compare(OpEq, l.keyCmp(a, b, kk), l.constant(0))
+		// Equality, not order: the headers first, which differ for most
+		// pairs of keys of different lengths, then the bytes.
+		l.mod.needs("streq")
+		d := l.newReg()
+		l.regTy[d] = vBool
+		l.emit(Instr{Op: OpStrEq, Dst: d, A: a, B: b})
+		return d
 	}
 	return l.compare(OpEq, a, b)
 }
 
 // mapHash spreads a key over 64 bits. An int is multiplied by the
 // golden ratio and folded, so keys that differ only in their high bits,
-// or step by a power of two, still land in different slots; a string
-// is FNV-1a over its bytes.
+// or step by a power of two, still land in different slots. A string is
+// taken eight bytes at a time while eight remain, each word mixed in
+// with a multiply and a fold, then FNV-1a over the last few bytes one
+// by one: a word read past the end of the string could cross into an
+// unmapped page when the string is a literal at the end of the image.
+// The length comes from the header, so a zero byte inside the key is
+// hashed like any other.
 func (l *lowerer) mapHash(key Reg, t vty) Reg {
 	kt := vty{k: t.key}
 	sym := l.helperFunc(mapHelperKey("__map_hash", t), []vty{kt}, vInt, func(a []Reg) {
@@ -83,19 +94,30 @@ func (l *lowerer) mapHash(key Reg, t vty) Reg {
 			l.ret(l.arith(OpBXor, h, l.arith(OpShr, h, l.constant(32))))
 			return
 		}
+		s := l.temp(vStr)
+		l.setSlot(s, a[0])
+		n := l.temp(vInt)
+		l.setSlot(n, l.strLen(l.load(s, vStr)))
 		h := l.temp(vInt)
 		i := l.temp(vInt)
-		l.setSlot(h, l.constant(-3750763034362895579))
+		l.setSlot(h, l.arith(OpBXor, l.constant(-3750763034362895579), l.load(n, vInt)))
 		l.setSlot(i, l.constant(0))
-		top, done := l.newLabel(), l.newLabel()
-		l.mark(top)
+		words, tail, done := l.newLabel(), l.newLabel(), l.newLabel()
+		l.mark(words)
+		l.jumpIf(l.compare(OpGt, l.arith(OpAdd, l.load(i, vInt), l.constant(8)), l.load(n, vInt)), tail)
+		w := l.peekWord(l.arith(OpAdd, l.load(s, vStr), l.load(i, vInt)), 0)
+		m := l.arith(OpMul, l.arith(OpBXor, l.load(h, vInt), w), l.constant(-7046029254386353131))
+		l.setSlot(h, l.arith(OpBXor, m, l.arith(OpShrU, m, l.constant(29))))
+		l.setSlot(i, l.arith(OpAdd, l.load(i, vInt), l.constant(8)))
+		l.jump(words)
+		l.mark(tail)
+		l.jumpIf(l.compare(OpGe, l.load(i, vInt), l.load(n, vInt)), done)
 		b := l.newReg()
 		l.regTy[b] = vInt
-		l.emit(Instr{Op: OpLoadByte, Dst: b, A: a[0], B: l.load(i, vInt)})
-		l.jumpIf(l.compare(OpEq, b, l.constant(0)), done)
+		l.emit(Instr{Op: OpLoadByte, Dst: b, A: l.load(s, vStr), B: l.load(i, vInt)})
 		l.setSlot(h, l.arith(OpMul, l.arith(OpBXor, l.load(h, vInt), b), l.constant(1099511628211)))
 		l.setSlot(i, l.arith(OpAdd, l.load(i, vInt), l.constant(1)))
-		l.jump(top)
+		l.jump(tail)
 		l.mark(done)
 		l.ret(l.load(h, vInt))
 	})

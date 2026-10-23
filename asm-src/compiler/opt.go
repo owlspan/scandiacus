@@ -51,6 +51,7 @@ func Optimize(m *Module) {
 		}
 		if !envOff("VEYL_NOFORWARD") {
 			forwardLoads(fn)
+			dropDeadStores(fn)
 			if !envOff("VEYL_NODCE") {
 				// Sweep once more: forwarding just turned loads into
 				// plain register mentions, which can leave the loaded
@@ -491,6 +492,36 @@ func forwardLoads(fn *Func) {
 				continue // the load dies; later uses read v instead
 			}
 			slotVal[in.Imm] = in.Dst
+		}
+		out = append(out, in)
+	}
+	fn.Code = out
+}
+
+// dropDeadStores removes the stores to slots nothing reads. Once loads
+// are forwarded, a local read only right after it is written - a for
+// loop's element, say - is read from the register that was stored, and
+// the slot is written on every trip for no one. A slot whose address is
+// taken is read by whoever has the address, and a closure's slot zero by
+// its prologue, so those keep their stores.
+func dropDeadStores(fn *Func) {
+	if len(fn.RegTypes) < fn.NRegs {
+		return // hand-built IR in a test, as cse.go skips it
+	}
+	read := map[int64]bool{}
+	for _, in := range fn.Code {
+		switch in.Op {
+		case OpLoad, OpSlotAddr, OpStoreByte:
+			read[in.Imm] = true
+		}
+	}
+	if fn.Env {
+		read[0] = true
+	}
+	out := fn.Code[:0]
+	for _, in := range fn.Code {
+		if in.Op == OpStore && !read[in.Imm] {
+			continue
 		}
 		out = append(out, in)
 	}

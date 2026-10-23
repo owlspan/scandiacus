@@ -659,6 +659,11 @@ func (l *lowerer) forList(st *ForStmt) {
 	more := l.compare(OpLt, i, n)
 	l.emit(Instr{Op: OpJumpNot, A: more, Dst: NoReg, Imm: done})
 
+	// The body reads the index again rather than using the test's
+	// register, which keeps the test a block of its own that the
+	// optimizer can copy to the bottom of the loop (rotateLoops);
+	// forwarding then makes it the same register anyway.
+	i = l.load(iSlot, vInt)
 	list := l.newReg()
 	l.regTy[list] = t
 	l.emit(Instr{Op: OpLoad, Dst: list, A: NoReg, B: NoReg, Imm: listSlot})
