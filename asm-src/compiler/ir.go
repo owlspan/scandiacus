@@ -1403,7 +1403,13 @@ func (l *lowerer) temp(t vty) int64 {
 
 func (l *lowerer) errorAt(n Node, format string, args ...any) {
 	line, col := n.Pos()
-	l.errs = append(l.errs, fmt.Sprintf("%s:%d:%d: %s", l.file, line, col,
+	// The file of the function being lowered, which for one from an
+	// import is not the file being built.
+	file := l.file
+	if l.curFile != "" && l.curFile != "<prelude>" {
+		file = l.curFile
+	}
+	l.errs = append(l.errs, fmt.Sprintf("%s:%d:%d: %s", file, line, col,
 		fmt.Sprintf(format, args...)))
 }
 

@@ -57,3 +57,25 @@ func TestErrorLocations(t *testing.T) {
 		})
 	}
 }
+
+// TestImportedErrorNamesItsFile holds an error the lowerer finds in an
+// imported file to that file's name, not the name of the file built.
+func TestImportedErrorNamesItsFile(t *testing.T) {
+	veyl := asmBackend(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "lib.vl"),
+		[]byte("pub fn twice(n: int) -> int {\n    return mem.addr(n)\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	main := filepath.Join(dir, "main.vl")
+	if err := os.WriteFile(main, []byte("import \"lib.vl\"\n\nprint(twice(3))\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(veyl, "build", main, "-o", filepath.Join(dir, "main.exe")).CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected the build to fail, it said:\n%s", out)
+	}
+	if !strings.Contains(string(out), "lib.vl:2:") || strings.Contains(string(out), "main.vl:2:") {
+		t.Fatalf("the error should name lib.vl:2, got:\n%s", out)
+	}
+}
