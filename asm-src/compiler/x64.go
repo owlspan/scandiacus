@@ -1468,8 +1468,11 @@ func (e *Emitter) loadWindowArgs(in Instr) {
 		dst := argRegs[i]
 		if in.ArgTypes[i].k == kFloat {
 			e.line("movsd %s, %s", xmmArgs[i], src)
+			// The copy in the integer register waits its turn with the
+			// rest: written now, it could land on r8 or r9 while another
+			// argument still has to be read out of it.
 			if in.Variadic && src != dst {
-				e.line("mov %s, %s", dst, src)
+				pending = append(pending, move{dst, src})
 			}
 			continue
 		}

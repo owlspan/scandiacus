@@ -3446,6 +3446,15 @@ Only a function declared with `fn`, named directly, can be a callback.
 A closure carries its captured variables somewhere native code does
 not know about. A callback may allocate and may run the collector.
 
+Callbacks work the same on Linux and macOS. Native code there calls
+with the System V convention, which places arguments differently -
+integers and floats counted separately, more of them in registers, no
+shadow space - so the address native code is given is a stub that moves
+them to where a Veyl function expects them. `tests/callbacks_c.vl`
+sorts through the C library's `qsort` and calls through
+`mem.callback` with mixed integer and float arguments on all three
+systems.
+
 Where no extern declaration names the callback's type - a window
 procedure in a `WNDCLASSEXW`, a table of methods for a COM object -
 `mem.callback(f)` gives the address as an `int`. Every argument then

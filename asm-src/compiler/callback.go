@@ -52,6 +52,12 @@ type Thunk struct {
 	Sym    string
 	Target string
 	Widen  []widenArg
+
+	// Kinds is the target's parameters, 'f' for a float and 'i' for
+	// anything else, for a callback that native code may call with the
+	// System V convention; see sysvThunk.
+	Kinds string
+	Adapt bool
 }
 
 // callbackWidening reads a callback type as written, fn(ptr, int) ->
@@ -158,7 +164,16 @@ func (l *lowerer) callbackArg(e Expr, want vty, widen []widenArg) Reg {
 		}
 	}
 	if !known {
-		l.mod.Thunks = append(l.mod.Thunks, Thunk{Sym: sym, Target: fnSym(id.Name), Widen: widen})
+		kinds := ""
+		for _, p := range l.sigs[id.Name].params {
+			if p.k == kFloat || fixedOf(p) == "f32" {
+				kinds += "f"
+			} else {
+				kinds += "i"
+			}
+		}
+		l.mod.Thunks = append(l.mod.Thunks, Thunk{Sym: sym, Target: fnSym(id.Name), Widen: widen,
+			Kinds: kinds, Adapt: true})
 	}
 
 	d := l.newReg()
@@ -177,6 +192,10 @@ var (
 // [rsp] and argument i from the fifth on is at [rsp+8+8*i], which is
 // where the caller put it and where the Veyl function will look.
 func (e *Emitter) thunk(t Thunk) {
+	if t.Adapt && (targetLinux() || targetMac()) {
+		e.sysvThunk(t)
+		return
+	}
 	e.b.WriteString("\n" + t.Sym + ":\n")
 	retF32 := false
 	for _, w := range t.Widen {
@@ -224,6 +243,114 @@ func (e *Emitter) thunk(t Thunk) {
 		return
 	}
 	e.line("jmp %s", t.Target)
+}
+
+// sysvThunk is the stub on Linux and macOS, where native code calls
+// with the System V convention: integers in rdi, rsi, rdx, rcx, r8 and
+// r9 and floats in xmm0 to xmm7, each counted separately, the rest on
+// the stack, and no shadow space. A Veyl function takes the Windows x64
+// convention, which every Veyl call on every system uses, so the stub
+// saves the incoming registers, lays the arguments out the Windows way
+// - positions 0 to 3 in registers, the rest above 32 bytes of shadow
+// space - widening each as thunk does, and calls the function. The
+// registers System V wants kept, rbx, rbp and r12 to r15, are ones the
+// Windows convention keeps too.
+func (e *Emitter) sysvThunk(t Thunk) {
+	e.b.WriteString("\n" + t.Sym + ":\n")
+	n := len(t.Kinds)
+	stackArgs := 0
+	if n > 4 {
+		stackArgs = n - 4
+	}
+	frame := 112 + 32 + 8*stackArgs
+	if frame%16 != 0 {
+		frame += 16 - frame%16
+	}
+	e.line("push rbp")
+	e.line("mov rbp, rsp")
+	e.line("sub rsp, %d", frame)
+	for i, r := range []string{"rdi", "rsi", "rdx", "rcx", "r8", "r9"} {
+		e.line("mov qword ptr [rbp-%d], %s", 8+8*i, r)
+	}
+	for i := 0; i < 8; i++ {
+		e.line("movsd qword ptr [rbp-%d], xmm%d", 56+8*i, i)
+	}
+	widenAt := map[int]widenArg{}
+	retF32 := false
+	for _, w := range t.Widen {
+		if w.pos < 0 {
+			retF32 = true
+			continue
+		}
+		widenAt[w.pos] = w
+	}
+	ints, floats, spilled := 0, 0, 0
+	for i, k := range t.Kinds {
+		var src string
+		if k == 'f' {
+			if floats < 8 {
+				src = fmt.Sprintf("[rbp-%d]", 56+8*floats)
+			} else {
+				src = fmt.Sprintf("[rbp+%d]", 16+8*spilled)
+				spilled++
+			}
+			floats++
+			x := "xmm5"
+			if i < 4 {
+				x = xmmArgs[i]
+			}
+			if w, ok := widenAt[i]; ok && w.kind == memF32 {
+				e.line("cvtss2sd %s, dword ptr %s", x, src)
+			} else {
+				e.line("movsd %s, qword ptr %s", x, src)
+			}
+			if i >= 4 {
+				e.line("movsd qword ptr [rsp+%d], xmm5", 32+8*(i-4))
+			}
+			continue
+		}
+		if ints < 6 {
+			src = fmt.Sprintf("[rbp-%d]", 8+8*ints)
+		} else {
+			src = fmt.Sprintf("[rbp+%d]", 16+8*spilled)
+			spilled++
+		}
+		ints++
+		w, ok := widenAt[i]
+		switch {
+		case !ok:
+			e.line("mov rax, qword ptr %s", src)
+		case w.isBool:
+			e.line("mov eax, dword ptr %s", src)
+			e.line("test eax, eax")
+			e.line("setne al")
+			e.line("movzx eax, al")
+		case w.kind == memI8:
+			e.line("movsx rax, byte ptr %s", src)
+		case w.kind == memU8:
+			e.line("movzx eax, byte ptr %s", src)
+		case w.kind == memI16:
+			e.line("movsx rax, word ptr %s", src)
+		case w.kind == memU16:
+			e.line("movzx eax, word ptr %s", src)
+		case w.kind == memU32:
+			e.line("mov eax, dword ptr %s", src)
+		default:
+			e.line("movsxd rax, dword ptr %s", src)
+		}
+		if i < 4 {
+			e.line("mov %s, rax", argRegs[i])
+		} else {
+			e.line("mov qword ptr [rsp+%d], rax", 32+8*(i-4))
+		}
+	}
+	e.line("call %s", t.Target)
+	if retF32 {
+		e.line("cvtsd2ss xmm0, xmm0")
+	}
+	e.line("mov rsp, rbp")
+	e.line("pop rbp")
+	e.line("ret")
 }
 
 // The 16-bit names of the argument registers.
