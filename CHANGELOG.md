@@ -3,6 +3,64 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.84.0
+
+**A faster heap.** Objects up to 2 KB, header included, now live in
+64 KB pages of one size class each, taken from a free list per class
+instead of one malloc each. A collection tests whether a word is an
+object with arithmetic on the page it falls in, rather than through a
+hash table of every object built for the occasion, and sweeps the pages
+in order. Objects bigger than that are malloc blocks as before.
+
+**Small functions are inlined.** A function of up to 40 instructions
+is copied into the places that call it, so a getter or a two-line
+helper in a loop costs nothing, and the optimiser sees through the
+call. A function that can crash outside a bounds check - raw memory, a
+native call, a division by a variable - keeps its call, so a crash
+still names it.
+
+**Struct arguments without copies.** A struct passed to a function is
+a copy, so the function cannot change the caller's value. When the
+function only reads the parameter's fields, writes no fields at all and
+calls nothing that could, the copy is skipped: it is the same value
+either way. `tests/structargs.vl` covers both sides.
+
+**Also faster:** string map keys (hashed a word at a time, compared by
+length first), `for` loops over a list or a map (the loop test moves to
+the bottom like any other loop), and stores to locals nothing reads
+are dropped.
+
+Best of three, against 1.83.0:
+
+| | 1.83.0 | 1.84.0 |
+| --- | ---: | ---: |
+| a loop calling a struct-taking function 3M times | 1015 ms | 55 ms |
+| one collection with a million strings alive | 200 ms | 35 ms |
+| a million short-lived strings beside them | 238 ms | 148 ms |
+| a million `"k{i}"` strings built | 373 ms | 141 ms |
+| a million inserts into a `{str: int}` | 707 ms | 423 ms |
+| a million lookups in it | 524 ms | 354 ms |
+| a million inserts into an `{int: int}` | 686 ms | 238 ms |
+
+**Callbacks on Linux and macOS.** Native code there calls with the
+System V convention, so a callback stub that only jumped to the Veyl
+function handed it its arguments in the wrong registers. Off Windows
+the stub now moves them where a Veyl function takes them:
+`qsort`'s comparator and `mem.callback` addresses work on all three
+systems (`tests/callbacks_c.vl`).
+
+**Fix: float arguments to `mem.call`.** A call through an address with
+integer arguments in r8 or r9 and a float after them lost an integer
+argument.
+
+**Fix: errors in imported files.** An error found while lowering a
+function from an imported file was reported under the file being built.
+
+Checked against the unoptimised build, with the collector eager, off
+and normal, on about 1,500 randomly generated programs - loops, lists
+and maps of every size, strings past the page limit, structs that point
+at each other, collections in the middle - with identical output.
+
 ## 1.83.0
 
 **Interfaces in HTML and CSS.** The new `ui` library opens a window
