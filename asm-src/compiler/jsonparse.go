@@ -258,9 +258,28 @@ func (l *lowerer) parseKeyword(c *jsonCursor, word string, kind, truth int64) Re
 func (l *lowerer) parseString(c *jsonCursor) Reg {
 	l.expect(c, '"')
 
-	// The result is never longer than what is left of the input, and an
-	// escape only ever shrinks.
-	buf := l.strAlloc(c.n)
+	// The result is never longer than the string as written, since an
+	// escape only ever shrinks, so the buffer is that long: a first pass
+	// finds the closing quote, stepping over escapes. Sizing it by the
+	// whole input instead - which the buffer was - made every string in
+	// a document a copy of the document's length: decoding was quadratic,
+	// and twenty thousand records ran out of memory.
+	j := l.temp(vInt)
+	l.setSlot(j, l.at(c))
+	scan, scanned, step := l.newLabel(), l.newLabel(), l.newLabel()
+	l.mark(scan)
+	l.jumpIf(l.compare(OpGe, l.load(j, vInt), c.n), scanned)
+	ch := l.temp(vInt)
+	l.setSlot(ch, l.loadByte(c.text, l.load(j, vInt)))
+	l.jumpIf(l.compare(OpEq, l.load(ch, vInt), l.constant('"')), scanned)
+	l.jumpNot(l.compare(OpEq, l.load(ch, vInt), l.constant('\\')), step)
+	l.setSlot(j, l.arith(OpAdd, l.load(j, vInt), l.constant(1)))
+	l.mark(step)
+	l.setSlot(j, l.arith(OpAdd, l.load(j, vInt), l.constant(1)))
+	l.jump(scan)
+	l.mark(scanned)
+	end := l.pick(l.compare(OpGt, l.load(j, vInt), c.n), c.n, l.load(j, vInt), vInt)
+	buf := l.strAlloc(l.arith(OpSub, end, l.at(c)))
 	wSlot := l.temp(vInt)
 	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: wSlot})
 
