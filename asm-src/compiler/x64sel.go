@@ -207,6 +207,25 @@ func (e *Emitter) selInstr(in Instr) bool {
 		e.selArith(in)
 		return true
 
+	case OpIndexAddr:
+		a, b := e.loc(in.A), e.loc(in.B)
+		if !isGPR(a) {
+			e.line("mov rax, %s", a)
+			a = "rax"
+		}
+		if !isGPR(b) {
+			e.line("mov rcx, %s", b)
+			b = "rcx"
+		}
+		d := e.loc(in.Dst)
+		if isGPR(d) {
+			e.line("lea %s, [%s+%s*%d]", d, a, b, indexScale(in))
+			return true
+		}
+		e.line("lea rax, [%s+%s*%d]", a, b, indexScale(in))
+		e.put(in.Dst, "rax")
+		return true
+
 	case OpPeek:
 		base := e.loc(in.A)
 		if !isRegLoc(base) {
@@ -491,7 +510,9 @@ func (e *Emitter) fuseIndex(ix, next Instr, uses map[Reg]int) bool {
 	}
 	addr := fmt.Sprintf("qword ptr [%s+%s*%d]", base, idx, indexScale(ix))
 	if next.Op == OpLoadMem {
-		if d := e.loc(next.Dst); isRegLoc(d) {
+		if d := e.loc(next.Dst); isXmm(d) {
+			e.line("movsd %s, %s", d, addr)
+		} else if isRegLoc(d) {
 			e.line("mov %s, %s", d, addr)
 		} else {
 			e.line("mov rax, %s", addr)
@@ -504,6 +525,10 @@ func (e *Emitter) fuseIndex(ix, next Instr, uses map[Reg]int) bool {
 		return true
 	}
 	b := e.loc(next.B)
+	if isXmm(b) {
+		e.line("movsd %s, %s", addr, b)
+		return true
+	}
 	if !isRegLoc(b) {
 		e.line("mov rdx, %s", b)
 		b = "rdx"

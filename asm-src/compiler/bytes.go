@@ -225,16 +225,13 @@ func (l *lowerer) bytesEqual(a, b Reg) Reg {
 
 // checkBounds stops with the same message a list index does.
 func (l *lowerer) checkBounds(idx, length Reg) {
-	ok, bad := l.newLabel(), l.newLabel()
-	l.emit(Instr{Op: OpJumpIf, A: l.compare(OpLt, idx, l.constant(0)),
-		Dst: NoReg, Imm: bad, Comment: "bounds"})
-	l.emit(Instr{Op: OpJumpIf, A: l.compare(OpGe, idx, length), Dst: NoReg, Imm: bad})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: ok})
+	l.checkIndex(idx, length)
+}
 
-	l.mark(bad)
+// checkIndex is the check itself; see OpCheckIndex.
+func (l *lowerer) checkIndex(idx, length Reg) {
 	l.mod.needs("bounds")
-	l.emit(Instr{Op: OpBoundsFail, A: idx, B: length, Dst: NoReg, Imm: l.where()})
-	l.mark(ok)
+	l.emit(Instr{Op: OpCheckIndex, A: idx, B: length, Dst: NoReg, Imm: l.where(), Comment: "bounds"})
 }
 
 // bytesHexStr renders a bytes as its hex digits, which is how print and

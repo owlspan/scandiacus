@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -57,6 +58,22 @@ type Emitter struct {
 	saved    []string
 
 	polls int // numbers each OpGCPoll's local label
+
+	// cold is code placed after the function's epilogue: the stops of
+	// its bounds checks, which run at most once, kept out of the way of
+	// the loop around them.
+	cold  strings.Builder
+	nCold int
+
+	// lastUse is the last instruction reading each register, and jumps
+	// the jumps to each label, for the function being emitted.
+	lastUse map[Reg]int
+	jumps   map[int64][]int
+
+	// vslot is each unpooled virtual register's frame word; see
+	// layoutRegs.
+	vslot   map[Reg]int64
+	nvslots int64
 
 	// consts and dropConst are the constants the selector folds into
 	// immediates; see x64sel.go. Nil with the optimisations off.
@@ -124,8 +141,30 @@ func (e *Emitter) slotAddr(slot int64) string {
 }
 
 func (e *Emitter) regAddr(r Reg) string {
-	off := (int64(r) + int64(e.f.NSlots) + 1) * 8
+	idx, ok := e.vslot[r]
+	if !ok {
+		idx = e.nvslots - 1 // pooled: nothing should land here, but a word is kept for it
+	}
+	off := (idx + int64(e.f.NSlots) + 1) * 8
 	return fmt.Sprintf("qword ptr [rbp-%d]", off)
+}
+
+// layoutRegs gives a frame word only to the virtual registers that
+// have no machine register, numbered densely. Most of a function's
+// values never touch memory once allocation has run, and a frame sized
+// for all of them made every call's frame several times larger than
+// what it used, which a deep recursion pays for in stack and cache.
+func (e *Emitter) layoutRegs(f *Func) {
+	e.vslot = make(map[Reg]int64, f.NRegs)
+	var n int64
+	for r := 0; r < f.NRegs; r++ {
+		if _, pooled := e.homes[Reg(r)]; pooled {
+			continue
+		}
+		e.vslot[Reg(r)] = n
+		n++
+	}
+	e.nvslots = n + 1
 }
 
 // loc is where a virtual register lives: a machine register for the few
@@ -171,12 +210,12 @@ func (e *Emitter) outgoing() int {
 }
 
 func (e *Emitter) frameSize() int {
-	n := (e.f.NSlots + e.f.NRegs + 2*len(e.saved)) * 8
-	n += e.outgoing()
+	n := (int64(e.f.NSlots) + e.nvslots + 2*int64(len(e.saved))) * 8
+	n += int64(e.outgoing())
 	if n%16 != 0 {
 		n += 16 - n%16
 	}
-	return n
+	return int(n)
 }
 
 func Emit(m *Module) string {
@@ -468,19 +507,40 @@ func (e *Emitter) function(f *Func) {
 	if envOff("VEYL_NORA") || envOff("VEYL_NOOPT") {
 		e.homes = nil
 	} else {
-		e.homes = allocateRegs(f)
-		if fh := allocateFloatRegs(f); len(fh) > 0 {
+		if !envOff("VEYL_NOPROMOTE") {
+			e.promoted = promoteSlots(f)
+			for s, r := range promoteFloatSlots(f) {
+				e.promoted[s] = r
+			}
+		}
+		// The pools: the volatile registers first, which cost nothing,
+		// then the callee-saved ones no slot was promoted into, which
+		// cost a save and a restore.
+		taken := map[string]bool{}
+		for _, r := range e.promoted {
+			taken[r] = true
+		}
+		intPool := append([]string{}, raIntRegs[:]...)
+		floatPool := append([]string{}, raFloatRegs[:]...)
+		if f.Name != collectSym {
+			for _, r := range calleeSaved {
+				if !taken[r] {
+					intPool = append(intPool, r)
+				}
+			}
+			for _, r := range calleeSavedXmm {
+				if !taken[r] {
+					floatPool = append(floatPool, r)
+				}
+			}
+		}
+		e.homes = allocateRegsIn(f, intPool)
+		if fh := allocateFloatRegsIn(f, floatPool); len(fh) > 0 {
 			if e.homes == nil {
 				e.homes = map[Reg]string{}
 			}
 			for r, h := range fh {
 				e.homes[r] = h
-			}
-		}
-		if !envOff("VEYL_NOPROMOTE") {
-			e.promoted = promoteSlots(f)
-			for s, r := range promoteFloatSlots(f) {
-				e.promoted[s] = r
 			}
 		}
 		// Nothing pooled is still the optimised emitter: a promoted
@@ -495,6 +555,7 @@ func (e *Emitter) function(f *Func) {
 		e.planConsts(f)
 	}
 	e.saved = e.savedRegs()
+	e.layoutRegs(f)
 	name := f.Name
 	if name != "main" {
 		name = fnSym(name) // no chance of colliding with libc
@@ -542,14 +603,51 @@ func (e *Emitter) function(f *Func) {
 
 	uses := regUses(f)
 	e.alias = map[Reg]string{}
+	e.cold.Reset()
+	e.nCold = 0
+	e.lastUse = map[Reg]int{}
+	for i, in := range f.Code {
+		for _, r := range append([]Reg{in.A, in.B}, in.Args...) {
+			if r != NoReg {
+				e.lastUse[r] = i
+			}
+		}
+	}
+	e.jumps = jumpsTo(f)
+	fixed := e.fixedSlots(f)
+	steady := e.steadyLoads(f)
 	for i := 0; i < len(f.Code); i++ {
 		in := f.Code[i]
+		if in.Op == OpLoad {
+			if r, ok := fixed[in.Imm]; ok {
+				// The register is the slot, and the slot never changes
+				// from here on: read it there, at every use.
+				e.alias[in.Dst] = r
+				continue
+			}
+			if steady[i] {
+				e.alias[in.Dst] = e.promoted[in.Imm]
+				continue
+			}
+		}
 		// The fusions look at the next instructions that emit anything:
 		// a constant folded into an immediate sits in between otherwise.
 		j := e.nextReal(f, i)
 		k := -1
 		if j >= 0 {
 			k = e.nextReal(f, j)
+		}
+		if in.Op == OpParam && j >= 0 && f.Code[j].Op == OpStore && f.Code[j].A == in.Dst {
+			if r, ok := fixed[f.Code[j].Imm]; ok {
+				// A parameter kept in a register for the whole function
+				// arrives straight there, rather than by way of its own
+				// frame slot, which nothing would read again.
+				e.alias[in.Dst] = r
+			}
+		}
+		if j >= 0 && e.fuseFloatBranch(in, f.Code[j], uses) {
+			i = j
+			continue
 		}
 		if j >= 0 && e.fuseBranch(in, f.Code[j], uses) {
 			i = j
@@ -566,6 +664,10 @@ func (e *Emitter) function(f *Func) {
 		if j >= 0 && e.aliasLoad(in, f.Code[j], uses) {
 			continue
 		}
+		if j >= 0 && e.intoSlot(f, j, in, f.Code[j], uses) {
+			i = j
+			continue
+		}
 		e.instr(in)
 	}
 
@@ -575,6 +677,170 @@ func (e *Emitter) function(f *Func) {
 	e.line("mov rsp, rbp")
 	e.line("pop rbp")
 	e.line("ret")
+	e.b.WriteString(e.cold.String())
+}
+
+// fixedSlots lists the promoted slots that are written once, before
+// the first label, and so hold the same value at every load - a
+// parameter nothing assigns to, most often. A load of one need not copy
+// the register into the loaded value's own home: the register survives
+// calls, so every use can read it directly, where the copy would have
+// had to go to the frame to outlive the first call.
+func (e *Emitter) fixedSlots(f *Func) map[int64]string {
+	if len(e.promoted) == 0 {
+		return nil
+	}
+	stores := map[int64]int{}
+	early := map[int64]bool{}
+	label := false
+	for _, in := range f.Code {
+		switch in.Op {
+		case OpLabel:
+			label = true
+		case OpStore:
+			stores[in.Imm]++
+			if !label {
+				early[in.Imm] = true
+			}
+		case OpSlotAddr:
+			stores[in.Imm] += 2
+		}
+	}
+	out := map[int64]string{}
+	for slot, r := range e.promoted {
+		if stores[slot] == 1 && early[slot] && isGPR(r) {
+			out[slot] = r
+		}
+	}
+	return out
+}
+
+// intoSlot computes an arithmetic result straight into the register of
+// the promoted slot it is stored to, when that store is its only use:
+// `j += i` is one add to the slot's register, where it was a copy out,
+// the add, and a copy back.
+func (e *Emitter) intoSlot(f *Func, at int, op, st Instr, uses map[Reg]int) bool {
+	switch op.Op {
+	case OpAdd, OpSub, OpBAnd, OpBOr, OpBXor:
+	default:
+		return false
+	}
+	if e.consts == nil || st.Op != OpStore || st.A != op.Dst {
+		return false
+	}
+	r, ok := e.promoted[st.Imm]
+	if !ok || !isGPR(r) {
+		return false
+	}
+	// Read again later - by a loop's test, say - it is still in the
+	// register, if nothing stores to the slot first.
+	if uses[op.Dst] != 1 && !e.slotHolds(f, at, e.lastUse[op.Dst], st.Imm) {
+		return false
+	}
+	e.alias[op.Dst] = r
+	e.instr(op)
+	return true
+}
+
+// steadyLoads marks the loads of a slot promoted into a general
+// register that need not copy it: the slot is not written again before
+// the loaded value's last use, and no label on the way lets control in
+// from elsewhere (the rule spanClear applies). Every use can then read
+// the slot's own register - `i < n` in a loop compares rbx with r12
+// rather than first copying rbx.
+func (e *Emitter) steadyLoads(f *Func) map[int]bool {
+	if len(e.promoted) == 0 {
+		return nil
+	}
+	last := map[Reg]int{}
+	for i, in := range f.Code {
+		for _, r := range append([]Reg{in.A, in.B}, in.Args...) {
+			if r != NoReg {
+				last[r] = i
+			}
+		}
+	}
+	out := map[int]bool{}
+	for i, in := range f.Code {
+		if in.Op != OpLoad {
+			continue
+		}
+		r, ok := e.promoted[in.Imm]
+		if !ok || !isGPR(r) {
+			continue
+		}
+		end, used := last[in.Dst]
+		if !used || end <= i {
+			continue
+		}
+		// The last use itself may be the store back into the slot,
+		// which reads the value before it writes.
+		out[i] = e.slotHolds(f, i, end, in.Imm)
+	}
+	return out
+}
+
+// slotHolds reports whether a slot keeps the value it has just after
+// instruction from until instruction to reads it: no store to it in
+// between, and no label control could reach from outside that stretch.
+func (e *Emitter) slotHolds(f *Func, from, to int, slot int64) bool {
+	for p := from + 1; p < to; p++ {
+		q := f.Code[p]
+		switch q.Op {
+		case OpStore:
+			if q.Imm == slot {
+				return false
+			}
+		case OpLabel:
+			for _, j := range e.jumps[q.Imm] {
+				if j <= from || j >= p {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// checkIndex is OpCheckIndex: 0 <= A < B as one unsigned compare, since
+// a negative index read unsigned is larger than any length. The stop
+// is written to the cold block, reading A and B from where they are
+// here - nothing runs between the jump and it.
+func (e *Emitter) checkIndex(in Instr) {
+	a, b := e.loc(in.A), e.loc(in.B)
+	reg := a
+	if !isGPR(a) {
+		e.line("mov rax, %s", a)
+		reg = "rax"
+	}
+	if n, err := strconv.ParseInt(b, 10, 64); err == nil && (n < -1<<31 || n >= 1<<31) {
+		e.line("mov rcx, %s", b)
+		b = "rcx"
+	}
+	e.nCold++
+	label := fmt.Sprintf(".Lbad_%s_%d", e.labelBase(), e.nCold)
+	e.line("cmp %s, %s", reg, b)
+	e.line("jae %s", label)
+
+	main := e.b
+	e.b = e.cold
+	e.label(label)
+	e.where(in)
+	e.line("mov rcx, %s", a)
+	e.line("mov rdx, %s", b)
+	e.line("call __vy_bounds")
+	e.cold = e.b
+	e.b = main
+}
+
+// isGPR reports whether an operand is a 64-bit general register.
+func isGPR(s string) bool {
+	switch s {
+	case "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10",
+		"r11", "r12", "r13", "r14", "r15":
+		return true
+	}
+	return false
 }
 
 func (e *Emitter) instr(in Instr) {
@@ -1103,6 +1369,9 @@ func (e *Emitter) instr(in Instr) {
 		}
 		e.line("mov rdx, %s", e.slotAddr(in.Imm))
 		e.line("mov byte ptr [rax+rcx], dl")
+
+	case OpCheckIndex:
+		e.checkIndex(in)
 
 	case OpBoundsFail:
 		e.where(in)

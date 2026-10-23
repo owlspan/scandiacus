@@ -16,12 +16,14 @@ import "os"
 // keeps it alive; the benefit is that no other part of the compiler has
 // to be told about collection.
 //
-// What makes that sound here rather than hopeful: **every pointer lives
-// in a stack slot.** The register allocator in regalloc.go only ever
-// takes values that are not pointers, so there is no such thing as a
-// pointer that exists only in a machine register and would be missed.
-// That restriction is load-bearing: TestRegAllocKeepsPointersSlotted is
-// there so it cannot be relaxed by accident.
+// What makes that sound here rather than hopeful: **every pointer is in
+// a stack slot whenever a collection can run.** A collection only ever
+// starts inside a call - this thread's, or the check or blocking call
+// another thread is parked in - and the register allocator in
+// regalloc.go gives a pointer a machine register only for a stretch
+// with no call in it. Across a call a pointer is in its slot. That rule
+// is load-bearing: TestRegAllocKeepsPointersSlotted is there so it
+// cannot be relaxed by accident.
 //
 // **Tracing is precise** because every object carries a header saying
 // what it is: raw bytes, pointer-free words, all-pointer words, a list

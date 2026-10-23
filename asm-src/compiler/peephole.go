@@ -72,11 +72,61 @@ func peephole(text string) string {
 // dupableAsm reports whether running a line twice back to back does
 // what running it once does. Pure data movement qualifies; anything
 // with an effect or a flag reading does not.
+//
+// Only when the destination is not also read: mov r11, [r11] twice is a
+// load through a pointer and then through what that pointed to, which
+// the register allocator produces once a value may take over the
+// register of the operand that dies making it.
 func dupableAsm(ln string) bool {
 	for _, p := range []string{"    mov ", "    lea ", "    movsd "} {
-		if strings.HasPrefix(ln, p) {
-			return true
+		if !strings.HasPrefix(ln, p) {
+			continue
 		}
+		dst, src, ok := strings.Cut(strings.TrimPrefix(ln, p), ",")
+		if !ok {
+			return false
+		}
+		family := regFamily(strings.TrimSpace(dst))
+		if family == "" {
+			return true // a store to memory: the same bytes written again
+		}
+		for _, tok := range asmWord.FindAllString(src, -1) {
+			if regFamily(tok) == family {
+				return false
+			}
+		}
+		return true
 	}
 	return false
+}
+
+var asmWord = regexp.MustCompile(`[a-z][a-z0-9]*`)
+
+// regFamily names the 64-bit register a register name is part of -
+// eax and al are rax, r11d is r11 - or "" for anything that is not a
+// general register. An xmm register is its own family.
+func regFamily(name string) string {
+	switch name {
+	case "rax", "eax", "ax", "al":
+		return "rax"
+	case "rbx", "ebx", "bx", "bl":
+		return "rbx"
+	case "rcx", "ecx", "cx", "cl":
+		return "rcx"
+	case "rdx", "edx", "dx", "dl":
+		return "rdx"
+	case "rsi", "esi", "si", "sil":
+		return "rsi"
+	case "rdi", "edi", "di", "dil":
+		return "rdi"
+	case "rsp", "esp", "rbp", "ebp":
+		return name[1:]
+	}
+	if strings.HasPrefix(name, "xmm") {
+		return name
+	}
+	if len(name) >= 2 && name[0] == 'r' && name[1] >= '0' && name[1] <= '9' {
+		return strings.TrimRight(name, "dwb")
+	}
+	return ""
 }

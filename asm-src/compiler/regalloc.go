@@ -7,19 +7,20 @@ package main
 // rather than through memory. Which handful is decided by three rules,
 // each of which exists because breaking it breaks something quiet:
 //
-//   - Only non-pointers. The collector finds roots by scanning stack
-//     slots. A pointer parked in a register during an allocation is a
-//     word the scan never sees, and the object behind it can be freed
-//     while the program still holds it. Types come from the lowerer;
-//     anything whose type says it holds a pointer keeps its slot.
-//
 //   - No interval crosses a barrier: a call, direct or through a
 //     closure, or one of the helpers that allocates or can abort. The
 //     calling convention lets the callee take every volatile register,
-//     and every barrier can allocate, which is rule one all over again.
-//     A value whose whole life fits between two barriers needs nothing
-//     saved around them; one that lives across does not get a register
-//     anywhere.
+//     and every barrier can allocate. A value whose whole life fits
+//     between two barriers needs nothing saved around them; one that
+//     lives across does not get a register anywhere.
+//
+//     That is also what lets a pointer have a register. The collector
+//     finds roots by scanning stack slots, and a pointer only in a
+//     register is a word the scan never sees - but a collection only
+//     ever starts inside a barrier, this thread's or, for another
+//     thread's, at a check or a blocking call this thread is parked
+//     in, which are barriers too. A pointer whose life holds no
+//     barrier is never in a register while a collection runs.
 //
 //   - One home per value, and no span crosses a label. The IR gives
 //     every virtual register exactly one instruction that writes it,
@@ -43,7 +44,10 @@ package main
 // not encode yet. An integer home works everywhere a slot works, which
 // is the property that keeps this pass small.
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 var raIntRegs = [4]string{"r8", "r9", "r10", "r11"}
 
@@ -68,6 +72,13 @@ func raBarrier(in *Instr) bool {
 // map means the function was not suited to allocation and every read
 // goes to its slot, as it would with the pass off.
 func allocateRegs(f *Func) map[Reg]string {
+	return allocateRegsIn(f, raIntRegs[:])
+}
+
+// allocateRegsIn is allocateRegs with a pool of its own: the volatile
+// four, and whichever callee-saved registers the function has not
+// promoted a slot into, which the prologue then saves.
+func allocateRegsIn(f *Func, pool []string) map[Reg]string {
 	if len(f.RegTypes) < f.NRegs || f.NRegs == 0 {
 		return nil
 	}
@@ -108,25 +119,29 @@ func allocateRegs(f *Func) map[Reg]string {
 		def   int
 		last  int
 		param bool // arrives in a fixed argument register; not worth moving
+		// saved: the value lives across a call, so only a callee-saved
+		// register will do; see crossesCalls.
+		saved bool
 	}
 	var cands []cand
 	for r := 0; r < f.NRegs; r++ {
-		t := f.RegTypes[r]
-		if t.holdsPointer() || t.k == kFloat {
+		if f.RegTypes[r].k == kFloat {
 			continue
 		}
 		def := defOf[r]
 		if def < 0 {
 			continue
 		}
+		last := lastOf[r]
 		// A result carried out of a call arrives after every volatile
 		// register has been taken; its slot is written by callResult
 		// directly and that is where readers should look.
-		if barrier[def] {
-			continue
-		}
-		last := lastOf[r]
-		if !spanClear(f, def, last, jumps) {
+		if barrier[def] || !spanClear(f, def, last, jumps) {
+			if crossesCalls(f, Reg(r), def, last, jumps) {
+				// With no call after it, a volatile register serves.
+				saved := !spanClear(f, def, last, jumps)
+				cands = append(cands, cand{r: Reg(r), def: def, last: last, saved: saved})
+			}
 			continue
 		}
 		cands = append(cands, cand{
@@ -154,13 +169,21 @@ func allocateRegs(f *Func) map[Reg]string {
 	// a register given out since had died before that. One "busy until"
 	// per register is the whole state - a list of every holder made
 	// this quadratic, and a long list literal took seconds to compile.
-	until := make(map[string]int, len(raIntRegs))
+	until := make(map[string]int, len(pool))
 	homes := make(map[Reg]string)
 	for _, c := range cands {
 		if c.param {
 			continue // parameters arrive in fixed registers; moving them buys nothing
 		}
-		for _, name := range raIntRegs[:] {
+		if h, ok := reuseA(f, c.def, homes, until); ok {
+			homes[c.r] = h
+			until[h] = c.last
+			continue
+		}
+		for _, name := range pool {
+			if c.saved && volatileReg(name) {
+				continue
+			}
 			if u, taken := until[name]; taken && u >= c.def {
 				continue
 			}
@@ -175,6 +198,26 @@ func allocateRegs(f *Func) map[Reg]string {
 		return nil
 	}
 	return homes
+}
+
+// reuseA gives the value defined at def its first operand's register
+// when that operand dies right there: x86 arithmetic is two-address,
+// so a result in its own register starts with a copy of A that this
+// saves. Only for the operations whose emitters read A before writing
+// the result.
+func reuseA(f *Func, def int, homes map[Reg]string, until map[string]int) (string, bool) {
+	in := f.Code[def]
+	switch in.Op {
+	case OpAdd, OpSub, OpMul, OpBAnd, OpBOr, OpBXor, OpShl, OpShr, OpNeg, OpBNot,
+		OpFAdd, OpFSub, OpFMul, OpFDiv, OpLoadMem:
+	default:
+		return "", false
+	}
+	h, ok := homes[in.A]
+	if !ok || until[h] != def {
+		return "", false
+	}
+	return h, true
 }
 
 // raFloatRegs are the xmm registers float temporaries are pooled into.
@@ -194,9 +237,9 @@ func floatPoolable(op Op, def bool) bool {
 		return true
 	case OpFEq, OpFNe, OpFLt, OpFLe, OpFGt, OpFGe:
 		return !def
-	case OpFConst, OpLoad:
+	case OpFConst, OpLoad, OpLoadMem:
 		return def
-	case OpStore, OpRet:
+	case OpStore, OpRet, OpStoreMem:
 		return !def
 	}
 	return false
@@ -205,6 +248,10 @@ func floatPoolable(op Op, def bool) bool {
 // allocateFloatRegs is allocateRegs for float temporaries: same spans,
 // same barrier and label rules, into xmm2-xmm5.
 func allocateFloatRegs(f *Func) map[Reg]string {
+	return allocateFloatRegsIn(f, raFloatRegs[:])
+}
+
+func allocateFloatRegsIn(f *Func, pool []string) map[Reg]string {
 	if len(f.RegTypes) < f.NRegs || f.NRegs == 0 {
 		return nil
 	}
@@ -264,7 +311,12 @@ func allocateFloatRegs(f *Func) map[Reg]string {
 	until := map[string]int{}
 next:
 	for _, c := range cands {
-		for _, name := range raFloatRegs {
+		if h, ok := reuseA(f, c.def, homes, until); ok {
+			homes[c.r] = h
+			until[h] = c.last
+			continue
+		}
+		for _, name := range pool {
 			if u, busy := until[name]; busy && u >= c.def {
 				continue
 			}
@@ -278,6 +330,49 @@ next:
 
 // noReturn reports whether an instruction ends the program. Nothing
 // after it runs on that path, so what it clobbers does not matter.
+// crossesCalls reports whether a value can keep a callee-saved register
+// across the calls in its span - a call preserves those, so only the
+// labels matter. Only the result of a call to a program's own function
+// declared to return an int or a bool: the collector does not look in
+// registers, and a thread parked for another thread's collection - in
+// __gc_park, or in a blocking call - leaves the callee-saved ones
+// wherever the code it is in keeps them, so a value that might secretly
+// be the only reference to an object stays on the stack. The runtime's
+// own helpers are left out for exactly that: __alloc returns a new
+// object's address as an int, and kept in rbx across the next
+// allocation it was freed by a collection on another thread.
+// fib(n - 1) + fib(n - 2) is the shape this is for: the first result
+// waits out the second call in rbx.
+func crossesCalls(f *Func, r Reg, def, last int, jumps map[int64][]int) bool {
+	in := f.Code[def]
+	if in.Op != OpCall || in.Extern || in.Dst != r || last <= def || strings.HasPrefix(in.Sym, "__") {
+		return false
+	}
+	if in.RetType.k != kInt && in.RetType.k != kBool || in.RetType.null || in.RetType.res {
+		return false
+	}
+	for p := def + 1; p < last; p++ {
+		q := &f.Code[p]
+		if q.Op == OpLabel {
+			for _, from := range jumps[q.Imm] {
+				if from <= def || from >= p {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+func volatileReg(name string) bool {
+	for _, v := range raIntRegs {
+		if v == name {
+			return true
+		}
+	}
+	return false
+}
+
 func noReturn(in *Instr) bool { return in.Op == OpBoundsFail || in.Op == OpMustFail }
 
 // jumpsTo lists, for each label, where the jumps to it are.

@@ -28,6 +28,7 @@ package main
 // outgoing arguments.
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,10 +36,47 @@ import (
 
 var calleeSaved = []string{"rbx", "rsi", "rdi", "r12", "r13", "r14", "r15"}
 
+// loopWeights gives each instruction a weight for how often it runs,
+// as far as can be told without running it: eight times for each loop
+// around it. A slot read once in an inner loop then outranks one read
+// five times in straight-line code, which is the order that matters
+// when there are more slots than registers.
+func loopWeights(f *Func) []int {
+	at := map[int64]int{}
+	for i, in := range f.Code {
+		if in.Op == OpLabel {
+			at[in.Imm] = i
+		}
+	}
+	depth := make([]int, len(f.Code)+1)
+	for i, in := range f.Code {
+		switch in.Op {
+		case OpJump, OpJumpIf, OpJumpNot:
+			if h, ok := at[in.Imm]; ok && h < i {
+				depth[h]++
+				depth[i+1]--
+			}
+		}
+	}
+	w := make([]int, len(f.Code))
+	d := 0
+	for i := range f.Code {
+		d += depth[i]
+		n := d
+		if n > 4 {
+			n = 4
+		}
+		w[i] = 1 << (3 * n)
+	}
+	return w
+}
+
 // promoteSlots picks the slots to keep in registers.
 func promoteSlots(f *Func) map[int64]string {
 	ok := map[int64]bool{}
 	uses := map[int64]int{}
+	weight := map[int64]int{}
+	w := loopWeights(f)
 	plain := func(r Reg) bool {
 		if r < 0 || int(r) >= len(f.RegTypes) {
 			return false
@@ -48,16 +86,18 @@ func promoteSlots(f *Func) map[int64]string {
 			(t.k == kInt || t.k == kBool)
 	}
 	bad := map[int64]bool{}
-	for _, in := range f.Code {
+	for i, in := range f.Code {
 		switch in.Op {
 		case OpLoad:
 			uses[in.Imm]++
+			weight[in.Imm] += w[i]
 			if !plain(in.Dst) {
 				bad[in.Imm] = true
 			}
 			ok[in.Imm] = true
 		case OpStore:
 			uses[in.Imm]++
+			weight[in.Imm] += w[i]
 			if !plain(in.A) {
 				bad[in.Imm] = true
 			}
@@ -66,6 +106,7 @@ func promoteSlots(f *Func) map[int64]string {
 			bad[in.Imm] = true
 		case OpStoreByte:
 			uses[in.Imm]++
+			weight[in.Imm] += w[i]
 		}
 	}
 	if f.Env {
@@ -78,8 +119,8 @@ func promoteSlots(f *Func) map[int64]string {
 		}
 	}
 	sort.Slice(picks, func(i, j int) bool {
-		if uses[picks[i]] != uses[picks[j]] {
-			return uses[picks[i]] > uses[picks[j]]
+		if weight[picks[i]] != weight[picks[j]] {
+			return weight[picks[i]] > weight[picks[j]]
 		}
 		return picks[i] < picks[j]
 	})
@@ -105,6 +146,8 @@ var calleeSavedXmm = []string{"xmm6", "xmm7", "xmm8", "xmm9", "xmm10",
 // load and store of it moves a float and nothing takes its address.
 func promoteFloatSlots(f *Func) map[int64]string {
 	uses := map[int64]int{}
+	weight := map[int64]int{}
+	w := loopWeights(f)
 	bad := map[int64]bool{}
 	isFloat := func(r Reg) bool {
 		if r < 0 || int(r) >= len(f.RegTypes) {
@@ -113,15 +156,17 @@ func promoteFloatSlots(f *Func) map[int64]string {
 		t := f.RegTypes[r]
 		return t.k == kFloat && !t.null && !t.res
 	}
-	for _, in := range f.Code {
+	for i, in := range f.Code {
 		switch in.Op {
 		case OpLoad:
 			uses[in.Imm]++
+			weight[in.Imm] += w[i]
 			if !isFloat(in.Dst) {
 				bad[in.Imm] = true
 			}
 		case OpStore:
 			uses[in.Imm]++
+			weight[in.Imm] += w[i]
 			if !isFloat(in.A) {
 				bad[in.Imm] = true
 			}
@@ -139,8 +184,8 @@ func promoteFloatSlots(f *Func) map[int64]string {
 		}
 	}
 	sort.Slice(picks, func(i, j int) bool {
-		if uses[picks[i]] != uses[picks[j]] {
-			return uses[picks[i]] > uses[picks[j]]
+		if weight[picks[i]] != weight[picks[j]] {
+			return weight[picks[i]] > weight[picks[j]]
 		}
 		return picks[i] < picks[j]
 	})
@@ -162,13 +207,17 @@ func (e *Emitter) savedRegs() []string {
 	if e.f.Name == collectSym {
 		return calleeSaved
 	}
+	in := map[string]bool{}
+	for _, p := range e.promoted {
+		in[p] = true
+	}
+	for _, h := range e.homes {
+		in[h] = true
+	}
 	var used []string
 	for _, r := range append(append([]string{}, calleeSaved...), calleeSavedXmm...) {
-		for _, p := range e.promoted {
-			if p == r {
-				used = append(used, r)
-				break
-			}
+		if in[r] {
+			used = append(used, r)
 		}
 	}
 	return used
@@ -177,7 +226,7 @@ func (e *Emitter) savedRegs() []string {
 // saveAt is where callee-saved register i is kept in the frame: two
 // words each, room for the whole of an xmm register.
 func (e *Emitter) saveAt(i int) string {
-	off := (int64(e.f.NSlots) + int64(e.f.NRegs) + 2*int64(i) + 2) * 8
+	off := (int64(e.f.NSlots) + e.nvslots + 2*int64(i) + 2) * 8
 	return "[rbp-" + strconv.FormatInt(off, 10) + "]"
 }
 
@@ -218,6 +267,65 @@ func regUses(f *Func) map[Reg]int {
 // after it as one cmp and one conditional jump, rather than building a
 // 0 or 1, storing it, reading it back and testing it. Only with the
 // optimisations on, so VEYL_NOOPT keeps the plain form to compare with.
+// fuseFloatBranch is fuseBranch for a float comparison: comisd and a
+// jump on its flags, rather than a 0 or 1 made with set and tested.
+// The condition codes are the ones OpFGt and the rest use, chosen so a
+// NaN on either side compares false: an unordered pair sets CF, ZF and
+// PF together.
+func (e *Emitter) fuseFloatBranch(cmp, br Instr, uses map[Reg]int) bool {
+	if e.homes == nil || cmp.Dst == NoReg || uses[cmp.Dst] != 1 {
+		return false
+	}
+	if (br.Op != OpJumpIf && br.Op != OpJumpNot) || br.A != cmp.Dst {
+		return false
+	}
+	x, y := cmp.A, cmp.B
+	switch cmp.Op {
+	case OpFLt, OpFLe:
+		x, y = y, x
+	case OpFGt, OpFGe, OpFEq, OpFNe:
+	default:
+		return false
+	}
+	a := e.loc(x)
+	if !isXmm(a) {
+		e.line("movsd xmm0, %s", a)
+		a = "xmm0"
+	}
+	e.line("comisd %s, %s", a, e.loc(y))
+	target := fmt.Sprintf(".L%s_%d", e.labelBase(), br.Imm)
+	taken := br.Op == OpJumpIf
+	switch cmp.Op {
+	case OpFGt, OpFLt:
+		if taken {
+			e.line("ja %s", target)
+		} else {
+			e.line("jbe %s", target)
+		}
+	case OpFGe, OpFLe:
+		if taken {
+			e.line("jae %s", target)
+		} else {
+			e.line("jb %s", target)
+		}
+	default:
+		// Equal is ZF set with PF clear; anything else, NaN included,
+		// is not equal.
+		equal := (cmp.Op == OpFEq) == taken
+		if equal {
+			e.nCold++
+			skip := fmt.Sprintf(".Lne_%s_%d", e.labelBase(), e.nCold)
+			e.line("jp %s", skip)
+			e.line("je %s", target)
+			e.label(skip)
+		} else {
+			e.line("jne %s", target)
+			e.line("jp %s", target)
+		}
+	}
+	return true
+}
+
 func (e *Emitter) fuseBranch(cmp, br Instr, uses map[Reg]int) bool {
 	if e.homes == nil {
 		return false

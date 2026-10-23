@@ -579,6 +579,25 @@ peephole and the register allocator from step 10. On top of those:
 - **No collector where nothing is collected.** A program that never
   makes an object for the collector does not carry it; hello, world is
   3.5 KB.
+- **One-compare bounds checks.** `0 <= i < len` is a single unsigned
+  compare, with the stop out of line after the function, so a value
+  alive across an index keeps its register.
+- **Common subexpressions** within a block (`cse.go`): `ps[i].x +=
+  ps[i].vx` reads the list header, checks the index and loads the
+  element once. A store only forgets loads of its own kind of object -
+  a list header, an element buffer, one struct type's field - so
+  writing `p.x` keeps `p.y` known.
+- **Loop-invariant loads** (`licm.go`): a list's length and data
+  pointer, or a field, read in a loop that cannot change them is read
+  once before it, into a slot that usually becomes a register.
+- **Rotated loops.** The test is copied to the bottom, so a trip takes
+  one jump rather than two.
+- **Wider register pools.** A pointer may have a scratch register for a
+  stretch with no call in it; callee-saved registers no local was
+  promoted into join the pools; a result whose operand dies there takes
+  that operand's register; a call's integer result can wait out the
+  next call in a callee-saved register; and a frame only has words for
+  the values that are not in registers.
 
 `VEYL_NOOPT=1` turns all of it off. Against `gcc -O2` on the same
 programs, best of three on one machine:

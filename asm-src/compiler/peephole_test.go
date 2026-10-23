@@ -135,3 +135,19 @@ func TestPeepFlagsUntouched(t *testing.T) {
 		t.Fatalf("a compare or jump was touched: %q", got)
 	}
 }
+
+func TestPeepKeepsChainedLoads(t *testing.T) {
+	// Two identical lines are not one line run twice when the
+	// destination is also the address: the second loads through what
+	// the first loaded. The register allocator produces this shape
+	// once a result may take over its dying operand's register.
+	text := "    mov r11, qword ptr [r11+0]\n" +
+		"    mov r11, qword ptr [r11+0]\n"
+	if got := runPeep(t, text); len(got) != 2 {
+		t.Fatalf("a chained load was dropped: %q", got)
+	}
+	// A plain repeated move still goes.
+	if got := runPeep(t, "    mov r8, r9\n    mov r8, r9\n"); len(got) != 1 {
+		t.Fatalf("a repeated move was kept: %q", got)
+	}
+}

@@ -30,19 +30,33 @@ func TestRegAllocPoolsStraightLineTemps(t *testing.T) {
 }
 
 func TestRegAllocKeepsPointersSlotted(t *testing.T) {
-	// A string never leaves its slot: the collector finds roots by
-	// scanning slots, and a register is a word the scan never sees.
+	// A string alive across a call keeps its slot: the call can
+	// collect, the collector finds roots by scanning slots, and a
+	// register is a word the scan never sees.
 	fn := rafn([]vty{vStr, vInt, vInt}, []Instr{
 		{Op: OpStr, Dst: 0, A: NoReg, B: NoReg, Imm: 0},
 		{Op: OpConst, Dst: 1, A: NoReg, B: NoReg, Imm: 7},
+		{Op: OpCall, Dst: NoReg, A: NoReg, B: NoReg, Sym: "f"},
+		{Op: OpPrintStr, Dst: NoReg, A: 0, B: NoReg},
 		{Op: OpNeg, Dst: 2, A: 1, B: NoReg},
 	})
 	homes := allocateRegs(fn)
 	if _, ok := homes[0]; ok {
-		t.Fatalf("a string value got a register: %v", homes)
+		t.Fatalf("a string alive across a call got a register: %v", homes)
 	}
-	if homes == nil || homes[1] == "" {
-		t.Fatalf("the integer beside it should still pool: %v", homes)
+}
+
+func TestRegAllocPoolsPointersBetweenCalls(t *testing.T) {
+	// With no call in its span nothing can collect while it is in the
+	// register, so a pointer pools like anything else.
+	fn := rafn([]vty{vStr, vInt, vInt}, []Instr{
+		{Op: OpStr, Dst: 0, A: NoReg, B: NoReg, Imm: 0},
+		{Op: OpLoadMem, Dst: 1, A: 0, B: NoReg, Imm: 0},
+		{Op: OpNeg, Dst: 2, A: 1, B: NoReg},
+	})
+	homes := allocateRegs(fn)
+	if homes == nil || homes[0] == "" || homes[1] == "" {
+		t.Fatalf("values with no call in their span should pool: %v", homes)
 	}
 }
 
@@ -117,8 +131,10 @@ func TestRegAllocExhaustionSpillsWithoutEvicting(t *testing.T) {
 	// pool and the fifth keeps its slot. Nothing already holding a
 	// register is evicted over the fifth. The five neg results born
 	// afterwards fit nowhere at birth either, but by then the early
-	// temps are dead, so the same four registers serve them too. A
-	// register changing hands between values that never overlap is
+	// temps are dead, so the same four registers serve them too - the
+	// four whose operands die there take those operands' registers, and
+	// the fifth, whose operand never had one, a register freed by then.
+	// A register changing hands between values that never overlap is
 	// the entire point of the pass, not a collision.
 	var code []Instr
 	for i := 0; i < 5; i++ {
@@ -143,7 +159,7 @@ func TestRegAllocExhaustionSpillsWithoutEvicting(t *testing.T) {
 		t.Fatalf("pooled %d of five simultaneous values, want 4: %v",
 			count, homes)
 	}
-	if len(homes) != 8 {
+	if len(homes) != 9 {
 		t.Fatalf("dead temps did not hand their registers on: %v", homes)
 	}
 }

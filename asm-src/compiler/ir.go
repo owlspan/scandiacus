@@ -563,6 +563,12 @@ const (
 	// is A narrowed, its low 32 bits holding it; OpF32FromBits is back.
 	OpF32Bits
 	OpF32FromBits
+
+	// OpCheckIndex stops the program with the bounds message unless
+	// 0 <= A < B; Imm is where, as for OpBoundsFail. One compare,
+	// unsigned, with the stop out of line - and no labels, so a value
+	// alive across an index stays in its register.
+	OpCheckIndex
 )
 
 // The widths OpPeek and OpPoke move. A narrow store keeps the low bits,
@@ -580,21 +586,20 @@ const (
 )
 
 var opNames = [...]string{
-	"const", "str", "load", "store", "add", "sub", "mul", "div", "mod", "neg",
-	"fconst", "fadd", "fsub", "fmul", "fdiv", "fneg",
-	"feq", "fne", "flt", "fle", "fgt", "fge",
-	"inttofloat", "floattoint", "sqrt", "fmod",
-	"band", "bor", "bxor", "bnot", "shl", "shr",
-	"eq", "ne", "lt", "le", "gt", "ge", "not",
-	"label", "jump", "jumpif", "jumpnot",
-	"param", "call", "ret",
-	"printint", "printfloat", "printbool", "printstr",
-	"concat", "streq", "strlen", "inttostr", "floattostr", "booltostr",
-	"alloc", "indexaddr", "loadmem", "storemem",
-	"writestr", "writeint", "writefloat", "boundsfail",
-	"loadbyte", "storebyte",
+	"const", "str", "load", "store", "add", "sub", "mul", "div", "mod",
+	"neg", "fconst", "fadd", "fsub", "fmul", "fdiv", "fneg", "feq", "fne",
+	"flt", "fle", "fgt", "fge", "inttofloat", "floattoint", "sqrt",
+	"fmod", "band", "bor", "bxor", "bnot", "shl", "shr", "eq", "ne", "lt",
+	"le", "gt", "ge", "not", "label", "jump", "jumpif", "jumpnot",
+	"param", "call", "ret", "printint", "printfloat", "printbool",
+	"printstr", "concat", "streq", "strlen", "inttostr", "floattostr",
+	"booltostr", "alloc", "indexaddr", "loadmem", "storemem", "writestr",
+	"writeint", "writefloat", "boundsfail", "loadbyte", "storebyte",
 	"mustfail", "globaladdr", "stackptr", "symaddr", "slotaddr",
-	"callclosure", "peek", "poke",
+	"callclosure", "calladdr", "atomicadd", "atomicswap", "atomiccas",
+	"gcpoll", "peek", "poke", "ext", "f32round", "inttof32", "u64tofloat",
+	"u64tof32", "floattou64", "divu", "modu", "shru", "ltu", "leu", "gtu",
+	"geu", "f32bits", "f32frombits", "checkindex",
 }
 
 func (o Op) String() string {
@@ -697,6 +702,10 @@ type Module struct {
 	// here; only what the program declared with `extern fn ... `.
 	ExternSigs map[string]externSig
 	NGlobals   int // words of static storage the program needs
+
+	// Views names the extern structs: their memory is anybody's, so
+	// the optimizer treats a field of one as raw memory.
+	Views map[string]bool
 }
 
 func (m *Module) needs(h string) { m.Helpers[h] = true }
@@ -1123,6 +1132,12 @@ func Lower(p *Program, file string) (*Module, []string) {
 	l.buildCrashHandler()
 	l.checkLabels()
 	l.mod.ExternSigs = l.externFns
+	l.mod.Views = map[string]bool{}
+	for name, lay := range l.structs {
+		if lay.view {
+			l.mod.Views[name] = true
+		}
+	}
 	return l.mod, l.errs
 }
 

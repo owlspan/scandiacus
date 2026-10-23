@@ -7,6 +7,11 @@ package main
 //	VEYL_NOFOLD      constant and branch folding
 //	VEYL_NODCE       dead code elimination
 //	VEYL_NOFORWARD   redundant load elimination
+//	VEYL_NOCSE       repeated memory loads, element addresses and
+//	                 bounds checks within a block
+//	VEYL_NOLICM      header words and fields read once before a loop
+//	                 that cannot change them
+//	VEYL_NOROTATE    a loop's test copied to the bottom
 //	VEYL_NOSLOTPACK  frame slot packing
 //
 // VEYL_NOOPT=1 turns every pass off and leaves the output identical to
@@ -34,6 +39,12 @@ func Optimize(m *Module) {
 		if !envOff("VEYL_NODCE") {
 			dce(fn)
 		}
+		// Before forwarding: the copy of a loop's test must not leave
+		// the body reading registers the top's test defined, and until
+		// forwarding the body loads its locals for itself.
+		if !envOff("VEYL_NOROTATE") {
+			rotateLoops(fn)
+		}
 		if !envOff("VEYL_NOFORWARD") {
 			forwardLoads(fn)
 			if !envOff("VEYL_NODCE") {
@@ -46,6 +57,18 @@ func Optimize(m *Module) {
 		if !envOff("VEYL_NOPOLLS") {
 			dropPolls(fn, m.Threaded)
 		}
+		// After the polls are gone: each is a call, and a call forgets
+		// every load.
+		if !envOff("VEYL_NOCSE") {
+			cse(m, fn)
+		}
+		if !envOff("VEYL_NOLICM") {
+			licm(m, fn)
+			if !envOff("VEYL_NODCE") {
+				dce(fn) // the loads of locals the moved words were read through
+			}
+		}
+
 		if !envOff("VEYL_NOSLOTPACK") {
 			packSlots(fn)
 		}
@@ -490,6 +513,44 @@ func sameClass(fn *Func, a, b Reg) bool {
 	return (fn.RegTypes[a].k == kFloat) == (fn.RegTypes[b].k == kFloat)
 }
 
+// slotKinds sorts the slots by what goes through them: 0 for plain
+// numbers, 1 for floats, 2 for anything else or a mixture.
+func slotKinds(fn *Func) map[int64]int {
+	kinds := map[int64]int{}
+	of := func(r Reg) int {
+		if r < 0 || int(r) >= len(fn.RegTypes) {
+			return 2
+		}
+		t := fn.RegTypes[r]
+		switch {
+		case t.null || t.res || t.holdsPointer():
+			return 2
+		case t.k == kFloat:
+			return 1
+		case t.k == kInt || t.k == kBool:
+			return 0
+		}
+		return 2
+	}
+	see := func(s int64, k int) {
+		if old, ok := kinds[s]; ok && old != k {
+			k = 2
+		}
+		kinds[s] = k
+	}
+	for _, in := range fn.Code {
+		switch in.Op {
+		case OpLoad:
+			see(in.Imm, of(in.Dst))
+		case OpStore:
+			see(in.Imm, of(in.A))
+		case OpSlotAddr, OpStoreByte:
+			see(in.Imm, 2)
+		}
+	}
+	return kinds
+}
+
 // ---- slot packing ----
 
 // packSlots renumbers frame slots so that values whose live ranges do
@@ -727,12 +788,19 @@ func packSlots(fn *Func) {
 		return order[x] < order[y]
 	})
 
+	// Slots share only with their own kind. promote.go keeps a slot in
+	// a register when everything in it is a plain number, or everything
+	// a float; one that has held a list for a while does not qualify, so
+	// a number given that slot's index would lose its register.
+	kinds := slotKinds(fn)
+
 	type lease struct {
 		until int
 		id    int64
+		kind  int
 	}
 	busy := []lease{}
-	var free []int64
+	free := map[int][]int64{}
 
 	for _, s := range order {
 		if fn.Env && s == 0 {
@@ -742,22 +810,23 @@ func packSlots(fn *Func) {
 		alive := busy[:0]
 		for _, b := range busy {
 			if b.until < first {
-				free = append(free, b.id)
+				free[b.kind] = append(free[b.kind], b.id)
 			} else {
 				alive = append(alive, b)
 			}
 		}
 		busy = alive
 
+		kind := kinds[s]
 		var id int64
-		if len(free) > 0 {
-			id = free[len(free)-1]
-			free = free[:len(free)-1]
+		if f := free[kind]; len(f) > 0 {
+			id = f[len(f)-1]
+			free[kind] = f[:len(f)-1]
 		} else {
 			id = next
 			next++
 		}
-		busy = append(busy, lease{until: gmax[s], id: id})
+		busy = append(busy, lease{until: gmax[s], id: id, kind: kind})
 		remap[s] = id
 	}
 

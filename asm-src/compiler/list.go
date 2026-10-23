@@ -274,21 +274,7 @@ func (l *lowerer) listPush(list, val Reg) {
 // prints, because the differential test compares stderr too.
 func (l *lowerer) elemAddr(list, idx Reg) Reg {
 	length := l.field(list, listLenOff, vInt)
-
-	ok := l.newLabel()
-	bad := l.newLabel()
-
-	negative := l.compare(OpLt, idx, l.constant(0))
-	l.emit(Instr{Op: OpJumpIf, A: negative, Dst: NoReg, Imm: bad, Comment: "bounds"})
-	tooBig := l.compare(OpGe, idx, length)
-	l.emit(Instr{Op: OpJumpIf, A: tooBig, Dst: NoReg, Imm: bad})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: ok})
-
-	l.mark(bad)
-	l.mod.needs("bounds")
-	l.emit(Instr{Op: OpBoundsFail, A: idx, B: length, Dst: NoReg, Imm: l.where()})
-
-	l.mark(ok)
+	l.checkIndex(idx, length)
 	data := l.field(list, listDataOff, vInt)
 	addr := l.newReg()
 	l.regTy[addr] = vInt
