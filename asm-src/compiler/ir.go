@@ -863,6 +863,11 @@ func scalarVty(t vty) bool {
 // ---- lowering ----
 
 type lowerer struct {
+	// fnDecls is every function's declaration by its called name, and
+	// readOnly the parameters found to be only read; see copyelide.go.
+	fnDecls  map[string]*FnDecl
+	readOnly map[string][]bool
+
 	mod      *Module
 	fn       *Func
 	file     string
@@ -1055,6 +1060,10 @@ func Lower(p *Program, file string) (*Module, []string) {
 		s.ret = ret
 		if ok {
 			l.sigs[methodName(fd.Recv, fd.Name)] = s
+			if l.fnDecls == nil {
+				l.fnDecls = map[string]*FnDecl{}
+			}
+			l.fnDecls[methodName(fd.Recv, fd.Name)] = fd
 		}
 		if fd.Export && fd.Recv == "" {
 			l.mod.Exports = append(l.mod.Exports, exportOf(fd))
@@ -2061,8 +2070,18 @@ func (l *lowerer) call(c *Call) Reg {
 			return l.junk()
 		}
 		args := make([]Reg, len(c.Args))
+		ro := l.readOnlyArgs(name)
 		for i, a := range c.Args {
-			v := l.rvalueAs(a, s.params[i])
+			var v Reg
+			if i < len(ro) && ro[i] && s.params[i].k == kStruct {
+				// Only read by the callee: no copy; see copyelide.go.
+				saved := l.hint
+				l.hint = s.params[i]
+				v = l.expr(a)
+				l.hint = saved
+			} else {
+				v = l.rvalueAs(a, s.params[i])
+			}
 			if s.params[i].k == kFloat && l.regTy[v].k == kInt {
 				v = l.toFloat(v)
 			}

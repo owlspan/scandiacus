@@ -598,6 +598,13 @@ peephole and the register allocator from step 10. On top of those:
   once before it, into a slot that usually becomes a register.
 - **Rotated loops.** The test is copied to the bottom, so a trip takes
   one jump rather than two.
+- **Inlining** (`inline.go`): a function of up to 40 instructions is
+  copied into its callers, so a getter or a two-line helper in a loop
+  costs nothing, and the passes after it see through the call.
+- **Struct arguments without copies** (`copyelide.go`): a function that
+  only reads the fields of a struct parameter, writes no fields itself
+  and calls nothing that could, is passed the caller's object rather
+  than a copy of it.
 - **Wider register pools.** A pointer may have a scratch register for a
   stretch with no call in it; callee-saved registers no local was
   promoted into join the pools; a result whose operand dies there takes
