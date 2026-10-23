@@ -12,6 +12,7 @@ package main
 //	VEYL_NOLICM      header words and fields read once before a loop
 //	                 that cannot change them
 //	VEYL_NOROTATE    a loop's test copied to the bottom
+//	VEYL_NOINLINE    small functions copied into their callers
 //	VEYL_NOSLOTPACK  frame slot packing
 //
 // VEYL_NOOPT=1 turns every pass off and leaves the output identical to
@@ -31,6 +32,9 @@ func envOff(name string) bool { return os.Getenv(name) == "1" }
 func Optimize(m *Module) {
 	if envOff("VEYL_NOOPT") {
 		return
+	}
+	if !envOff("VEYL_NOINLINE") {
+		inlineCalls(m)
 	}
 	for _, fn := range m.Funcs {
 		if !envOff("VEYL_NOFOLD") {
