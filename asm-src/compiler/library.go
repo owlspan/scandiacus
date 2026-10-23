@@ -428,6 +428,7 @@ var sigs = map[string]front.Signature{
 	"mem.strN":     {Params: []*Type{Int, Int}, Ret: Str},
 	"mem.bytes":    {Params: []*Type{Int, Int}, Ret: Bytes},
 	"mem.addr":     {Params: []*Type{Any}, Ret: Int},
+	"mem.callback": {Params: []*Type{Any}, Ret: Int},
 	"mem.protect":  {Params: []*Type{Int, Int, Str}, Ret: Bool},
 	"mem.scan":     {Params: []*Type{Int, Int, Str}, Ret: Int},
 	"mem.call":     {Params: []*Type{Int}, Rest: Any, Ret: Int},
@@ -472,6 +473,17 @@ var sigs = map[string]front.Signature{
 	"proc.name":     {Params: []*Type{Int}, Ret: Str},
 
 	"audio.devices": {Params: []*Type{Bool}, Ret: ListOf(Str)},
+
+	"ui.open":     {Params: []*Type{Str, Int, Int}, Ret: ResultOf(Int)},
+	"ui.html":     {Params: []*Type{Int, Str}, Ret: Void},
+	"ui.url":      {Params: []*Type{Int, Str}, Ret: Void},
+	"ui.file":     {Params: []*Type{Int, Str}, Ret: Void},
+	"ui.eval":     {Params: []*Type{Int, Str}, Ret: Void},
+	"ui.send":     {Params: []*Type{Int, Str}, Ret: Void},
+	"ui.title":    {Params: []*Type{Int, Str}, Ret: Void},
+	"ui.poll":     {Params: []*Type{Int}, Ret: Bool},
+	"ui.messages": {Params: []*Type{Int}, Ret: ListOf(Str)},
+	"ui.close":    {Params: []*Type{Int}, Ret: Void},
 
 	// Private to the prelude: the macOS streams in veylmac.c.
 	"__audioMacOpen":  {Params: []*Type{Int, Int, Int, Bool}, Ret: Int},

@@ -268,6 +268,17 @@ func (l *lowerer) rawMemBuiltin(c *Call, name string) (Reg, bool) {
 		}
 		return l.bytesFromMem(l.intArg(c, 0), l.intArg(c, 1)), true
 
+	case "mem.callback":
+		// The address of a stub native code can call: the function
+		// itself, with every argument taken as the full 64-bit word it
+		// arrives in. For a table of function pointers built by hand -
+		// a COM object, a window procedure - where no extern
+		// declaration names the callback's type.
+		if !arity(1) {
+			return l.junk(), true
+		}
+		return l.callbackArg(c.Args[0], vInt, nil), true
+
 	case "mem.addr":
 		// Where a bytes, a str or an extern struct lives. A bytes or a
 		// str allocated by Veyl stays put for as long as something

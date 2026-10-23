@@ -30,10 +30,11 @@ runtime to install, and building one needs nothing but `veyl.exe`.
 15. [`proc` - process memory](#proc---process-memory)
 16. [`com` - COM interfaces](#com---com-interfaces)
 17. [`win` - windows, drawing and input](#win---windows-drawing-and-input)
-18. [Testing](#testing)
-19. [Reserved words](#reserved-words)
-20. [Compiler commands](#compiler-commands)
-21. [Known limitations](#known-limitations)
+18. [`ui` - interfaces in HTML and CSS](#ui---interfaces-in-html-and-css)
+19. [Testing](#testing)
+20. [Reserved words](#reserved-words)
+21. [Compiler commands](#compiler-commands)
+22. [Known limitations](#known-limitations)
 
 ---
 
@@ -2672,6 +2673,7 @@ ordinary arithmetic:
 | `mem.wstr(p)` | `str` | the zero-terminated UTF-16 text at `p`, as a `str` |
 | `mem.bytes(p, n)` | `bytes` | `n` bytes at `p`, copied |
 | `mem.addr(v)` | `int` | where a `bytes`, `str` or extern struct lives |
+| `mem.callback(f)` | `int` | an address native code can call to run `f`, a function declared with `fn` - see [Callbacks](#callbacks) |
 | `mem.protect(p, n, mode)` | `bool` | make pages `"r"`, `"rw"`, `"rx"`, `"rwx"`, `"x"` or `""` (no access) |
 | `mem.scan(p, n, pattern)` | `int` | first match of a byte pattern such as `"48 8B ?? ?? 89"`, or `-1` |
 | `mem.symbol(dll, name)` | `int` | where a DLL exports `name`, loading the DLL if need be, or `0` |
@@ -3444,6 +3446,26 @@ Only a function declared with `fn`, named directly, can be a callback.
 A closure carries its captured variables somewhere native code does
 not know about. A callback may allocate and may run the collector.
 
+Where no extern declaration names the callback's type - a window
+procedure in a `WNDCLASSEXW`, a table of methods for a COM object -
+`mem.callback(f)` gives the address as an `int`. Every argument then
+arrives as the whole 64-bit register, so a 32-bit one is masked by
+hand:
+
+```veyl
+fn wndProc(h: int, msg: int, wp: int, lp: int) -> int {
+    let m = msg & 0xFFFFFFFF            // a UINT
+    ...
+    return mem.call(mem.symbol("user32.dll", "DefWindowProcW"), h, m, wp, lp)
+}
+
+mem.write64(wc + 8, mem.callback(wndProc))
+```
+
+A COM object of your own is a block whose first word is the address of
+a table of such addresses, `QueryInterface`, `AddRef` and `Release`
+first. The `ui` library is built this way.
+
 ### Building a DLL
 
 `veyl build --dll mod.vl` writes `mod.dll`. `export fn` puts a function
@@ -3695,8 +3717,9 @@ slot exists, or that the arguments are what the method takes, exactly
 as with `mem.call`. `examples/ffi/adapters.vl` lists the display
 adapters through DXGI this way.
 
-Not here: implementing a COM interface in Veyl, for an API that calls
-back through one, and `VARIANT` helpers for automation interfaces - a
+An API that calls back through an interface of yours - an event
+handler, a completion callback - gets an object built with
+`mem.callback`; see [Callbacks](#callbacks). Not here: `VARIANT` helpers for automation interfaces - a
 `VARIANT` is 24 bytes with its type in the first two and its value at
 offset 8, read with `mem.readU16` and friends.
 
@@ -3940,6 +3963,78 @@ size. One window per program.
 Working examples are in `examples/gui/`: `pong.vl` is a playable game
 in about 130 lines, `widgets.vl` exercises the widget set, and
 `sprites.vl` draws images and centres text.
+
+---
+
+## `ui` - interfaces in HTML and CSS
+
+A window whose contents are a web page: the layout, fonts, colours and
+animation of anything a browser can show, driven by a Veyl program.
+The page talks to the program with messages, both ways.
+
+```veyl
+let app = must(ui.open("Counter", 420, 300))
+ui.html(app, `<!doctype html>
+<style>
+  body { font: 16px system-ui; display: grid; place-items: center; height: 100vh; margin: 0 }
+  button { font-size: 24px; padding: 12px 28px; border-radius: 12px; border: 0 }
+</style>
+<button onclick="veyl.send('click')">clicked 0 times</button>
+<script>
+  veyl.onmessage = (n) => document.querySelector('button').textContent = 'clicked ' + n + ' times'
+</script>`)
+
+let clicks = 0
+while ui.poll(app) {
+    for m in ui.messages(app) {
+        if m == "click" {
+            clicks += 1
+            ui.send(app, str(clicks))
+        }
+    }
+}
+ui.close(app)
+```
+
+| Function | Returns | Description |
+| --- | --- | --- |
+| `ui.open(title, width, height)` | `int!` | open a window with an empty page; the size is the page's, in CSS pixels |
+| `ui.html(app, html)` | - | show this HTML |
+| `ui.file(app, path)` | - | show an HTML file; its own links - `style.css`, `app.js`, images - load from beside it |
+| `ui.url(app, url)` | - | show a page from the web, or any URL |
+| `ui.poll(app)` | `bool` | handle the window and the page, waiting up to 15 ms for something to happen; `false` once the user closed the window |
+| `ui.messages(app)` | `[]str` | what the page sent since the last call, oldest first |
+| `ui.send(app, text)` | - | send the page a message |
+| `ui.eval(app, js)` | - | run JavaScript in the page |
+| `ui.title(app, title)` | - | change the window's title |
+| `ui.close(app)` | - | close the window |
+
+**In the page** there is a `veyl` object. `veyl.send(x)` sends `x` to
+the program - a string as it is, anything else as JSON - and
+`veyl.onmessage`, when set to a function, receives each `ui.send`.
+JSON is the natural way to carry more than a word: send
+`veyl.send({op: "add", text: t})` and read it with
+`json.get(m, "op")`; send a whole list back with
+`ui.send(app, json.encode(items))` and `JSON.parse` it in the page.
+
+**The loop** is the same as `win`'s. Nothing happens between calls to
+`ui.poll`: the page keeps running on its own, but its messages wait
+until the program asks for them. A program that has work of its own
+can do it in the loop; one that only answers the page spends nearly
+all its time waiting inside `ui.poll`, which costs no CPU.
+
+**Closing** the window makes `ui.poll` return `false`; the window stays
+until `ui.close`, so a program can ask "save first?" in the page.
+
+**Where it runs.** On Windows the page is WebView2, the Edge engine
+that comes with Windows 11 and every updated Windows 10; nothing is
+shipped with the program. Without it `ui.open` fails and says where to
+get it. F12 opens the developer tools, which is the way to debug a
+page. The window follows Windows' dark mode for its title bar. Linux
+and macOS are not done yet: `ui.open` fails there.
+
+`examples/ui/todo.vl` is a complete to-do list, saved to a file, in
+about 120 lines of HTML and CSS and 40 of Veyl.
 
 ## Testing
 
@@ -4223,10 +4318,10 @@ Honest list of what v1.82.1 does not do yet.
 - **An escaping address is caught within one function.** Passing
   `&x` to a function that keeps it, or smuggling it out as an `int`
   through something the compiler cannot follow, is not detected.
-- **A COM interface can be called but not implemented.** `com.call`
-  reaches any method of any interface; an API that wants to call back
-  through an interface the program supplies has nothing to be given
-  yet.
+- **A COM interface is implemented by hand.** `com.call` reaches any
+  method of any interface, and an object of the program's own is a
+  table of `mem.callback` addresses built with `mem.write64` - nothing
+  declares an interface or counts its references for you.
 - **`proc` cannot suspend a thread or read its registers yet**; those
   still go through `extern`. A module name in another process that the
   program may not open reads as Windows keeps it, with a character
@@ -4249,6 +4344,8 @@ Honest list of what v1.82.1 does not do yet.
   HTTPS everywhere - WinHTTP on Windows, the system OpenSSL on Linux,
   SecureTransport or OpenSSL on macOS - but a socket opened with
   `net.connect` is unencrypted, and the `http` server has no TLS.
+- **`ui` is Windows-only.** It is WebView2; Linux (WebKitGTK) and
+  macOS (WKWebView) are not done, and `ui.open` fails there.
 - **SQL is SQLite only**, through the `sqlite` package. No Postgres,
   MySQL or anything over a network.
 - **The web server is HTTP/1.1, one request per connection**: no
