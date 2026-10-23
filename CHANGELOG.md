@@ -3,6 +3,49 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.85.0
+
+**Veyl is now Scandiacus**, after the snowy owl, *Bubo scandiacus*.
+Everything that carried the old name carries the new one:
+
+- the command is `scandiacus` (`scandiacus run app.scd`);
+- source files end in `.scd`;
+- environment variables start with `SCANDIACUS_` (`SCANDIACUS_GC`,
+  `SCANDIACUS_TARGET`, ...);
+- packages install into `scandiacus_modules`, and a package's manifest
+  is `scandiacus.pkg`;
+- the registry is `owlspan/scandiacus-packages`, the repository
+  `owlspan/scandiacus` and its branch `scandiacus`;
+- the release files are `scandiacus-X.Y.Z-setup.exe` and the Linux and
+  macOS binaries named the same way; the editor support is
+  `scandiacus-lang`.
+
+To move a project over, rename its `.vl` files to `.scd`, its
+`veyl_modules` folder to `scandiacus_modules`, and any `import "x.vl"`
+to `import "x.scd"`.
+
+**A new mark.** A snowy owl's eye in the faceted style of the old cube:
+a ring of feathers in three whites around a yellow iris.
+
+**A struct can key a map.** `{Cell: bool}` and the like, for a struct
+whose fields are all `str`, `int`, `bool`, plain enums or such structs.
+Keys are equal when `==` says so, and a map with struct keys is printed
+and walked sorted field by field. The map keeps copies of its keys, so
+changing a struct afterwards cannot move one.
+
+**Fix: callbacks on macOS.** 1.84.0 handed the runtime's own `qsort`
+and `EnumWindows` a callback stub for the System V convention, which
+they do not call with; a callback passed to them works again.
+
+**Fix: decoding large JSON.** Every string the parser read got a
+buffer as long as the whole document, so decoding was quadratic -
+5,000 records took 842 ms - and around 20,000 records it ran out of
+memory and crashed. A string's buffer is now as long as the string:
+5,000 records decode in 32 ms, and `tests/jsonbig.scd` decodes 20,000.
+
+**`split` is faster**: it finds the separator with `memchr`, many bytes
+at a time. Splitting 3 MB into 300,000 pieces went from 52 ms to 33 ms.
+
 ## 1.84.0
 
 **A faster heap.** Objects up to 2 KB, header included, now live in
