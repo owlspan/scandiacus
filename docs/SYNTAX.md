@@ -346,7 +346,8 @@ that puts a result back into range is one `movzx`, `movsx` or 32-bit
 ### Lists and maps
 
 `[]T` is a list of `T`. `{K: V}` is a map from `K` to `V`, where the key
-must be `str` or `int`.
+is a `str`, an `int`, a plain enum, or a struct of those (see
+[Maps](#maps)).
 
 ```veyl
 let nums  = [3, 1, 2]                  // []int
@@ -1684,6 +1685,26 @@ for w in split("a b a", " ") {
 }
 print(counts)             // {"a": 2, "b": 1}
 ```
+
+**A struct can be a key** when every field is a `str`, an `int`, a
+`bool`, a plain enum or another such struct. Two keys are the same key
+when `==` says so, and the map is sorted field by field, in the order
+the struct declares them:
+
+```veyl
+struct Cell {
+    x: int
+    y: int
+}
+
+let seen: {Cell: bool} = {}
+seen[Cell{x: 3, y: 4}] = true
+print(has(seen, Cell{x: 3, y: 4}))     // true
+```
+
+A key is a value like any struct: the map keeps a copy of it, so
+changing the struct afterwards does not move it, and `keys()` and a
+`for` loop over the map hand out copies too.
 
 ### Splitting strings
 
@@ -4341,8 +4362,9 @@ Honest list of what v1.84.0 does not do yet.
   check on each one.
 - **A plain import is one flat namespace.** Two files exporting the
   same name collide unless one is imported with `as`.
-- **A map key is a `str`, an `int` or an enum.** Not a struct, a float
-  or an enum whose variants carry values.
+- **A map key is a `str`, an `int`, an enum or a struct of those.** Not
+  a float, a list, or an enum whose variants carry values, and a map
+  with struct keys cannot be JSON, whose keys are strings.
 - **Garbage collected**, with raw memory beside it: `mem.alloc` and
   extern structs give manual memory and pointers, but nothing checks an
   address, and `unsafe` is still reserved.

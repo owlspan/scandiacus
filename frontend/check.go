@@ -342,8 +342,8 @@ func (c *Checker) resolveAnnotation(text string, n Node) *Type {
 		return Unknown
 	}
 	t = c.enumTypes(t)
-	if bad := badMapKey(t); bad != nil {
-		c.ErrorAt(n, "a map key must be str, int or a plain enum, got %s", bad)
+	if bad := c.badMapKey(t); bad != nil {
+		c.ErrorAt(n, "a map key must be str, int, a plain enum or a struct of those, got %s", bad)
 		return Unknown
 	}
 	if bad := c.undeclaredStruct(t, n); bad != "" {
@@ -1571,8 +1571,8 @@ func (c *Checker) mapLit(x *MapLit) *Type {
 	}
 
 	keyT := c.expr(x.Keys[0])
-	if keyT.Kind != KStr && keyT.Kind != KInt && keyT.Kind != KEnum && !keyT.IsUnknown() {
-		c.ErrorAt(x.Keys[0], "a map key must be str, int or a plain enum, got %s", keyT)
+	if !c.keyable(keyT, 0) && !keyT.IsUnknown() {
+		c.ErrorAt(x.Keys[0], "a map key must be str, int, a plain enum or a struct of those, got %s", keyT)
 		keyT = Unknown
 	}
 	valT := c.expr(x.Vals[0])
@@ -2525,28 +2525,61 @@ func (c *Checker) enumNamed(e Expr) *EnumDecl {
 // is, anywhere inside a type: ParseType has no table of declarations,
 // so it cannot tell the two apart itself.
 // badMapKey finds a map anywhere in t keyed by something other than a
-// str, an int or an enum, and returns that key type.
-func badMapKey(t *Type) *Type {
+// str, an int, an enum or a struct of those, and returns that key type.
+func (c *Checker) badMapKey(t *Type) *Type {
 	if t == nil {
 		return nil
 	}
 	switch t.Kind {
 	case KMap:
-		if t.Key.Kind != KStr && t.Key.Kind != KInt && t.Key.Kind != KEnum && !t.Key.IsUnknown() {
+		if !c.keyable(t.Key, 0) && !t.Key.IsUnknown() {
 			return t.Key
 		}
-		return badMapKey(t.Elem)
+		return c.badMapKey(t.Elem)
 	case KList, KNullable, KResult:
-		return badMapKey(t.Elem)
+		return c.badMapKey(t.Elem)
 	case KFunc:
 		for _, p := range t.Params {
-			if b := badMapKey(p); b != nil {
+			if b := c.badMapKey(p); b != nil {
 				return b
 			}
 		}
-		return badMapKey(t.Elem)
+		return c.badMapKey(t.Elem)
 	}
 	return nil
+}
+
+// keyable reports whether a type can key a map: a str, an int, a plain
+// enum, or a struct whose fields are all of those or such structs. A
+// float is not, since NaN is not equal to itself, and neither is a list
+// or a map, which have no order for the map's keys to be sorted by.
+func (c *Checker) keyable(t *Type, depth int) bool {
+	if t == nil || depth > 16 {
+		return false
+	}
+	switch t.Kind {
+	case KStr, KInt, KEnum, KBool:
+		return depth > 0 || t.Kind != KBool
+	case KStruct:
+		d, ok := c.structs[t.Name]
+		if !ok || d.Extern {
+			return false
+		}
+		if d.Enum != nil {
+			return false // a data enum's value is a variant, not fields
+		}
+		for _, f := range d.Fields {
+			ft := f.T
+			if ft == nil {
+				ft = c.enumTypes(ParseType(f.Type))
+			}
+			if !c.keyable(ft, depth+1) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func (c *Checker) enumTypes(t *Type) *Type {

@@ -39,7 +39,7 @@ const (
 // keyTag and valTag say whether each block holds pointers, which is
 // what the object header records for a future collector.
 func keyTag(t vty) int64 {
-	if t.key == kStr {
+	if t.key == kStr || t.key == kStruct {
 		return tagPtrs
 	}
 	return tagWords
@@ -79,9 +79,12 @@ func (l *lowerer) newMap(t vty, capacity int64) Reg {
 
 // keyCmp emits a three-way comparison of two keys, negative, zero or
 // positive. Integer keys subtract; string keys go through strCmp.
-func (l *lowerer) keyCmp(a, b Reg, kk vkind) Reg {
-	if kk == kStr {
+func (l *lowerer) keyCmp(a, b Reg, kt vty) Reg {
+	switch kt.k {
+	case kStr:
 		return l.strCmp(a, b)
+	case kStruct:
+		return l.structKeyCmp(a, b, kt)
 	}
 	return l.arith(OpSub, a, b)
 }
@@ -89,9 +92,9 @@ func (l *lowerer) keyCmp(a, b Reg, kk vkind) Reg {
 // keyLess is a < b on keys. Integer keys compare directly: subtracting
 // them, as a three-way comparison would, overflows for two keys far
 // enough apart and puts them in the wrong order.
-func (l *lowerer) keyLess(a, b Reg, kk vkind) Reg {
-	if kk == kStr {
-		return l.compare(OpLt, l.keyCmp(a, b, kk), l.constant(0))
+func (l *lowerer) keyLess(a, b Reg, kt vty) Reg {
+	if kt.k == kStr || kt.k == kStruct {
+		return l.compare(OpLt, l.keyCmp(a, b, kt), l.constant(0))
 	}
 	return l.compare(OpLt, a, b)
 }
@@ -124,7 +127,7 @@ func (l *lowerer) mapKeyReg(t vty) vty { return t.keyType() }
 //
 // One function per map type, called from every read.
 func (l *lowerer) mapGet(n Node, m, key Reg, t vty) Reg {
-	kt := vty{k: t.key}
+	kt := keyVty(t)
 	sym := l.helperFunc("__map_get "+t.String(), []vty{t, kt}, t.elemType(), func(a []Reg) {
 		l.emit(Instr{Op: OpRet, A: l.mapGetBody(n, a[0], a[1], t), Dst: NoReg})
 	})
@@ -174,7 +177,7 @@ func (l *lowerer) mapGetBody(n Node, m, key Reg, t vty) Reg {
 //
 // One function per map type, called from every write.
 func (l *lowerer) mapSet(m, key, val Reg, t vty) {
-	kt := vty{k: t.key}
+	kt := keyVty(t)
 	ps := []vty{t, kt, t.elemType()}
 	sym := l.helperFunc("__map_set "+t.String(), ps, vVoid, func(a []Reg) {
 		l.mapSetBody(a[0], a[1], a[2], t)
@@ -287,6 +290,9 @@ func (l *lowerer) mapBlockToList(m Reg, t vty, off int64, elem vty) Reg {
 	v := l.newReg()
 	l.regTy[v] = elem
 	l.emit(Instr{Op: OpLoadMem, Dst: v, A: addr, B: NoReg, Imm: 0})
+	if off == mapKeysOff && elem.k == kStruct {
+		v = l.copyStruct(keyNode, v, elem) // see structkey.go
+	}
 	l.listPush(list, v)
 
 	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, i, l.constant(1)), Dst: NoReg, Imm: iSlot})
@@ -391,8 +397,11 @@ func (l *lowerer) forMap(st *ForStmt, m Reg, t vty) {
 	// Read again, as forList does, so the test stands alone.
 	i = l.load(iSlot, vInt)
 	cur := l.load(mapSlot, t)
-	l.emit(Instr{Op: OpStore, A: l.cellAt(cur, mapKeysOff, i, t.keyType()),
-		Dst: NoReg, Imm: keySlot, Comment: st.Var})
+	key := l.cellAt(cur, mapKeysOff, i, t.keyType())
+	if t.key == kStruct {
+		key = l.copyStruct(keyNode, key, t.keyType()) // see structkey.go
+	}
+	l.emit(Instr{Op: OpStore, A: key, Dst: NoReg, Imm: keySlot, Comment: st.Var})
 	if valSlot >= 0 {
 		l.emit(Instr{Op: OpStore, A: l.cellAt(cur, mapValsOff, i, t.elemType()),
 			Dst: NoReg, Imm: valSlot, Comment: st.Var2})

@@ -1,0 +1,18 @@
+a
+false
+3
+{P{x: 0, y: 5}: "b", P{x: 1, y: -3}: "c", P{x: 1, y: 2}: "a"}
+1000 b
+1000 c
+1000 a
+{P{x: 0, y: 5}: "b", P{x: 1, y: -3}: "c", P{x: 1, y: 2}: "a"}
+again
+{P{x: 1, y: -3}: "c", P{x: 1, y: 2}: "again"}
+{K{name: "a", at: P{x: 1, y: 9}, d: north, on: false}: 3, K{name: "a", at: P{x: 2, y: 0}, d: north, on: false}: 2, K{name: "b", at: P{x: 1, y: 1}, d: south, on: true}: 1}
+2
+20000
+19942
+true
+false
+{P{x: 1, y: 1}: "one", P{x: 2, y: 2}: "two"}
+{P{x: 1, y: 1}: "one", P{x: 2, y: 2}: "two"}

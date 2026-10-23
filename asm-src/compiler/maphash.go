@@ -23,7 +23,16 @@ package main
 // where the collector tags of freshly allocated blocks depend on it.
 
 // mapHelperKey names a helper per key kind.
-func mapHelperKey(name string, t vty) string { return name + " " + vty{k: t.key}.String() }
+func mapHelperKey(name string, t vty) string { return name + " " + keyVty(t).String() }
+
+// keyVty is the type of a map's keys as a value: the kind for an int
+// or a str, the struct itself for a struct.
+func keyVty(t vty) vty {
+	if t.key == kStruct {
+		return t.keyType()
+	}
+	return vty{k: t.key}
+}
 
 // wordAt and setWordAt read and write word i of a block.
 func (l *lowerer) wordAt(block, i Reg, t vty) Reg {
@@ -64,8 +73,15 @@ func (l *lowerer) ret(v Reg) {
 }
 
 // keyEq is a == b on keys.
-func (l *lowerer) keyEq(a, b Reg, kk vkind) Reg {
-	if kk == kStr {
+func (l *lowerer) keyEq(a, b Reg, kt vty) Reg {
+	if kt.k == kStruct {
+		r, ok := l.deepEqual(keyNode, a, b, kt)
+		if !ok {
+			return l.constant(0)
+		}
+		return r
+	}
+	if kt.k == kStr {
 		// Equality, not order: the headers first, which differ for most
 		// pairs of keys of different lengths, then the bytes.
 		l.mod.needs("streq")
@@ -87,8 +103,12 @@ func (l *lowerer) keyEq(a, b Reg, kk vkind) Reg {
 // The length comes from the header, so a zero byte inside the key is
 // hashed like any other.
 func (l *lowerer) mapHash(key Reg, t vty) Reg {
-	kt := vty{k: t.key}
+	kt := keyVty(t)
 	sym := l.helperFunc(mapHelperKey("__map_hash", t), []vty{kt}, vInt, func(a []Reg) {
+		if t.key == kStruct {
+			l.ret(l.structKeyHash(a[0], kt))
+			return
+		}
 		if t.key != kStr {
 			h := l.arith(OpMul, a[0], l.constant(-7046029254386353131))
 			l.ret(l.arith(OpBXor, h, l.arith(OpShr, h, l.constant(32))))
@@ -129,7 +149,7 @@ func (l *lowerer) mapHash(key Reg, t vty) Reg {
 // which is the first removed slot passed on the way or the empty one
 // that ended the probe.
 func (l *lowerer) mapFind(m, key Reg, t vty) Reg {
-	kt := vty{k: t.key}
+	kt := keyVty(t)
 	sym := l.helperFunc(mapHelperKey("__map_find", t), []vty{vInt, kt}, vInt, func(a []Reg) {
 		m, key := a[0], a[1]
 		mask := l.arith(OpSub, l.arith(OpMul, l.field(m, mapCapOff, vInt), l.constant(2)), l.constant(1))
@@ -147,7 +167,7 @@ func (l *lowerer) mapFind(m, key Reg, t vty) Reg {
 		l.jumpIf(l.compare(OpEq, e, l.constant(0)), empty)
 		l.jumpIf(l.compare(OpLt, e, l.constant(0)), removed)
 		found := l.newLabel()
-		l.jumpIf(l.keyEq(l.wordAt(keys, l.arith(OpSub, e, l.constant(1)), kt), key, t.key), found)
+		l.jumpIf(l.keyEq(l.wordAt(keys, l.arith(OpSub, e, l.constant(1)), kt), key, kt), found)
 		l.jump(next)
 		l.mark(found)
 		l.ret(l.load(i, vInt))
@@ -173,7 +193,7 @@ func (l *lowerer) mapFind(m, key Reg, t vty) Reg {
 func (l *lowerer) mapReindex(m Reg, t vty) {
 	sym := l.helperFunc(mapHelperKey("__map_reindex", t), []vty{vInt}, vVoid, func(a []Reg) {
 		m := a[0]
-		kt := vty{k: t.key}
+		kt := keyVty(t)
 		slots := l.arith(OpMul, l.field(m, mapCapOff, vInt), l.constant(2))
 		l.ccall("memset", []Reg{l.field(m, mapIdxOff, vInt), l.constant(0),
 			l.arith(OpMul, slots, l.constant(wordSize))},
@@ -232,7 +252,7 @@ func (l *lowerer) mapGrow(m Reg, t vty) {
 
 // mapSetBody inserts or overwrites.
 func (l *lowerer) mapSetBody(m, key, val Reg, t vty) {
-	kt := vty{k: t.key}
+	kt := keyVty(t)
 	slot := l.temp(vInt)
 	l.setSlot(slot, l.mapFind(m, key, t))
 	e := l.wordAt(l.field(m, mapIdxOff, vInt), l.load(slot, vInt), vInt)
@@ -272,6 +292,11 @@ func (l *lowerer) mapSetBody(m, key, val Reg, t vty) {
 
 	n := l.field(m, mapLenOff, vInt)
 	keys := l.field(m, mapKeysOff, vInt)
+	if kt.k == kStruct {
+		// A struct is a value: the map keeps a key of its own, which
+		// changing the caller's struct afterwards cannot move.
+		key = l.copyStruct(keyNode, key, kt)
+	}
 	l.setWordAt(keys, n, key)
 	l.setWordAt(l.field(m, mapValsOff, vInt), n, val)
 	l.setWordAt(idx, s, l.arith(OpAdd, n, l.constant(1)))
@@ -281,7 +306,7 @@ func (l *lowerer) mapSetBody(m, key, val Reg, t vty) {
 	done := l.newLabel()
 	l.jumpIf(l.compare(OpEq, n, l.constant(0)), done)
 	prev := l.wordAt(keys, l.arith(OpSub, n, l.constant(1)), kt)
-	l.jumpNot(l.keyLess(key, prev, t.key), done)
+	l.jumpNot(l.keyLess(key, prev, kt), done)
 	l.emit(Instr{Op: OpStoreMem, A: m, B: l.constant(1), Imm: mapDirtyOff})
 	l.mark(done)
 }
@@ -289,7 +314,7 @@ func (l *lowerer) mapSetBody(m, key, val Reg, t vty) {
 // mapRemove deletes a key. The last entry moves into the hole, so this
 // is O(1), and the map is marked out of order unless it was the last.
 func (l *lowerer) mapRemove(m, key Reg, t vty) {
-	kt := vty{k: t.key}
+	kt := keyVty(t)
 	sym := l.helperFunc(mapHelperKey("__map_remove", t), []vty{vInt, kt}, vVoid, func(a []Reg) {
 		m, key := a[0], a[1]
 		s := l.mapFind(m, key, t)
@@ -378,7 +403,7 @@ func (l *lowerer) mapSift(keys, vals, start, end Reg, t vty) {
 	ps := []vty{vInt, vInt, vInt, vInt}
 	sym := l.helperFunc(mapHelperKey("__map_sift", t), ps, vVoid, func(a []Reg) {
 		keys, vals, end := a[0], a[1], a[3]
-		kt := vty{k: t.key}
+		kt := keyVty(t)
 		root := l.temp(vInt)
 		l.setSlot(root, a[2])
 		top, done := l.newLabel(), l.newLabel()
@@ -390,13 +415,13 @@ func (l *lowerer) mapSift(keys, vals, start, end Reg, t vty) {
 		big := l.temp(vInt)
 		l.setSlot(big, r)
 		left := l.newLabel()
-		l.jumpNot(l.keyLess(l.wordAt(keys, r, kt), l.wordAt(keys, child, kt), t.key), left)
+		l.jumpNot(l.keyLess(l.wordAt(keys, r, kt), l.wordAt(keys, child, kt), kt), left)
 		l.setSlot(big, child)
 		l.mark(left)
 		right := l.arith(OpAdd, child, l.constant(1))
 		noRight := l.newLabel()
 		l.jumpNot(l.compare(OpLt, right, end), noRight)
-		l.jumpNot(l.keyLess(l.wordAt(keys, l.load(big, vInt), kt), l.wordAt(keys, right, kt), t.key), noRight)
+		l.jumpNot(l.keyLess(l.wordAt(keys, l.load(big, vInt), kt), l.wordAt(keys, right, kt), kt), noRight)
 		l.setSlot(big, right)
 		l.mark(noRight)
 

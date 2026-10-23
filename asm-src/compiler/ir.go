@@ -119,7 +119,7 @@ func vMapOf(kk vkind, v vty) vty { return vty{k: kMap, el: &v, key: kk} }
 // vMapKeyed is a map keyed by kt, which keeps the enum when kt is one.
 func vMapKeyed(kt, v vty) vty {
 	m := vMapOf(kt.k, v)
-	if isEnum(kt) {
+	if isEnum(kt) || kt.k == kStruct {
 		m.keyName = kt.name
 	}
 	return m
@@ -170,6 +170,9 @@ func (t vty) elemKind() vkind { return t.elemType().k }
 // same type" must go through here.
 func (t vty) eq(o vty) bool {
 	if t.k != o.k || t.key != o.key || t.res != o.res || t.null != o.null || t.name != o.name {
+		return false
+	}
+	if t.key == kStruct && t.keyName != o.keyName {
 		return false
 	}
 	if (t.fn == nil) != (o.fn == nil) {
@@ -361,7 +364,7 @@ func vtyOf(t *Type) (vty, bool) {
 		if !kok || !vok {
 			return vVoid, false
 		}
-		if kt.k != kInt && kt.k != kStr {
+		if kt.k != kInt && kt.k != kStr && kt.k != kStruct {
 			return vVoid, false
 		}
 		if vt.res || vt.k == kVoid {
@@ -3566,7 +3569,7 @@ func (l *lowerer) mapLit(x *MapLit) Reg {
 
 	kk := l.regTy[keys[0]]
 	vk := l.regTy[vals[0]]
-	if kk.k != kInt && kk.k != kStr {
+	if kk.k != kInt && kk.k != kStr && kk.k != kStruct {
 		l.errorAt(x, "a map keyed by %s is not on the assembly backend yet", kk)
 		return l.junk()
 	}
