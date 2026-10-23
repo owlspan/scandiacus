@@ -2162,7 +2162,7 @@ func (l *lowerer) callExtern(c *Call, name string, es externSig) Reg {
 	for i := 0; i < n; i++ {
 		var v Reg
 		if i < len(es.params) && es.params[i].k == kFunc {
-			v = l.callbackArg(c.Args[i], es.params[i], es.widen[i])
+			v = l.callbackArg(c.Args[i], es.params[i], es.widen[i], !linuxProvided[name])
 		} else if i < len(es.params) {
 			v = l.rvalueAs(c.Args[i], es.params[i])
 			if es.params[i].k == kFloat && l.regTy[v].k == kInt {

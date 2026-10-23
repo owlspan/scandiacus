@@ -138,7 +138,13 @@ func thunkShape(widen []widenArg) string {
 
 // callbackArg lowers the argument passed for a function-typed extern
 // parameter: the address of a stub for the named function.
-func (l *lowerer) callbackArg(e Expr, want vty, widen []widenArg) Reg {
+//
+// adapt says the address may be called by ordinary C code on Linux and
+// macOS, with the System V convention; see sysvThunk. A function the
+// runtime itself provides there - its qsort, its EnumWindows, a thread's
+// entry - calls back the Windows way through a bridge of its own, and is
+// given the plain stub.
+func (l *lowerer) callbackArg(e Expr, want vty, widen []widenArg, adapt bool) Reg {
 	id, ok := e.(*Ident)
 	if ok {
 		if _, local := l.lookup(id.Name); local {
@@ -156,6 +162,9 @@ func (l *lowerer) callbackArg(e Expr, want vty, widen []widenArg) Reg {
 	}
 
 	sym := "__vy_cb_" + sanitizeSym(id.Name) + "_" + thunkShape(widen)
+	if adapt {
+		sym += "_sv"
+	}
 	known := false
 	for _, t := range l.mod.Thunks {
 		if t.Sym == sym {
@@ -173,7 +182,7 @@ func (l *lowerer) callbackArg(e Expr, want vty, widen []widenArg) Reg {
 			}
 		}
 		l.mod.Thunks = append(l.mod.Thunks, Thunk{Sym: sym, Target: fnSym(id.Name), Widen: widen,
-			Kinds: kinds, Adapt: true})
+			Kinds: kinds, Adapt: adapt})
 	}
 
 	d := l.newReg()

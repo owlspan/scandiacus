@@ -1,10 +1,13 @@
 // Veyl functions called by native code, the same on every system: by
-// the C library's qsort, and through an address from mem.callback. On
-// Linux and macOS native code calls the System V way and a stub turns
-// that into the convention Veyl functions take - integers and floats
-// counted apart there, positions here, and the arguments past the
-// sixth integer on the stack.
+// the C library's qsort and bsearch, and through an address from
+// mem.callback. On Linux and macOS native code calls the System V way
+// and a stub turns that into the convention Veyl functions take -
+// integers and floats counted apart there, positions here, and the
+// arguments past the sixth integer on the stack. (qsort there is the
+// runtime's own, which bridges the other way itself; bsearch is the C
+// library's, called through a generated wrapper.)
 extern fn qsort(base: ptr, n: int, size: int, cmp: fn(ptr, ptr) -> int)
+extern fn bsearch(key: ptr, base: ptr, n: int, size: int, cmp: fn(ptr, ptr) -> int) -> ptr
 
 fn byValue(a: int, b: int) -> int {
     let x = mem.readI64(a)
@@ -37,6 +40,17 @@ for i in 0..len(values) {
     push(sorted, mem.readI64(buf + i * 8))
 }
 print(sorted)
+let want = mem.alloc(8)
+for v in [19, 4, -250] {
+    mem.write64(want, v)
+    let hit = bsearch(want, buf, len(values), 8, byValue)
+    if hit == 0 {
+        print("{v} not found")
+    } else {
+        print("{v} at {(hit - buf) / 8}")
+    }
+}
+mem.free(want)
 mem.free(buf)
 
 print(mem.callF(mem.callback(mixed), 1, 2.5, 3, 4.25))

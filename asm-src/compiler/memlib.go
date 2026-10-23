@@ -277,7 +277,7 @@ func (l *lowerer) rawMemBuiltin(c *Call, name string) (Reg, bool) {
 		if !arity(1) {
 			return l.junk(), true
 		}
-		return l.callbackArg(c.Args[0], vInt, nil), true
+		return l.callbackArg(c.Args[0], vInt, nil, true), true
 
 	case "mem.addr":
 		// Where a bytes, a str or an extern struct lives. A bytes or a
