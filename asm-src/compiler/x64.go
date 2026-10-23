@@ -1631,7 +1631,21 @@ func (e *Emitter) helpers() {
 	//
 	// Emitted whenever anything that allocates is, which is what the
 	// three conditions below add up to.
-	if e.mod.Helpers["concat"] || e.mod.Helpers["inttostr"] ||
+	hasAlloc := false
+	for _, f := range e.mod.Funcs {
+		if f.Name == "__alloc" {
+			hasAlloc = true
+		}
+	}
+	if (e.mod.Helpers["concat"] || e.mod.Helpers["inttostr"] ||
+		e.mod.Helpers["floattostr"]) && hasAlloc {
+		// Same arguments, same result: small strings become slots in a
+		// page like every other object; see heap.go.
+		e.b.WriteString(`
+__vy_talloc:
+    jmp __vy___alloc
+`)
+	} else if e.mod.Helpers["concat"] || e.mod.Helpers["inttostr"] ||
 		e.mod.Helpers["floattostr"] {
 		e.b.WriteString(`
 __vy_talloc:

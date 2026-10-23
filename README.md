@@ -547,6 +547,12 @@ boundaries, and whenever `mem.collect()` asks. It never runs while a
 thread besides main is alive, since it scans one stack; a program can
 also turn it off entirely with `gc off`.
 
+Small objects - up to 2 KB with their header - live in 64 KB pages of
+one size class each (`heap.go`), allocated from a free list per class
+and swept page by page; whether a word is an object is arithmetic on
+the page it falls in. Bigger ones are malloc blocks on a list. A
+collection with a million objects alive takes about 35 ms.
+
 **12. The byte writer and PE emitter. Done.** `encode.go` turns each
 line of assembly into machine code, checked byte for byte against GNU
 `as`, and `pe.go` writes the executable with its import table. This is

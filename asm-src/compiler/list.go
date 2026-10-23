@@ -118,6 +118,12 @@ func (l *lowerer) allocObj(bytes Reg, tag int64) Reg {
 // The call costs nothing next to malloc itself.
 func (l *lowerer) allocTagged(bytes, header Reg) Reg {
 	sym := l.helperFunc("__alloc", []vty{vInt, vInt}, vInt, func(a []Reg) {
+		// A small object is a slot in a page; see heap.go.
+		large := l.newLabel()
+		total := l.arith(OpAdd, a[0], l.constant(objHeader))
+		l.emit(Instr{Op: OpJumpIf, A: l.compare(OpGt, total, l.constant(smallMax)), Dst: NoReg, Imm: large})
+		l.emit(Instr{Op: OpRet, A: l.heapAllocSmall(total, a[0], a[1]), Dst: NoReg})
+		l.mark(large)
 		raw := l.allocRaw(l.arith(OpAdd, a[0], l.constant(objHeader)))
 		l.emit(Instr{Op: OpStoreMem, A: raw, B: a[1], Imm: objTagOff})
 		obj := l.arith(OpAdd, raw, l.constant(objHeader))

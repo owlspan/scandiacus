@@ -97,9 +97,15 @@ func (l *lowerer) collectBody() {
 			Dst: NoReg, Imm: count})
 	})
 
+	// The list holds only the objects too big for a page (heap.go), so
+	// an empty one says nothing about the rest.
 	nothing := l.newLabel()
-	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpGt, l.load(count, vInt), l.constant(0)),
+	some := l.newLabel()
+	l.emit(Instr{Op: OpJumpIf, A: l.compare(OpGt, l.load(count, vInt), l.constant(0)),
+		Dst: NoReg, Imm: some})
+	l.emit(Instr{Op: OpJumpIf, A: l.compare(OpEq, l.rtLoad(heapPagesSlot), l.constant(0)),
 		Dst: NoReg, Imm: nothing})
+	l.mark(some)
 
 	// ---- an index of every payload address ----
 	//
@@ -123,12 +129,23 @@ func (l *lowerer) collectBody() {
 		[]vty{vInt, vInt}, vInt, false, false)
 	mask := l.arith(OpSub, tableCap, l.constant(1))
 
-	// The worklist can never hold more than every object at once. Its
-	// length lives in a word of heap rather than a stack slot, because
-	// the marking helpers need its address.
-	work := l.ccall("malloc",
-		[]Reg{l.arith(OpMul, l.load(count, vInt), l.constant(wordSize))},
-		[]vty{vInt}, vInt, false, false)
+	// The worklist: work is two words, the array and its room, and the
+	// length is a word of its own; all three are heap rather than stack
+	// slots because the marking helpers need their addresses. Every
+	// object at once is the most it can hold, which the live count says,
+	// but it grows rather than trusting that.
+	work := l.ccall("calloc", []Reg{l.constant(2), l.constant(wordSize)},
+		[]vty{vInt, vInt}, vInt, false, false)
+	workS := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: work, Dst: NoReg, Imm: workS})
+	room := l.arith(OpAdd, l.arith(OpAdd, l.rtLoad(gcLiveSlot), l.load(count, vInt)), l.constant(64))
+	roomS := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: room, Dst: NoReg, Imm: roomS})
+	l.pokeWord(l.load(workS, vInt), 0, l.ccall("malloc",
+		[]Reg{l.arith(OpMul, l.load(roomS, vInt), l.constant(wordSize))},
+		[]vty{vInt}, vInt, false, false))
+	l.pokeWord(l.load(workS, vInt), wordSize, l.load(roomS, vInt))
+	work = l.load(workS, vInt)
 	workLen := l.rawWord()
 
 	// ---- fill the index, and clear the marks from last time ----
@@ -170,6 +187,7 @@ func (l *lowerer) collectBody() {
 	l.sweep()
 
 	l.ccall("free", []Reg{table}, []vty{vInt}, vVoid, false, false)
+	l.ccall("free", []Reg{l.peekWord(work, 0)}, []vty{vInt}, vVoid, false, false)
 	l.ccall("free", []Reg{work}, []vty{vInt}, vVoid, false, false)
 	l.ccall("free", []Reg{workLen}, []vty{vInt}, vVoid, false, false)
 	l.ccall("free", []Reg{lowOut}, []vty{vInt}, vVoid, false, false)
@@ -297,12 +315,33 @@ func (l *lowerer) tryMark(candidate, table, mask, work, workLen Reg) {
 
 func (l *lowerer) tryMarkBody(candidate, table, mask, work, workLen Reg) {
 	done := l.newLabel()
-	l.emit(Instr{Op: OpJumpNot, A: l.tableHas(table, mask, candidate),
-		Dst: NoReg, Imm: done})
-
-	raw := l.arith(OpSub, candidate, l.constant(objHeader))
+	cand := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: candidate, Dst: NoReg, Imm: cand})
 	rawSlot := l.temp(vInt)
-	l.emit(Instr{Op: OpStore, A: raw, Dst: NoReg, Imm: rawSlot})
+
+	// An object's payload is 16-aligned wherever it lives, which turns
+	// away most of what a stack holds before any lookup.
+	l.emit(Instr{Op: OpJumpIf, A: l.compare(OpNe,
+		l.arith(OpBAnd, l.load(cand, vInt), l.constant(objHeader-1)), l.constant(0)), Dst: NoReg, Imm: done})
+	l.emit(Instr{Op: OpJumpIf, A: l.compare(OpEq, l.load(cand, vInt), l.constant(0)), Dst: NoReg, Imm: done})
+
+	// In a page, the slot it is the payload of; see heap.go.
+	page := l.heapPage(l.load(cand, vInt))
+	pageS := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: page, Dst: NoReg, Imm: pageS})
+	large := l.newLabel()
+	found := l.newLabel()
+	l.emit(Instr{Op: OpJumpIf, A: l.compare(OpEq, l.load(pageS, vInt), l.constant(0)), Dst: NoReg, Imm: large})
+	l.emit(Instr{Op: OpStore, A: l.heapSlotOf(l.load(cand, vInt), l.load(pageS, vInt)), Dst: NoReg, Imm: rawSlot})
+	l.emit(Instr{Op: OpJumpIf, A: l.compare(OpEq, l.load(rawSlot, vInt), l.constant(0)), Dst: NoReg, Imm: done})
+	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: found})
+
+	// Otherwise one of the big ones on the object list.
+	l.mark(large)
+	l.emit(Instr{Op: OpJumpNot, A: l.tableHas(table, mask, l.load(cand, vInt)),
+		Dst: NoReg, Imm: done})
+	l.emit(Instr{Op: OpStore, A: l.arith(OpSub, l.load(cand, vInt), l.constant(objHeader)), Dst: NoReg, Imm: rawSlot})
+	l.mark(found)
 
 	link := l.peekWord(l.load(rawSlot, vInt), objNextOff)
 	linkSlot := l.temp(vInt)
@@ -315,9 +354,18 @@ func (l *lowerer) tryMarkBody(candidate, table, mask, work, workLen Reg) {
 	l.pokeWord(l.load(rawSlot, vInt), objNextOff,
 		l.arith(OpBOr, l.load(linkSlot, vInt), l.constant(objMarkBit)))
 
-	n := l.peekWord(workLen, 0)
-	l.pokeWord(l.arith(OpAdd, work, l.arith(OpMul, n, l.constant(wordSize))), 0, candidate)
-	l.pokeWord(workLen, 0, l.arith(OpAdd, n, l.constant(1)))
+	n := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: l.peekWord(workLen, 0), Dst: NoReg, Imm: n})
+	roomy := l.newLabel()
+	l.emit(Instr{Op: OpJumpIf, A: l.compare(OpLt, l.load(n, vInt), l.peekWord(work, wordSize)), Dst: NoReg, Imm: roomy})
+	l.pokeWord(work, wordSize, l.arith(OpMul, l.peekWord(work, wordSize), l.constant(2)))
+	l.pokeWord(work, 0, l.ccall("realloc", []Reg{l.peekWord(work, 0),
+		l.arith(OpMul, l.peekWord(work, wordSize), l.constant(wordSize))},
+		[]vty{vInt, vInt}, vInt, false, false))
+	l.mark(roomy)
+	l.pokeWord(l.arith(OpAdd, l.peekWord(work, 0), l.arith(OpMul, l.load(n, vInt), l.constant(wordSize))), 0,
+		l.load(cand, vInt))
+	l.pokeWord(workLen, 0, l.arith(OpAdd, l.load(n, vInt), l.constant(1)))
 
 	l.mark(done)
 }
@@ -365,7 +413,7 @@ func (l *lowerer) traceAll(table, mask, work, workLen Reg) {
 
 	last := l.arith(OpSub, n, l.constant(1))
 	l.pokeWord(workLen, 0, last)
-	obj := l.peekWord(l.arith(OpAdd, work, l.arith(OpMul, last, l.constant(wordSize))), 0)
+	obj := l.peekWord(l.arith(OpAdd, l.peekWord(work, 0), l.arith(OpMul, last, l.constant(wordSize))), 0)
 	objSlot := l.temp(vInt)
 	l.emit(Instr{Op: OpStore, A: obj, Dst: NoReg, Imm: objSlot})
 
@@ -473,6 +521,8 @@ func (l *lowerer) traceOne(obj, table, mask, work, workLen Reg) {
 // sweep frees every object nothing reached, and clears the marks on the
 // ones that survived.
 func (l *lowerer) sweep() {
+	l.heapSweep()
+
 	// prev is the address of the link that points at the current object,
 	// which starts as the head slot itself. Keeping it as an address
 	// rather than as an object means unlinking the first object needs no
