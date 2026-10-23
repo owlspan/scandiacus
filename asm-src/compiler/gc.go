@@ -31,12 +31,10 @@ import "os"
 // That header went in long before there was a collector, for exactly
 // this moment.
 //
-// Nothing collects automatically. `mem.collect()` is the only thing that
-// runs it. Automatic collection would need to be sure that no allocation
-// site has a live pointer sitting in a register between the allocation
-// and the store that parks it - which is true of every site written so
-// far, but is a property nobody is currently checking, and a collector
-// that frees one live object produces a bug hours away from its cause.
+// It runs on its own at a statement's check once the live heap has
+// doubled (maybeCollect), and whenever mem.collect() asks. Either way
+// it is entered through a call, which is what keeps the rule above
+// true: no pointer is only in a register across one.
 
 const (
 	// Words of static storage the runtime keeps for itself, ahead of the

@@ -543,9 +543,10 @@ to keep doing it however small frames get.
 roots and precise over the heap, because the object header from step 1
 says which words of a block are pointers. It runs on its own once the
 heap has doubled since the last collection, checked at statement
-boundaries, and whenever `mem.collect()` asks. It never runs while a
-thread besides main is alive, since it scans one stack; a program can
-also turn it off entirely with `gc off`.
+boundaries, and whenever `mem.collect()` asks. With other threads
+running it stops them all at their next check or blocking call and
+reads every stack (`gcthreads.go`); a program can also turn it off
+entirely with `gc off`.
 
 Small objects - up to 2 KB with their header - live in 64 KB pages of
 one size class each (`heap.go`), allocated from a free list per class
