@@ -551,7 +551,7 @@ func (asmLibrary) Signature(name string) (front.Signature, bool) {
 	case "len":
 		return front.Signature{Check: checkLen}, true
 	case "push":
-		return front.Signature{Check: checkPush}, true
+		return front.Signature{Check: checkPush, HintFor: hintElemAt(1)}, true
 	case "contains":
 		return front.Signature{Check: checkContains}, true
 	case "indexOf":
@@ -595,7 +595,7 @@ func (asmLibrary) Signature(name string) (front.Signature, bool) {
 	case "json.decode":
 		return front.Signature{Check: checkJSONDecode, WantsTarget: true}, true
 	case "json.decodeOr":
-		return front.Signature{Check: checkJSONDecodeOr}, true
+		return front.Signature{Check: checkJSONDecodeOr, WantsTarget: true, HintFor: hintDecodeOr}, true
 	case "os.path.join":
 		return front.Signature{Check: checkPathJoin}, true
 	case "toInt":
@@ -626,7 +626,7 @@ func (asmLibrary) Signature(name string) (front.Signature, bool) {
 	case "join":
 		return front.Signature{Check: checkJoin}, true
 	case "insert":
-		return front.Signature{Check: checkInsert}, true
+		return front.Signature{Check: checkInsert, HintFor: hintElemAt(2)}, true
 	case "removeAt":
 		return front.Signature{Check: checkRemoveAt}, true
 	case "keys":
@@ -1164,6 +1164,26 @@ func hintResult(x *Call, known []*Type, i int) *Type {
 
 // hintValueOr does the same, and additionally tells the fallback which
 // type it has to be once the result argument is known.
+// hintElemAt gives argument i the element type of the list in argument
+// 0, so push(groups, []) knows which empty list it is.
+func hintElemAt(at int) func(*Call, []*Type, int) *Type {
+	return func(x *Call, known []*Type, i int) *Type {
+		if i == at && len(known) > 0 && known[0].Kind == KList {
+			return known[0].Elem
+		}
+		return nil
+	}
+}
+
+// hintDecodeOr gives the fallback the annotated type, so an empty
+// literal works there: let xs: []Todo = json.decodeOr(text, []).
+func hintDecodeOr(x *Call, known []*Type, i int) *Type {
+	if i == 1 && x.Want != nil && !x.Want.IsUnknown() {
+		return x.Want
+	}
+	return nil
+}
+
 func hintValueOr(x *Call, known []*Type, i int) *Type {
 	if i == 0 && x.Want != nil && !x.Want.IsUnknown() {
 		return ResultOf(x.Want)

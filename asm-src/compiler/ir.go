@@ -3392,12 +3392,18 @@ func (l *lowerer) pushInto(c *Call, list Reg, arg Expr) bool {
 // a literal with no annotation to guide it.
 func (l *lowerer) listLit(x *ListLit) Reg {
 	if len(x.Elems) == 0 {
-		if l.hint.k != kList {
+		// Where the lowerer has no hint - an assignment, an argument -
+		// the checker has usually typed it from its context.
+		want := l.hint
+		if t, ok := vtyOf(x.T); ok && want.k != kList && t.k == kList {
+			want = t
+		}
+		if want.k != kList {
 			l.errorAt(x, "an empty list needs an annotation saying what it holds, as in let xs: []int = []")
 			return l.junk()
 		}
-		list := l.newList(l.hint, 0)
-		l.regTy[list] = l.hint
+		list := l.newList(want, 0)
+		l.regTy[list] = want
 		return list
 	}
 
@@ -3500,11 +3506,15 @@ func (l *lowerer) getenv(arg Expr) Reg {
 // Both match the Go backend.
 func (l *lowerer) mapLit(x *MapLit) Reg {
 	if len(x.Keys) == 0 {
-		if l.hint.k != kMap {
+		want := l.hint
+		if t, ok := vtyOf(x.T); ok && want.k != kMap && t.k == kMap {
+			want = t
+		}
+		if want.k != kMap {
 			l.errorAt(x, "cannot tell what kind of map this is - annotate it, as in: let m: {str: int} = {}")
 			return l.junk()
 		}
-		return l.newMap(l.hint, 0)
+		return l.newMap(want, 0)
 	}
 
 	keys := make([]Reg, len(x.Keys))

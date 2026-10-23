@@ -360,12 +360,16 @@ let grid:   [][]int      = [[1, 2], [3, 4]]
 let groups: {str: []str} = {}
 ```
 
-An **empty literal carries no element type**, so it needs an annotation.
-The compiler says exactly that if you forget:
+An **empty literal carries no element type**, so it takes one from
+where it goes: an annotation, the variable it is assigned to, the
+parameter or field it fills, the list it is pushed into. With nothing
+to go by the compiler says so:
 
 ```veyl
 let xs: []int = []          // fine
 let m: {str: int} = {}      // fine
+xs = []                     // fine: xs is a []int
+push(grid, [])              // fine when grid is a [][]int
 let oops = []               // error: cannot tell what kind of list
                             //        this is - annotate it
 ```
