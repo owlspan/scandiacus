@@ -458,7 +458,9 @@ func (l *lowerer) listSearch(c *Call, list Reg, t vty, name string) Reg {
 // including empty ones at either end. An empty separator splits into
 // single characters.
 func (l *lowerer) splitStr(s, sep Reg) Reg {
+	outSlot := l.temp(vListOf(vStr))
 	out := l.newList(vListOf(vStr), initialCap)
+	l.emit(Instr{Op: OpStore, A: out, Dst: NoReg, Imm: outSlot})
 
 	n := l.strLen(s)
 	sepLen := l.strLen(sep)
@@ -480,42 +482,71 @@ func (l *lowerer) splitStr(s, sep Reg) Reg {
 	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: joinPoint})
 
 	l.mark(general)
-	startSlot := l.temp(vInt)
-	iSlot := l.temp(vInt)
-	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: startSlot})
-	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: iSlot})
-
-	top := l.newLabel()
-	next := l.newLabel()
-	tail := l.newLabel()
-	l.mark(top)
-
-	i := l.load(iSlot, vInt)
-	// Stop when a separator could no longer fit, so the last partial
-	// window is not compared against memory past the terminator.
-	more := l.compare(OpLe, l.arith(OpAdd, i, sepLen), n)
-	l.emit(Instr{Op: OpJumpNot, A: more, Dst: NoReg, Imm: tail})
-
-	hit := l.bytesMatchAt(s, i, sep, sepLen)
-	l.emit(Instr{Op: OpJumpNot, A: hit, Dst: NoReg, Imm: next})
-
-	l.listPush(out, l.substring(s, l.load(startSlot, vInt), i))
-	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, i, sepLen), Dst: NoReg, Imm: startSlot})
-	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, i, sepLen), Dst: NoReg, Imm: iSlot})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
-
-	l.mark(next)
-	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, i, l.constant(1)), Dst: NoReg, Imm: iSlot})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
-
-	// Whatever follows the last separator is the final piece, and it is
-	// pushed even when it is empty: "a,b," splits into three, the last
-	// one empty, which is what strings.Split gives.
-	l.mark(tail)
-	l.listPush(out, l.substring(s, l.load(startSlot, vInt), n))
+	got := l.splitBy(s, sep)
+	l.emit(Instr{Op: OpStore, A: got, Dst: NoReg, Imm: outSlot})
 
 	l.mark(joinPoint)
-	return out
+	return l.load(outSlot, vListOf(vStr))
+}
+
+// splitBy is the general case of split, one function rather than code at
+// each call. memchr finds the next place the separator's first byte
+// occurs - it looks at many bytes at a time, where comparing the
+// separator at every position looked at one - and memcmp checks the
+// rest of it there.
+func (l *lowerer) splitBy(s, sep Reg) Reg {
+	sym := l.helperFunc("__split", []vty{vStr, vStr}, vListOf(vStr), func(a []Reg) {
+		ss, sp := l.temp(vStr), l.temp(vStr)
+		l.setSlot(ss, a[0])
+		l.setSlot(sp, a[1])
+		out := l.temp(vListOf(vStr))
+		l.setSlot(out, l.newList(vListOf(vStr), initialCap))
+		n, m := l.temp(vInt), l.temp(vInt)
+		l.setSlot(n, l.strLen(l.load(ss, vStr)))
+		l.setSlot(m, l.strLen(l.load(sp, vStr)))
+		first := l.temp(vInt)
+		l.setSlot(first, l.loadByte(l.load(sp, vStr), l.constant(0)))
+		start, i := l.temp(vInt), l.temp(vInt)
+		l.setSlot(start, l.constant(0))
+		l.setSlot(i, l.constant(0))
+
+		top, tail, miss := l.newLabel(), l.newLabel(), l.newLabel()
+		l.mark(top)
+		// The last place the separator could still start, plus one.
+		room := l.arith(OpSub, l.arith(OpAdd, l.load(n, vInt), l.constant(1)),
+			l.arith(OpAdd, l.load(i, vInt), l.load(m, vInt)))
+		roomS := l.temp(vInt)
+		l.setSlot(roomS, room)
+		l.jumpNot(l.compare(OpGt, l.load(roomS, vInt), l.constant(0)), tail)
+		hit := l.ccall("memchr", []Reg{l.arith(OpAdd, l.load(ss, vStr), l.load(i, vInt)),
+			l.load(first, vInt), l.load(roomS, vInt)}, []vty{vInt, vInt, vInt}, vInt, false, false)
+		hitS := l.temp(vInt)
+		l.setSlot(hitS, hit)
+		l.jumpIf(l.compare(OpEq, l.load(hitS, vInt), l.constant(0)), tail)
+		l.setSlot(i, l.arith(OpSub, l.load(hitS, vInt), l.load(ss, vStr)))
+		whole := l.newLabel()
+		l.jumpIf(l.compare(OpEq, l.load(m, vInt), l.constant(1)), whole)
+		same := l.ccall("memcmp", []Reg{l.arith(OpAdd, l.load(hitS, vInt), l.constant(1)),
+			l.arith(OpAdd, l.load(sp, vStr), l.constant(1)), l.arith(OpSub, l.load(m, vInt), l.constant(1))},
+			[]vty{vInt, vInt, vInt}, vInt, true, false)
+		l.jumpNot(l.compare(OpEq, same, l.constant(0)), miss)
+		l.mark(whole)
+		l.listPush(l.load(out, vListOf(vStr)), l.substring(l.load(ss, vStr), l.load(start, vInt), l.load(i, vInt)))
+		l.setSlot(start, l.arith(OpAdd, l.load(i, vInt), l.load(m, vInt)))
+		l.setSlot(i, l.load(start, vInt))
+		l.jump(top)
+		l.mark(miss)
+		l.setSlot(i, l.arith(OpAdd, l.load(i, vInt), l.constant(1)))
+		l.jump(top)
+
+		// Whatever follows the last separator is the final piece, and it
+		// is pushed even when it is empty: "a,b," splits into three, the
+		// last one empty, which is what strings.Split gives.
+		l.mark(tail)
+		l.listPush(l.load(out, vListOf(vStr)), l.substring(l.load(ss, vStr), l.load(start, vInt), l.load(n, vInt)))
+		l.ret(l.load(out, vListOf(vStr)))
+	})
+	return l.callHelper(sym, []Reg{s, sep}, []vty{vStr, vStr}, vListOf(vStr))
 }
 
 // eachByte walks the bytes of a string by index.
