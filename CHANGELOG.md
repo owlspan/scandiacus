@@ -3,6 +3,34 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.95.0
+
+**Smaller executables.** A program's size grew by about 416 bytes for
+each function it had; it is about 310 now. A test program of 1000 small
+functions went from 432 KB to 327 KB. What went:
+
+- a collection check after every call to one of the program's own
+  functions (each of those checks for itself);
+- the crash handler's compare-and-branch per function, now a table of
+  offsets and one loop;
+- seven-byte saves and restores of the registers a function borrows,
+  now pushes and short loads;
+- a dead epilogue after the last return, a second copy of every
+  parameter, and eleven bytes at every index check;
+- a frame word for every temporary: values whose lives do not overlap
+  share words now, so the frame of a long top level no longer grows
+  with every statement (not in programs that start threads).
+
+**Faster builds.** The pass that tidies the generated assembly matched
+every line against regular expressions, and the compiler read its whole
+Linux runtime source on every start; neither does now, and Go's own
+collector runs less often during a build. Building the JSON example
+went from about 250 ms to about 120 ms.
+
+**A collector fix for threads.** A captured local's cell, and in a
+program with threads the compiler's own temporary values, could be kept
+in a register only, where another thread's collection does not look.
+
 ## 1.94.0
 
 **csv errors at the end of a file say what Go says.** A quoted field
