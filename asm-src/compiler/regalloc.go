@@ -83,6 +83,7 @@ func allocateRegsIn(f *Func, pool []string) map[Reg]string {
 		return nil
 	}
 	jumps := jumpsTo(f)
+	labelAt := labelPositions(f)
 
 	// First and last mention of every register, and where the barriers
 	// sit. Mentions outside the register range cannot exist, but a
@@ -136,10 +137,10 @@ func allocateRegsIn(f *Func, pool []string) map[Reg]string {
 		// A result carried out of a call arrives after every volatile
 		// register has been taken; its slot is written by callResult
 		// directly and that is where readers should look.
-		if barrier[def] || !spanClear(f, def, last, jumps) {
+		if barrier[def] || !spanClear(f, Reg(r), def, last, jumps, labelAt) {
 			if crossesCalls(f, Reg(r), def, last, jumps) {
 				// With no call after it, a volatile register serves.
-				saved := !spanClear(f, def, last, jumps)
+				saved := !spanClear(f, Reg(r), def, last, jumps, labelAt)
 				cands = append(cands, cand{r: Reg(r), def: def, last: last, saved: saved})
 			}
 			continue
@@ -256,6 +257,7 @@ func allocateFloatRegsIn(f *Func, pool []string) map[Reg]string {
 		return nil
 	}
 	jumps := jumpsTo(f)
+	labelAt := labelPositions(f)
 	defOf := make([]int, f.NRegs)
 	lastOf := make([]int, f.NRegs)
 	usable := make([]bool, f.NRegs)
@@ -301,7 +303,7 @@ func allocateFloatRegsIn(f *Func, pool []string) map[Reg]string {
 		if !usable[r] || def < 0 || lastOf[r] <= def {
 			continue
 		}
-		if spanClear(f, def, lastOf[r], jumps) {
+		if spanClear(f, Reg(r), def, lastOf[r], jumps, labelAt) {
 			cands = append(cands, cand{Reg(r), def, lastOf[r]})
 		}
 	}
@@ -375,6 +377,37 @@ func volatileReg(name string) bool {
 
 func noReturn(in *Instr) bool { return in.Op == OpBoundsFail || in.Op == OpMustFail }
 
+// deadAfter reports whether the code after position p goes straight to
+// a jump beyond last, the value's last read, without reading r.
+func deadAfter(f *Func, r Reg, p, last int, labelAt map[int64]int) bool {
+	for q := p + 1; q < last; q++ {
+		in := &f.Code[q]
+		for _, x := range instrRegs(*in) {
+			if x == r {
+				return false
+			}
+		}
+		switch in.Op {
+		case OpJump:
+			at, ok := labelAt[in.Imm]
+			return ok && at > last
+		case OpLabel, OpJumpIf, OpJumpNot, OpRet:
+			return false
+		}
+	}
+	return false
+}
+
+func labelPositions(f *Func) map[int64]int {
+	out := map[int64]int{}
+	for i, in := range f.Code {
+		if in.Op == OpLabel {
+			out[in.Imm] = i
+		}
+	}
+	return out
+}
+
 // jumpsTo lists, for each label, where the jumps to it are.
 func jumpsTo(f *Func) map[int64][]int {
 	out := map[int64][]int{}
@@ -399,10 +432,16 @@ func jumpsTo(f *Func) map[int64][]int {
 // touched the register since, so arriving there changes nothing. A
 // bounds check is exactly that shape, and used to push every value
 // alive across one out to memory.
-func spanClear(f *Func, def, last int, jumps map[int64][]int) bool {
+//
+// A call after which the value is dead is no trouble either: one from
+// which the code runs to a jump past the value's last read, reading
+// nothing of it on the way. The slow path of a push is that shape - the
+// call that grows the list, then a jump over the fast path - and taking
+// it for a clobber kept the list and the value in memory on every push.
+func spanClear(f *Func, r Reg, def, last int, jumps map[int64][]int, labelAt map[int64]int) bool {
 	for p := def + 1; p < last; p++ {
 		in := &f.Code[p]
-		if raBarrier(in) && !noReturn(in) {
+		if raBarrier(in) && !noReturn(in) && !deadAfter(f, r, p, last, labelAt) {
 			return false
 		}
 		if in.Op == OpLabel {

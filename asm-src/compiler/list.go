@@ -199,44 +199,49 @@ func (l *lowerer) compare(op Op, a, b Reg) Reg {
 // full. Growth doubles, so a list built by repeated pushes costs
 // amortised constant time rather than quadratic copying.
 //
-// The growth is a call, not inline: it used to be written out at every
-// push, a copying loop included, which crowded the registers of the
-// loop doing the pushing and made every push site long.
+// The full case is a call that grows the list and stores the element
+// itself. Nothing is live across it, so the loop doing the pushing
+// keeps the list and the value in registers on the common path; when
+// the call came back to a shared store, both had to wait out the call
+// on the stack, and every push paid for that.
 func (l *lowerer) listPush(list, val Reg) {
+	t := l.regTy[list]
 	length := l.field(list, listLenOff, vInt)
 	capacity := l.field(list, listCapOff, vInt)
 
-	ready := l.newLabel()
+	fast, done := l.newLabel(), l.newLabel()
 	room := l.compare(OpLt, length, capacity)
-	l.emit(Instr{Op: OpJumpIf, A: room, Dst: NoReg, Imm: ready, Comment: "push: room?"})
-	l.listGrow(list)
-	l.mark(ready)
+	l.emit(Instr{Op: OpJumpIf, A: room, Dst: NoReg, Imm: fast, Comment: "push: room?"})
+	sym, valTy := l.listPushSlow(t)
+	l.callHelper(sym, []Reg{list, val}, []vty{vInt, valTy}, vInt)
+	l.jump(done)
 
-	// The length and the data pointer are re-read here rather than
-	// reused from above: the growth path may have replaced both.
-	at := l.field(list, listLenOff, vInt)
+	l.mark(fast)
 	data := l.field(list, listDataOff, vInt)
-	l.elemStore(data, at, val, l.regTy[list].elemType())
-	l.emit(Instr{Op: OpStoreMem, A: list, B: l.arith(OpAdd, at, l.constant(1)),
+	l.elemStore(data, length, val, t.elemType())
+	l.emit(Instr{Op: OpStoreMem, A: list, B: l.arith(OpAdd, length, l.constant(1)),
 		Imm: listLenOff})
+	l.mark(done)
 }
 
-// listGrow doubles a full list's element block (to initialCap at
-// least), copying the elements over with memcpy. One helper per element
-// tag, since the new block's tag says whether it holds pointers.
-func (l *lowerer) listGrow(list Reg) {
-	tag := elemTag(l.regTy[list])
-	width := elemWidth(l.regTy[list])
-	name := "__listgrow_w"
-	if tag == tagPtrs {
-		name = "__listgrow_p"
+// listPushSlow is the helper for a push onto a full list: it doubles
+// the element block (to initialCap at least), copies the elements over
+// with memcpy, and stores the value. One per element shape, since the
+// new block's tag says whether it holds pointers and its width whether
+// they are bytes. The value's parameter is typed as a pointer when it
+// may be one, so it is kept where the collector looks while the new
+// block is allocated.
+func (l *lowerer) listPushSlow(t vty) (string, vty) {
+	tag, width := elemTag(t), elemWidth(t)
+	name, valTy, elem := "__listpush_w", vInt, vInt
+	switch {
+	case width == 1:
+		name, valTy, elem = "__listpush_b", vBool, vBool
+	case tag == tagPtrs:
+		name, valTy = "__listpush_p", vStr
 	}
-	if width == 1 {
-		name = "__listgrow_b"
-	}
-	sym := l.helperFunc(name, []vty{vInt}, vInt, func(a []Reg) {
-		lst := a[0]
-		length := l.field(lst, listLenOff, vInt)
+	sym := l.helperFunc(name, []vty{vInt, valTy}, vInt, func(a []Reg) {
+		lst, v := a[0], a[1]
 		capacity := l.field(lst, listCapOff, vInt)
 
 		// The new capacity goes through a slot because two branches
@@ -254,16 +259,20 @@ func (l *lowerer) listGrow(list Reg) {
 
 		fresh := l.allocObj(l.arith(OpMul, newCap, l.constant(width)), tag)
 		old := l.field(lst, listDataOff, vInt)
-		l.ccall("memcpy", []Reg{fresh, old, l.arith(OpMul, length, l.constant(width))},
+		n := l.field(lst, listLenOff, vInt)
+		l.ccall("memcpy", []Reg{fresh, old, l.arith(OpMul, n, l.constant(width))},
 			[]vty{vInt, vInt, vInt}, vInt, false, false)
 		l.emit(Instr{Op: OpStoreMem, A: lst, B: newCap, Imm: listCapOff})
 		l.emit(Instr{Op: OpStoreMem, A: lst, B: fresh, Imm: listDataOff})
 		if l.gcOff {
 			l.freeObject(old) // no collector will; see gcoff.go
 		}
-		l.emit(Instr{Op: OpRet, A: fresh, Dst: NoReg})
+		at := l.field(lst, listLenOff, vInt)
+		l.elemStore(l.field(lst, listDataOff, vInt), at, v, elem)
+		l.emit(Instr{Op: OpStoreMem, A: lst, B: l.arith(OpAdd, at, l.constant(1)), Imm: listLenOff})
+		l.emit(Instr{Op: OpRet, A: l.constant(0), Dst: NoReg})
 	})
-	l.callHelper(sym, []Reg{list}, []vty{vInt}, vInt)
+	return sym, valTy
 }
 
 // listFill stores a literal's elements into a list made with room for
