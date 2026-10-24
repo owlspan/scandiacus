@@ -3,6 +3,17 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.91.0
+
+**json.decode is about twice as fast.** Each value in a parsed document
+made three empty lists it would never use - room for array items and
+for object keys and values - so a string or a number cost seven
+allocations instead of one. Those lists now exist only on arrays and
+objects, and a member the document leaves out shares one null node
+instead of making its own. Encoding 200000 small structs to JSON and
+decoding them back took 1.82 s and takes 0.84 s; Go's encoding/json
+does the same in 0.60 s.
+
 ## 1.90.0
 
 **Programs that mostly build strings are up to nine times faster.**
