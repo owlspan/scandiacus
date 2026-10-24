@@ -36,6 +36,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // The Linux runtime: the C runtime shim, the software GDI, and the X11
@@ -125,9 +126,21 @@ func exeName(source string) string {
 	return base + ".exe"
 }
 
-// linuxProvided is every import the Linux runtime implements, read off
-// its source so the two cannot drift apart.
-var linuxProvided = func() map[string]bool {
+// linuxProvided reports whether the Linux runtime implements an import,
+// read off its source so the two cannot drift apart. The source is
+// scanned on first use rather than at start-up, where it cost every run
+// of the compiler, a Windows build or a --version included.
+func linuxProvided(name string) bool {
+	linuxProvidedOnce.Do(func() { linuxProvidedSet = scanLinuxProvided() })
+	return linuxProvidedSet[name]
+}
+
+var (
+	linuxProvidedOnce sync.Once
+	linuxProvidedSet  map[string]bool
+)
+
+func scanLinuxProvided() map[string]bool {
 	m := map[string]bool{}
 	re := regexp.MustCompile(`(?:VYW\(|__vyw_)(\w+)`)
 	// The macOS runtime's too: what only it has (the audio streams) is
@@ -140,7 +153,7 @@ var linuxProvided = func() map[string]bool {
 		}
 	}
 	return m
-}()
+}
 
 // asmExterns lists the symbols a program's assembly imports.
 func asmExterns(asmText string) []string {

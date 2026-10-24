@@ -19,20 +19,66 @@ package main
 // file sweeps up the shapes their output leaves behind.
 
 import (
-	"regexp"
 	"strconv"
 	"strings"
 )
 
-var (
-	peepStore = regexp.MustCompile(`^    mov qword ptr \[rbp-(\d+)\], rax$`)
-	peepLoad  = regexp.MustCompile(`^    mov rax, qword ptr \[rbp-(\d+)\]$`)
-	peepImm   = regexp.MustCompile(`^    mov rax, (\d+)$`)
+// The line shapes the pass looks for, matched with plain string tests:
+// it reads every line of the program, and regular expressions made it
+// a good part of the time a build took.
+var peepRegs = map[string]bool{"r8": true, "r9": true, "r10": true, "r11": true, "rbx": true,
+	"rsi": true, "rdi": true, "r12": true, "r13": true, "r14": true, "r15": true}
 
-	// The same for a register: mov r8, rax then mov rax, r8.
-	peepToReg   = regexp.MustCompile(`^    mov (r8|r9|r10|r11|rbx|rsi|rdi|r12|r13|r14|r15), rax$`)
-	peepFromReg = regexp.MustCompile(`^    mov rax, (r8|r9|r10|r11|rbx|rsi|rdi|r12|r13|r14|r15)$`)
-)
+func allDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// between returns what lies between prefix and suffix in ln, if ln has
+// both.
+func between(ln, prefix, suffix string) (string, bool) {
+	if !strings.HasPrefix(ln, prefix) || !strings.HasSuffix(ln, suffix) || len(ln) < len(prefix)+len(suffix) {
+		return "", false
+	}
+	return ln[len(prefix) : len(ln)-len(suffix)], true
+}
+
+// peepLoad: mov rax, qword ptr [rbp-N]
+func peepLoad(ln string) (string, bool) {
+	m, ok := between(ln, "    mov rax, qword ptr [rbp-", "]")
+	return m, ok && allDigits(m)
+}
+
+// peepStore: mov qword ptr [rbp-N], rax
+func peepStore(ln string) (string, bool) {
+	m, ok := between(ln, "    mov qword ptr [rbp-", "], rax")
+	return m, ok && allDigits(m)
+}
+
+// peepImm: mov rax, N
+func peepImm(ln string) (string, bool) {
+	m, ok := between(ln, "    mov rax, ", "")
+	return m, ok && allDigits(m)
+}
+
+// peepFromReg: mov rax, REG
+func peepFromReg(ln string) (string, bool) {
+	m, ok := between(ln, "    mov rax, ", "")
+	return m, ok && peepRegs[m]
+}
+
+// peepToReg: mov REG, rax
+func peepToReg(ln string) (string, bool) {
+	m, ok := between(ln, "    mov ", ", rax")
+	return m, ok && peepRegs[m]
+}
 
 func peephole(text string) string {
 	lines := strings.Split(text, "\n")
@@ -40,28 +86,30 @@ func peephole(text string) string {
 
 	stored := "" // the slot the last kept line stored to, if any
 	for _, ln := range lines {
-		if m := peepLoad.FindStringSubmatch(ln); m != nil && stored == m[1] {
-			continue // the value is in rax already
-		}
-		if m := peepFromReg.FindStringSubmatch(ln); m != nil && stored == m[1] {
-			continue
-		}
-
-		if m := peepImm.FindStringSubmatch(ln); m != nil {
-			if v, err := strconv.Atoi(m[1]); err == nil && v <= 0x7fffffff {
-				ln = "    mov eax, " + m[1]
+		if stored != "" {
+			if m, ok := peepLoad(ln); ok && stored == m {
+				continue // the value is in rax already
+			}
+			if m, ok := peepFromReg(ln); ok && stored == m {
+				continue
 			}
 		}
 
-		if dupableAsm(ln) && len(out) > 0 && out[len(out)-1] == ln {
+		if m, ok := peepImm(ln); ok {
+			if v, err := strconv.Atoi(m); err == nil && v <= 0x7fffffff {
+				ln = "    mov eax, " + m
+			}
+		}
+
+		if len(out) > 0 && out[len(out)-1] == ln && dupableAsm(ln) {
 			continue
 		}
 
 		out = append(out, ln)
-		if m := peepStore.FindStringSubmatch(ln); m != nil {
-			stored = m[1]
-		} else if m := peepToReg.FindStringSubmatch(ln); m != nil {
-			stored = m[1]
+		if m, ok := peepStore(ln); ok {
+			stored = m
+		} else if m, ok := peepToReg(ln); ok {
+			stored = m
 		} else {
 			stored = ""
 		}
@@ -90,7 +138,7 @@ func dupableAsm(ln string) bool {
 		if family == "" {
 			return true // a store to memory: the same bytes written again
 		}
-		for _, tok := range asmWord.FindAllString(src, -1) {
+		for _, tok := range asmWords(src) {
 			if regFamily(tok) == family {
 				return false
 			}
@@ -100,7 +148,24 @@ func dupableAsm(ln string) bool {
 	return false
 }
 
-var asmWord = regexp.MustCompile(`[a-z][a-z0-9]*`)
+// asmWords splits out the words of an operand: a lower-case letter and
+// the letters and digits after it.
+func asmWords(src string) []string {
+	var out []string
+	for i := 0; i < len(src); {
+		if src[i] < 'a' || src[i] > 'z' {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < len(src) && (src[j] >= 'a' && src[j] <= 'z' || src[j] >= '0' && src[j] <= '9') {
+			j++
+		}
+		out = append(out, src[i:j])
+		i = j
+	}
+	return out
+}
 
 // regFamily names the 64-bit register a register name is part of -
 // eax and al are rax, r11d is r11 - or "" for anything that is not a

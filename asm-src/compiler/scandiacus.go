@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -110,6 +111,13 @@ checking this compiler's own output against a known assembler.
 `
 
 func main() {
+	// A build is short and holds little: collecting when the heap has
+	// grown fourfold rather than doubled takes most of the time Go's
+	// collector spent on it, for a few more megabytes at the peak. The
+	// language server runs for hours and keeps the default.
+	if len(os.Args) < 2 || os.Args[1] != "lsp" {
+		debug.SetGCPercent(400)
+	}
 	args := os.Args[1:]
 	if len(args) == 0 {
 		fmt.Print(usage)

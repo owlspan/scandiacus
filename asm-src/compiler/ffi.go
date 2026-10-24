@@ -186,7 +186,7 @@ func needsSqlite(externs []string) bool {
 
 func splitExterns(mod *Module, externs []string) (wrap []string, windowsOnly []string) {
 	for _, e := range externs {
-		if linuxProvided[e] || isSqliteSym(e) {
+		if linuxProvided(e) || isSqliteSym(e) {
 			continue
 		}
 		if strings.HasPrefix(e, "vycall_") {
