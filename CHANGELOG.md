@@ -3,6 +3,17 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.90.0
+
+**Programs that mostly build strings are up to nine times faster.**
+Small objects have lived in 64 KB pages since 1.84.0, but the routines
+behind `+`, `str()` and string interpolation only used the pages when
+the program also allocated something else - a list, a struct, a map.
+A program that only built strings sent every one of them to the C
+library's malloc, and every collection freed them one by one. Four
+million `"key" + str(i)` took 1.83 s and take 0.21 s now; the same loop
+in Go takes 0.27 s.
+
 ## 1.89.0
 
 **Maps with string keys are about 2.5 times faster.** The string hash
