@@ -57,7 +57,22 @@ fn __vy_csvParse(text: str) -> [][]str! {
                 while !closed {
                     if i >= n {
                         // Go points one past the end for a quote that
-                        // never closes.
+                        // never closes. When the text ends with a line
+                        // break, that is the end of the last line, not
+                        // the start of a line after it: Go's reader
+                        // reads nothing more there and does not count
+                        // one, and its column has a CR LF as one byte.
+                        if __strAt(text, n - 1) == 10 {
+                            let start = n - 1
+                            while start > 0 && __strAt(text, start - 1) != 10 {
+                                start = start - 1
+                            }
+                            let width = n - start
+                            if n - 2 >= start && __strAt(text, n - 2) == 13 {
+                                width = width - 1
+                            }
+                            return fail(__vy_csvErr(startLine, line - 1, width + 1, __vy_csvExtraQuote()))
+                        }
                         return fail(__vy_csvErr(startLine, line, __vy_csvCol(text, n), __vy_csvExtraQuote()))
                     }
                     let c = __strAt(text, i)

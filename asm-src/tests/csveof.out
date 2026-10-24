@@ -1,0 +1,6 @@
+cannot read csv: parse error on line 1, column 3: extraneous or missing " in quoted-field
+cannot read csv: parse error on line 1, column 3: extraneous or missing " in quoted-field
+cannot read csv: parse error on line 1, column 7: extraneous or missing " in quoted-field
+cannot read csv: record on line 1; parse error on line 3, column 2: extraneous or missing " in quoted-field
+cannot read csv: parse error on line 1, column 3: extraneous or missing " in quoted-field
+cannot read csv: record on line 1; parse error on line 2, column 2: extraneous or missing " in quoted-field
