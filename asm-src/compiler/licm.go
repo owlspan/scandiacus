@@ -42,30 +42,108 @@ func licm(m *Module, fn *Func) {
 	if fn.Env {
 		escaped[0] = true
 	}
+	// Loops go in batches: every loop still to do that has no other
+	// such loop inside it. Those cannot overlap, so their moves are all
+	// planned against the same code and made in one rebuild, and the
+	// loops around them come in a later batch and see what was moved
+	// out of their bodies - an inner loop's loads can climb out of the
+	// outer loop too. Planning one loop and rebuilding the function
+	// before the next was quadratic in the loops of a function.
 	tried := map[int64]bool{}
 	triedPure := map[int64]bool{}
 	for round := 0; round < 256; round++ {
-		moved := false
-		for _, lp := range findLoops(fn) {
-			if !tried[lp.label] {
-				tried[lp.label] = true
-				if hoistLoop(m, fn, lp, escaped) {
-					moved = true
-					break // positions have shifted; find the loops again
-				}
+		loops := findLoops(fn)
+		var pending []loopSpan
+		for _, lp := range loops {
+			if !tried[lp.label] || !triedPure[lp.label] {
+				pending = append(pending, lp)
 			}
-			if !triedPure[lp.label] {
-				triedPure[lp.label] = true
-				if hoistPure(fn, lp, escaped) {
-					moved = true
+		}
+		var batch []loopSpan
+		for _, a := range pending {
+			leaf := true
+			for _, b := range pending {
+				if b.label != a.label && b.head > a.head && b.end < a.end {
+					leaf = false
 					break
 				}
 			}
+			if leaf {
+				batch = append(batch, a)
+			}
 		}
-		if !moved {
+		if len(batch) == 0 {
 			return
 		}
+		defAt, elem := defsOf(fn)
+		var plans []*licmPlan
+		for _, lp := range batch {
+			if !tried[lp.label] {
+				tried[lp.label] = true
+				if p := hoistLoop(m, fn, lp, escaped, defAt, elem); p != nil {
+					plans = append(plans, p)
+					continue // its arithmetic in the next round, against the new code
+				}
+			}
+			triedPure[lp.label] = true
+			if p := hoistPure(fn, lp, escaped, defAt); p != nil {
+				plans = append(plans, p)
+			}
+		}
+		applyPlans(fn, plans)
 	}
+}
+
+// licmPlan is one loop's moves: instructions to put in front of its
+// head, and instructions of its body to replace.
+type licmPlan struct {
+	at      int
+	pre     []Instr
+	replace map[int]Instr
+}
+
+// applyPlans makes the moves of loops that do not overlap, in one pass.
+func applyPlans(fn *Func, plans []*licmPlan) {
+	if len(plans) == 0 {
+		return
+	}
+	before := map[int][]Instr{}
+	replace := map[int]Instr{}
+	extra := 0
+	for _, p := range plans {
+		before[p.at] = append(before[p.at], p.pre...)
+		extra += len(p.pre)
+		for at, in := range p.replace {
+			replace[at] = in
+		}
+	}
+	out := make([]Instr, 0, len(fn.Code)+extra)
+	for i, in := range fn.Code {
+		out = append(out, before[i]...)
+		if r, ok := replace[i]; ok {
+			in = r
+		}
+		out = append(out, in)
+	}
+	fn.Code = out
+}
+
+// defsOf maps each register to the instruction that writes it, and
+// lists the registers that hold an element's address.
+func defsOf(fn *Func) (map[Reg]int, map[Reg]bool) {
+	defAt := make(map[Reg]int, fn.NRegs)
+	elem := map[Reg]bool{}
+	for i, in := range fn.Code {
+		if in.Dst != NoReg {
+			if _, seen := defAt[in.Dst]; !seen {
+				defAt[in.Dst] = i
+			}
+		}
+		if in.Op == OpIndexAddr {
+			elem[in.Dst] = true
+		}
+	}
+	return defAt, elem
 }
 
 type loopSpan struct {
@@ -132,22 +210,8 @@ type hoistKey struct {
 	off  int64
 }
 
-func hoistLoop(m *Module, fn *Func, lp loopSpan, escaped map[int64]bool) bool {
+func hoistLoop(m *Module, fn *Func, lp loopSpan, escaped map[int64]bool, def map[Reg]int, elem map[Reg]bool) *licmPlan {
 	code := fn.Code
-	def := map[Reg]int{}
-	for i, in := range code {
-		if in.Dst != NoReg {
-			if _, seen := def[in.Dst]; !seen {
-				def[in.Dst] = i
-			}
-		}
-	}
-	elem := map[Reg]bool{}
-	for _, in := range code {
-		if in.Op == OpIndexAddr {
-			elem[in.Dst] = true
-		}
-	}
 
 	// What the loop writes.
 	assigned := map[int64]bool{}
@@ -177,7 +241,7 @@ func hoistLoop(m *Module, fn *Func, lp loopSpan, escaped map[int64]bool) bool {
 		case in.Op == OpBoundsFail, in.Op == OpMustFail:
 			// The program stops; nothing after it in the loop runs.
 		default:
-			return false // a call, or something else that may write anywhere
+			return nil // a call, or something else that may write anywhere
 		}
 	}
 	written := func(c memClass, off int64) bool {
@@ -233,7 +297,7 @@ func hoistLoop(m *Module, fn *Func, lp loopSpan, escaped map[int64]bool) bool {
 		replace[p] = slotOf[key]
 	}
 	if len(order) == 0 {
-		return false
+		return nil
 	}
 
 	newReg := func(t vty) Reg {
@@ -255,18 +319,11 @@ func hoistLoop(m *Module, fn *Func, lp loopSpan, escaped map[int64]bool) bool {
 			Instr{Op: OpStore, Dst: NoReg, A: v, B: NoReg, Imm: slotOf[key]})
 	}
 
-	out := make([]Instr, 0, len(code)+len(pre))
-	out = append(out, code[:lp.head]...)
-	out = append(out, pre...)
-	for p := lp.head; p < len(code); p++ {
-		in := code[p]
-		if s, ok := replace[p]; ok {
-			in = Instr{Op: OpLoad, Dst: in.Dst, A: NoReg, B: NoReg, Imm: s, Comment: in.Comment}
-		}
-		out = append(out, in)
+	plan := &licmPlan{at: lp.head, pre: pre, replace: map[int]Instr{}}
+	for p, s := range replace {
+		plan.replace[p] = Instr{Op: OpLoad, Dst: code[p].Dst, A: NoReg, B: NoReg, Imm: s, Comment: code[p].Comment}
 	}
-	fn.Code = out
-	return true
+	return plan
 }
 
 // hoistPure moves arithmetic whose inputs do not change in the loop to
@@ -282,14 +339,8 @@ func hoistLoop(m *Module, fn *Func, lp loopSpan, escaped map[int64]bool) bool {
 // way into a loop whose body would have skipped it costs a few cycles
 // and changes nothing. The result waits in a new slot, read where the
 // computation was; the loads it no longer needs are left to dce.
-func hoistPure(fn *Func, lp loopSpan, escaped map[int64]bool) bool {
+func hoistPure(fn *Func, lp loopSpan, escaped map[int64]bool, defAt map[Reg]int) *licmPlan {
 	code := fn.Code
-	defAt := map[Reg]int{}
-	for i, in := range code {
-		if in.Dst != NoReg {
-			defAt[in.Dst] = i
-		}
-	}
 	assigned := map[int64]bool{}
 	for p := lp.head; p <= lp.end; p++ {
 		if code[p].Op == OpStore {
@@ -324,7 +375,7 @@ func hoistPure(fn *Func, lp loopSpan, escaped map[int64]bool) bool {
 		}
 	}
 	if len(cands) == 0 {
-		return false
+		return nil
 	}
 	// Only the outermost of each chain moves as a value: i * n + 1 moves
 	// once, with i * n worked out on the way, not twice.
@@ -362,7 +413,7 @@ func hoistPure(fn *Func, lp loopSpan, escaped map[int64]bool) bool {
 		}
 	}
 	if len(roots) == 0 {
-		return false
+		return nil
 	}
 
 	var pre []Instr
@@ -400,18 +451,11 @@ func hoistPure(fn *Func, lp loopSpan, escaped map[int64]bool) bool {
 		replace[p] = slot
 	}
 
-	out := make([]Instr, 0, len(code)+len(pre))
-	out = append(out, code[:lp.head]...)
-	out = append(out, pre...)
-	for p := lp.head; p < len(code); p++ {
-		in := code[p]
-		if s, ok := replace[p]; ok {
-			in = Instr{Op: OpLoad, Dst: in.Dst, A: NoReg, B: NoReg, Imm: s, Comment: in.Comment}
-		}
-		out = append(out, in)
+	plan := &licmPlan{at: lp.head, pre: pre, replace: map[int]Instr{}}
+	for p, s := range replace {
+		plan.replace[p] = Instr{Op: OpLoad, Dst: code[p].Dst, A: NoReg, B: NoReg, Imm: s, Comment: code[p].Comment}
 	}
-	fn.Code = out
-	return true
+	return plan
 }
 
 // rotateLoops moves a loop's test to the bottom. A loop is lowered as
@@ -437,10 +481,8 @@ func rotateLoops(fn *Func) {
 	if len(fn.RegTypes) < fn.NRegs {
 		return
 	}
-	// The loops are found once. Rotating one moves the code after its
-	// test, so the positions of the loops still to do are shifted to
-	// match rather than found again: that was quadratic, and a long
-	// list literal has a loop per element.
+	// The loops are found once, and every rotation is planned against
+	// the code as it stands; see the end.
 	loops := findLoops(fn)
 	uses := map[Reg]int{}
 	for _, in := range fn.Code {
@@ -448,8 +490,10 @@ func rotateLoops(fn *Func) {
 			uses[r]++
 		}
 	}
-	for li, lp := range loops {
-		code := fn.Code
+	after := map[int]Instr{}
+	instead := map[int][]Instr{}
+	code := fn.Code
+	for _, lp := range loops {
 		h, end := lp.head, lp.end
 		if code[end].Op != OpJump || end+1 >= len(code) || code[end+1].Op != OpLabel {
 			continue
@@ -533,31 +577,29 @@ func rotateLoops(fn *Func) {
 		}
 		copyTest = append(copyTest, back)
 
-		out := make([]Instr, 0, len(code)+len(copyTest)+1)
-		out = append(out, code[:k+1]...)
-		out = append(out, Instr{Op: OpLabel, Dst: NoReg, A: NoReg, B: NoReg, Imm: again})
-		out = append(out, code[k+1:end]...)
-		out = append(out, copyTest...)
-		out = append(out, code[end+1:]...)
-		fn.Code = out
-
-		// One instruction went in after k, and the jump at end became
-		// the copied test.
-		shift := func(p int) int {
-			switch {
-			case p <= k:
-				return p
-			case p < end:
-				return p + 1
-			default:
-				return p + len(copyTest)
-			}
+		after[k] = Instr{Op: OpLabel, Dst: NoReg, A: NoReg, B: NoReg, Imm: again}
+		instead[end] = copyTest
+	}
+	if len(instead) == 0 {
+		return
+	}
+	// Every rotation's edits are at places of its own in the original
+	// code - a label after its test, the copied test where its jump
+	// back was - so they are worked out against that code and made in
+	// one pass. Copying the function once per loop rotated was
+	// quadratic: 2000 loops in one function took half a minute.
+	out := make([]Instr, 0, len(fn.Code)+len(after)+8*len(instead))
+	for p, in := range fn.Code {
+		if rep, ok := instead[p]; ok {
+			out = append(out, rep...)
+			continue
 		}
-		for lj := li + 1; lj < len(loops); lj++ {
-			loops[lj].head = shift(loops[lj].head)
-			loops[lj].end = shift(loops[lj].end)
+		out = append(out, in)
+		if lab, ok := after[p]; ok {
+			out = append(out, lab)
 		}
 	}
+	fn.Code = out
 }
 
 // instrRegs lists the registers an instruction reads.
