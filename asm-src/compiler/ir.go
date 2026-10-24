@@ -867,6 +867,8 @@ func scalarVty(t vty) bool {
 
 type lowerer struct {
 	tail *tailInfo // self calls in tail position, see tailcall.go
+	// jsonNull is the null node a json.decode shares; see jsonMember.
+	jsonNull jsonNullSlot
 	// fnDecls is every function's declaration by its called name, and
 	// readOnly the parameters found to be only read; see copyelide.go.
 	fnDecls  map[string]*FnDecl

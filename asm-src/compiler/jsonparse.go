@@ -48,10 +48,23 @@ func (l *lowerer) newJSONNode(kind int64) Reg {
 	node := l.allocTagged(l.constant(jsonNodeSize), l.constant(header))
 	l.regTy[node] = vStr
 
+	// Only an array has items and only an object keys and values; the
+	// other lists stay zero, and every reader checks the kind before it
+	// looks at one. Making all three for every node was six of its
+	// seven allocations, for strings and numbers that never use them.
+	none := l.constant(0)
+	items, keys, vals := none, none, none
+	switch kind {
+	case jsonArray:
+		items = l.newList(vNodeList, initialCap)
+	case jsonObject:
+		keys = l.newList(vListOf(vStr), initialCap)
+		vals = l.newList(vNodeList, initialCap)
+	}
 	l.emit(Instr{Op: OpStoreMem, A: node, B: l.emptyStr(), Imm: jnStr})
-	l.emit(Instr{Op: OpStoreMem, A: node, B: l.newList(vNodeList, initialCap), Imm: jnItems})
-	l.emit(Instr{Op: OpStoreMem, A: node, B: l.newList(vListOf(vStr), initialCap), Imm: jnKeys})
-	l.emit(Instr{Op: OpStoreMem, A: node, B: l.newList(vNodeList, initialCap), Imm: jnVals})
+	l.emit(Instr{Op: OpStoreMem, A: node, B: items, Imm: jnItems})
+	l.emit(Instr{Op: OpStoreMem, A: node, B: keys, Imm: jnKeys})
+	l.emit(Instr{Op: OpStoreMem, A: node, B: vals, Imm: jnVals})
 	l.emit(Instr{Op: OpStoreMem, A: node, B: l.constant(kind), Imm: jnKind})
 	l.emit(Instr{Op: OpStoreMem, A: node, B: l.floatConst(0), Imm: jnNumber})
 	return node

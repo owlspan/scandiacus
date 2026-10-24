@@ -54,6 +54,12 @@ func (l *lowerer) jsonDecodeBody(n Node, text Reg, want vty) Reg {
 
 	node, ok := l.parseDocument(text)
 
+	// One null node stands in for every missing member; see jsonMember.
+	savedNull := l.jsonNull
+	l.jsonNull = jsonNullSlot{fn: l.fn, slot: l.temp(vStr)}
+	l.emit(Instr{Op: OpStore, A: l.newJSONNode(jsonNull), Dst: NoReg, Imm: l.jsonNull.slot})
+	defer func() { l.jsonNull = savedNull }()
+
 	bad := l.newLabel()
 	done := l.newLabel()
 	l.emit(Instr{Op: OpJumpNot, A: ok, Dst: NoReg, Imm: bad})
@@ -231,12 +237,27 @@ func (l *lowerer) jsonToStruct(n Node, node Reg, t vty) (Reg, bool) {
 	return obj, true
 }
 
+// jsonNullSlot is the slot holding a decode's shared null node, and the
+// function it belongs to.
+type jsonNullSlot struct {
+	fn   *Func
+	slot int64
+}
+
 // jsonMember looks a key up in an object node, answering a null node
 // when it is not there - so the caller never has to check, and a missing
 // field takes the zero value its type gives.
 func (l *lowerer) jsonMember(node Reg, name string) Reg {
 	out := l.temp(vStr)
-	l.emit(Instr{Op: OpStore, A: l.newJSONNode(jsonNull), Dst: NoReg, Imm: out})
+	// The decode's shared null node when there is one: a node is only
+	// read here, so a fresh one per lookup was an allocation per field
+	// of every object decoded, for nothing.
+	null := l.jsonNull
+	if null.fn == l.fn {
+		l.emit(Instr{Op: OpStore, A: l.load(null.slot, vStr), Dst: NoReg, Imm: out})
+	} else {
+		l.emit(Instr{Op: OpStore, A: l.newJSONNode(jsonNull), Dst: NoReg, Imm: out})
+	}
 
 	done := l.newLabel()
 	l.emit(Instr{Op: OpJumpNot,
