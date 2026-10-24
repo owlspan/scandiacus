@@ -363,6 +363,7 @@ var arith = map[string]struct {
 	digit int  // for the immediate form
 }{
 	"add": {0x01, 0x03, 0},
+	"adc": {0x11, 0x13, 2},
 	"or":  {0x09, 0x0B, 1},
 	"and": {0x21, 0x23, 4},
 	"sub": {0x29, 0x2B, 5},
@@ -437,7 +438,7 @@ func (b *block) encode(m string, ops []operand) error {
 		return b.encodeTest(ops)
 	case "imul":
 		return b.encodeImul(ops)
-	case "idiv", "div", "neg", "not":
+	case "idiv", "div", "mul", "neg", "not":
 		return b.encodeUnary(m, ops)
 	case "shl", "sar", "shr":
 		return b.encodeShift(m, ops)
@@ -715,7 +716,7 @@ func (b *block) encodeImul(ops []operand) error {
 }
 
 func (b *block) encodeUnary(m string, ops []operand) error {
-	digit := map[string]int{"not": 2, "neg": 3, "div": 6, "idiv": 7}[m]
+	digit := map[string]int{"not": 2, "neg": 3, "mul": 4, "div": 6, "idiv": 7}[m]
 	if len(ops) != 1 {
 		return fmt.Errorf("%s wants one operand", m)
 	}

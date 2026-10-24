@@ -298,6 +298,9 @@ func Emit(m *Module) string {
 		e.label("__neg_one")
 		e.b.WriteString(fmt.Sprintf("    .quad %#x\n", math.Float64bits(-1)))
 	}
+	if e.mod.Helpers["floattostr"] {
+		e.b.WriteString(ryuTables())
+	}
 	for i, v := range m.Floats {
 		// .quad with the raw IEEE 754 bit pattern, computed here rather
 		// than trusting the assembler's own float literal syntax - the
@@ -1965,6 +1968,7 @@ __vy_uinttostr:
 	}
 
 	if e.mod.Helpers["floattostr"] {
+		e.b.WriteString(ryuFloatToStr())
 		// Go's fmt.Println prints a float64 as the shortest decimal that
 		// reads back to the exact same bits - strconv's 'g' format with
 		// precision -1. There is no equivalent single libc call, so this
@@ -1993,7 +1997,7 @@ __vy_uinttostr:
 __vy_f32tostr:
     mov r10d, 1
     jmp .Lftoa_entry
-__vy_floattostr:
+__vy_floattostr_slow:
     xor r10d, r10d
 .Lftoa_entry:
     push rbp
