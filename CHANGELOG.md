@@ -3,6 +3,29 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.89.0
+
+**Maps with string keys are about 2.5 times faster.** The string hash
+mixed each eight-byte word with a multiply alone, which never moves a
+bit downward, so keys that differed only in their last characters -
+`key12345`, `key12399` - fell into the same run of table slots. It now
+ends with MurmurHash3's finalizer, and 200000 inserts plus 200000
+lookups with keys like those take 0.16 s instead of 0.41 s. Struct keys
+get the same finish.
+
+**`str(n)` of an int no longer goes through the C library's printf**;
+it writes the digits itself.
+
+**CI**: the tail call test used loops long enough that an eager-GC
+build, which collects at every check, timed out on the Linux runner.
+
+**A correction to 1.87.0.** Its notes said the matrix multiply ran level
+with C. The C build it was measured against was an old one; rebuilt
+with zig cc -O2 for the machine's own CPU, clang vectorises that loop
+with AVX2 and runs it in 43 ms against Scandiacus's 93 ms. The README
+now has a table of five programs against C, measured the same way, and
+the programs are in asm-src/bench.
+
 ## 1.88.0
 
 **A `[]bool` takes one byte per element**, not eight. Fifty million
