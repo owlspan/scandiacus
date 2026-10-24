@@ -41,6 +41,7 @@ func Optimize(m *Module) {
 		if !envOff("SCANDIACUS_NOFOLD") {
 			fold(m, fn)
 		}
+		flipNotBranches(fn)
 		if !envOff("SCANDIACUS_NODCE") {
 			dce(fn)
 		}
@@ -891,6 +892,39 @@ func packSlots(fn *Func) {
 }
 
 // ---- collection checks ----
+
+// flipNotBranches turns a branch on !x into the opposite branch on x,
+// when the negation has no other reader: `if !seen[i]` loaded the byte,
+// made a 0 or 1 of its opposite, tested that and branched, and now loads
+// it and branches. dce then drops the negation.
+func flipNotBranches(fn *Func) {
+	def := map[Reg]int{}
+	uses := map[Reg]int{}
+	for i, in := range fn.Code {
+		if in.Dst != NoReg {
+			def[in.Dst] = i
+		}
+		for _, r := range instrRegs(in) {
+			uses[r]++
+		}
+	}
+	for i := range fn.Code {
+		in := &fn.Code[i]
+		if in.Op != OpJumpIf && in.Op != OpJumpNot {
+			continue
+		}
+		d, ok := def[in.A]
+		if !ok || fn.Code[d].Op != OpNot || uses[in.A] != 1 || fn.Code[d].A == NoReg {
+			continue
+		}
+		in.A = fn.Code[d].A
+		if in.Op == OpJumpIf {
+			in.Op = OpJumpNot
+		} else {
+			in.Op = OpJumpIf
+		}
+	}
+}
 
 // ownCall is a direct call to one of the program's own functions, as
 // against the runtime's helpers, native code and closures.

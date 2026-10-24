@@ -1456,6 +1456,14 @@ func (l *lowerer) errorAt(n Node, format string, args ...any) {
 }
 
 func (l *lowerer) newReg() Reg {
+	// Register 0 is never handed out. An instruction that does not use
+	// its B (or Dst) field leaves it zero, and with a real v0 every such
+	// instruction counted as a use of it - usually a function's first
+	// parameter, which then looked too busy for the passes that want a
+	// value read once.
+	if l.fn.NRegs == 0 {
+		l.fn.NRegs = 1
+	}
 	r := Reg(l.fn.NRegs)
 	l.fn.NRegs++
 	return r

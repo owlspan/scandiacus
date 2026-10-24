@@ -218,6 +218,10 @@ func (l *lowerer) listPush(list, val Reg) {
 	l.emit(Instr{Op: OpJumpIf, A: room, Dst: NoReg, Imm: fast, Comment: "push: room?"})
 	sym, valTy := l.listPushSlow(t)
 	l.callHelper(sym, []Reg{list, val}, []vty{vInt, valTy}, vInt)
+	// The check for a collection is made here, on the path that may
+	// have allocated, so the common path needs none: a loop that only
+	// pushes keeps no check per trip (dropPolls).
+	l.maybeCollect()
 	l.jump(done)
 
 	l.mark(fast)

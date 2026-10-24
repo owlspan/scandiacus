@@ -118,6 +118,13 @@ func (e *Emitter) immB(in Instr) (int64, bool) {
 		OpEq, OpNe, OpLt, OpLe, OpGt, OpGe, OpStoreMem,
 		OpLtU, OpLeU, OpGtU, OpGeU:
 		return v, true
+	case OpPoke:
+		// Not a 16-bit store: its immediate is two bytes, which the
+		// byte writer does not size, and floats go through xmm0.
+		switch in.Imm {
+		case memU8, memI8, memU32, memI32, memI64:
+			return v, true
+		}
 	case OpShl, OpShr:
 		if v >= 0 && v < 64 {
 			return v, true
@@ -445,6 +452,17 @@ func (e *Emitter) selArith(in Instr) {
 		}
 		return
 	}
+	if v, ok := e.immB(in); ok && isGPR(d) && isGPR(a) && d != a && (in.Op == OpAdd || in.Op == OpSub) {
+		// A sum into another register is one lea, not a copy and an
+		// add: n - 1 into an argument register is lea rcx, [rbx-1].
+		if in.Op == OpSub {
+			v = -v
+		}
+		if fits32(v) {
+			e.line("lea %s, [%s%+d]", d, a, v)
+			return
+		}
+	}
 	if isRegLoc(d) {
 		if d == b && d != a {
 			// The result's register holds B, so loading A into it first
@@ -599,6 +617,16 @@ func (e *Emitter) emitPeek(in Instr, addr string) {
 // emitPoke writes a value to memory at a C width. scratch is rcx or
 // rdx, whichever the address does not already use.
 func (e *Emitter) emitPoke(in Instr, addr, scratch string) {
+	if v, ok := e.immB(in); ok {
+		// A constant goes in as an immediate of the store's width:
+		// comp[j] = true is one mov byte ptr [...], 1.
+		width := map[int64]string{memU8: "byte", memI8: "byte", memU32: "dword", memI32: "dword"}[in.Imm]
+		if width == "" {
+			width = "qword"
+		}
+		e.line("mov %s ptr %s, %d", width, addr, v)
+		return
+	}
 	b := e.loc(in.B)
 	switch in.Imm {
 	case memF32:

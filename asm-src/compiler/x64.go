@@ -821,6 +821,32 @@ func (e *Emitter) function(f *Func) {
 				e.alias[in.Dst] = r
 			}
 		}
+		if in.Op == OpParam && in.Imm < 4 && j >= 0 && f.Code[j].Op == OpStore &&
+			f.Code[j].A == in.Dst {
+			if r, kept := e.promoted[f.Code[j].Imm]; kept {
+				if _, aliased := e.alias[in.Dst]; !aliased {
+					// A parameter being stored into a local kept in a
+					// register goes from its argument register straight
+					// there. Through its frame word it was a store and a
+					// load on every call, the load waiting on the store.
+					// The word is still written when something else
+					// reads the parameter.
+					float := e.f.ParamTypes[in.Imm].k == kFloat
+					if float == isXmm(r) {
+						if uses[in.Dst] > 1 {
+							e.instr(in)
+						}
+						if float {
+							e.line("movsd %s, %s", r, xmmArgs[in.Imm])
+						} else {
+							e.line("mov %s, %s", r, argRegs[in.Imm])
+						}
+						i = j
+						continue
+					}
+				}
+			}
+		}
 		if in.Op == OpParam && j >= 0 && f.Code[j].Op == OpStore && f.Code[j].A == in.Dst &&
 			onceSlots[f.Code[j].Imm] {
 			if _, kept := e.promoted[f.Code[j].Imm]; !kept {
