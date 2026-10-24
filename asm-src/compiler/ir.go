@@ -866,6 +866,7 @@ func scalarVty(t vty) bool {
 // ---- lowering ----
 
 type lowerer struct {
+	tail *tailInfo // self calls in tail position, see tailcall.go
 	// fnDecls is every function's declaration by its called name, and
 	// readOnly the parameters found to be only read; see copyelide.go.
 	fnDecls  map[string]*FnDecl
@@ -1229,6 +1230,7 @@ func (l *lowerer) function(fd *FnDecl) {
 		}
 		l.storeLocal(slot, d)
 	}
+	l.tailStart(fd, s.params, s.ret)
 
 	l.defers = nil
 	l.stmtList(fd.Body.Stmts)
@@ -1638,6 +1640,9 @@ func (l *lowerer) stmt(s Stmt) {
 			l.emit(Instr{Op: OpRet, A: NoReg, Dst: NoReg, Comment: "return"})
 			return
 		}
+		if l.tailReturn(st) {
+			return
+		}
 		// A function returning []int can be returned an empty literal,
 		// so the return type is a hint like any other. Strip the `!`
 		// first: `return []` inside a []int! is boxed by a Widen the
@@ -1652,6 +1657,7 @@ func (l *lowerer) stmt(s Stmt) {
 		if l.fn.Ret.k == kFloat && !l.fn.Ret.res && l.regTy[v].k == kInt {
 			v = l.toFloat(v)
 		}
+		v = l.tailResult(v)
 		if l.hasDefers(0) {
 			// The value is worked out first, as a deferred statement
 			// could change what it reads; it waits in a slot meanwhile.
