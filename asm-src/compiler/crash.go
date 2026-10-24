@@ -104,18 +104,38 @@ func (l *lowerer) buildCrashHandler() {
 
 		where := l.temp(vStr)
 		l.emit(Instr{Op: OpStore, A: l.strLit("the runtime"), Dst: NoReg, Imm: where})
+		// The functions are written out in this order, so the last one
+		// starting at or below the address is the one it is in. A table
+		// and a loop rather than a compare and a store per function,
+		// which grew every program by some thirty bytes a function.
 		for _, f := range funcs {
-			sym := "main"
-			name := "the top level"
+			sym, name := "main", "the top level"
 			if f.Name != "main" {
 				sym, name = fnSym(f.Name), f.Name
 			}
-			next := l.newLabel()
-			l.emit(Instr{Op: OpJumpNot, A: l.compare(OpGe, l.load(ripSlot, vInt), l.symAddr(sym)),
-				Dst: NoReg, Imm: next})
-			l.emit(Instr{Op: OpStore, A: l.strLit(name), Dst: NoReg, Imm: where})
-			l.mark(next)
+			l.mod.FnTable = append(l.mod.FnTable, FnName{Sym: sym, Str: l.mod.intern(name)})
 		}
+		tab := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: l.symAddr("__vy_fntab"), Dst: NoReg, Imm: tab})
+		row := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, l.load(tab, vInt), l.constant(wordSize)), Dst: NoReg, Imm: row})
+		last := l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, l.load(row, vInt),
+			l.arith(OpMul, l.peekWord(l.load(tab, vInt), 0), l.constant(8))), Dst: NoReg, Imm: last})
+		top, done := l.newLabel(), l.newLabel()
+		l.mark(top)
+		l.emit(Instr{Op: OpJumpNot, A: l.compare(OpLt, l.load(row, vInt), l.load(last, vInt)), Dst: NoReg, Imm: done})
+		r := l.load(row, vInt)
+		fnAt := l.arith(OpAdd, r, l.loadWidth(r, memI32))
+		skip := l.newLabel()
+		l.emit(Instr{Op: OpJumpNot, A: l.compare(OpGe, l.load(ripSlot, vInt), fnAt), Dst: NoReg, Imm: skip})
+		nameField := l.arith(OpAdd, l.load(row, vInt), l.constant(4))
+		name := l.arith(OpAdd, nameField, l.loadWidth(nameField, memI32))
+		l.emit(Instr{Op: OpStore, A: l.retype(name, vStr), Dst: NoReg, Imm: where})
+		l.mark(skip)
+		l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, l.load(row, vInt), l.constant(8)), Dst: NoReg, Imm: row})
+		l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
+		l.mark(done)
 		native := l.newLabel()
 		l.emit(Instr{Op: OpJumpNot, A: l.compare(OpGe, l.load(ripSlot, vInt), l.symAddr("__vy_text_end")),
 			Dst: NoReg, Imm: native})

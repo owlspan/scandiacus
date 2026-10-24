@@ -22,6 +22,7 @@ import (
 	"math"
 	"os"
 	"sort"
+	"strings"
 )
 
 func envOff(name string) bool { return os.Getenv(name) == "1" }
@@ -891,6 +892,12 @@ func packSlots(fn *Func) {
 
 // ---- collection checks ----
 
+// ownCall is a direct call to one of the program's own functions, as
+// against the runtime's helpers, native code and closures.
+func ownCall(in *Instr) bool {
+	return in.Op == OpCall && !in.Extern && !strings.HasPrefix(in.Sym, "__")
+}
+
 // dropPolls removes each statement's collection check that no path can
 // reach having allocated since the last one.
 //
@@ -1000,6 +1007,15 @@ func dropPolls(fn *Func, threaded bool) {
 					drop[i] = true
 				}
 				dirty = false
+			case ownCall(in):
+				// The program's own function checks for itself: its
+				// first statement starts with a check, and so does every
+				// statement after one that allocated. At most its last
+				// statement's allocation is still unchecked when it
+				// returns, and the next check anywhere sees it - the
+				// next call's own first check, a loop's, or the one
+				// after this function's next allocation. A check after
+				// every such call was 22 bytes a statement.
 			case raBarrier(in):
 				dirty = true
 			}

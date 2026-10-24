@@ -130,7 +130,7 @@ func assembleObject(text string, static map[string]bool) (*object, error) {
 
 	b.settle()
 	obj.text = b.code
-	obj.relocs = b.relocs
+	obj.relocs = append(obj.relocs, b.relocs...) // after any .long in .rdata
 	for name, off := range b.labels {
 		obj.sym[name] = symbol{secText, off}
 	}
@@ -199,6 +199,27 @@ func (obj *object) directive(line string, cur secID, extern map[string]bool) (se
 		}
 		var buf [8]byte
 		for i := 0; i < 8; i++ {
+			buf[i] = byte(v >> (8 * i))
+		}
+		return cur, obj.emit(cur, buf[:])
+
+	case ".long":
+		// A number, or "sym - .": the distance from this field to a
+		// label, which is what a table of offsets is made of.
+		if cur != secRdata {
+			return cur, fmt.Errorf(".long only goes in .rdata")
+		}
+		var buf [4]byte
+		if sym, ok := strings.CutSuffix(arg, " - ."); ok {
+			at := obj.size(cur)
+			obj.relocs = append(obj.relocs, reloc{at: at, sym: strings.TrimSpace(sym), next: at, sec: cur, kind: relRel32})
+			return cur, obj.emit(cur, buf[:])
+		}
+		v, err := strconv.ParseInt(arg, 0, 64)
+		if err != nil {
+			return cur, fmt.Errorf("bad .long %q", arg)
+		}
+		for i := 0; i < 4; i++ {
 			buf[i] = byte(v >> (8 * i))
 		}
 		return cur, obj.emit(cur, buf[:])

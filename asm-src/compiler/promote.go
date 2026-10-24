@@ -242,8 +242,26 @@ func (e *Emitter) savedRegs() []string {
 // saveAt is where callee-saved register i is kept in the frame: two
 // words each, room for the whole of an xmm register.
 func (e *Emitter) saveAt(i int) string {
-	off := (int64(e.f.NSlots) + e.nvslots + 2*int64(i) + 2) * 8
+	// i counts every saved register; the pushed general ones come first
+	// in that order and take no room here.
+	i -= e.pushedGP
+	off := (int64(e.f.NSlots)+e.nvslots+2*int64(i)+2)*8 + int64(e.pushedGP)*8
 	return "[rbp-" + strconv.FormatInt(off, 10) + "]"
+}
+
+// restoreSaved puts back every callee-saved register before a return:
+// the pushed ones from under rbp, where the prologue's pushes left them,
+// with a mov each so the epilogue keeps the shape the unwinder knows.
+func (e *Emitter) restoreSaved() {
+	gp := 0
+	for i, r := range e.saved {
+		if isXmm(r) {
+			e.restoreReg(i, r)
+			continue
+		}
+		gp++
+		e.line("mov %s, qword ptr [rbp-%d]", r, gp*8)
+	}
 }
 
 func (e *Emitter) saveReg(i int, r string) {

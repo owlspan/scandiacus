@@ -715,6 +715,17 @@ type Module struct {
 	// Views names the extern structs: their memory is anybody's, so
 	// the optimizer treats a field of one as raw memory.
 	Views map[string]bool
+
+	// FnTable is every function's symbol and the string naming it, in
+	// the order the functions are written out, for the crash handler to
+	// say which one an address is in; see buildCrashHandler.
+	FnTable []FnName
+}
+
+// FnName is one row of the function table.
+type FnName struct {
+	Sym string
+	Str int64 // index into Strings
 }
 
 func (m *Module) needs(h string) { m.Helpers[h] = true }

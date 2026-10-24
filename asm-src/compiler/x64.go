@@ -41,6 +41,10 @@ import (
 )
 
 type Emitter struct {
+	// pushedGP is how many general callee-saved registers the prologue
+	// pushed, right under rbp: the frame's slots start below them.
+	pushedGP int
+
 	b   strings.Builder
 	f   *Func
 	mod *Module
@@ -137,7 +141,7 @@ func (e *Emitter) slotAddr(slot int64) string {
 	if r, ok := e.promoted[slot]; ok {
 		return r // see promote.go
 	}
-	return fmt.Sprintf("qword ptr [rbp-%d]", (slot+1)*8)
+	return fmt.Sprintf("qword ptr [rbp-%d]", (slot+1)*8+int64(e.pushedGP)*8)
 }
 
 func (e *Emitter) regAddr(r Reg) string {
@@ -145,7 +149,7 @@ func (e *Emitter) regAddr(r Reg) string {
 	if !ok {
 		idx = e.nvslots - 1 // pooled: nothing should land here, but a word is kept for it
 	}
-	off := (idx + int64(e.f.NSlots) + 1) * 8
+	off := (idx+int64(e.f.NSlots)+1)*8 + int64(e.pushedGP)*8
 	return fmt.Sprintf("qword ptr [rbp-%d]", off)
 }
 
@@ -154,17 +158,109 @@ func (e *Emitter) regAddr(r Reg) string {
 // values never touch memory once allocation has run, and a frame sized
 // for all of them made every call's frame several times larger than
 // what it used, which a deep recursion pays for in stack and cache.
+//
+// Not in a program that starts threads: there, a word a value has
+// finished with can still be the one place another thread's collection
+// finds an object the thread code holds only as an int, and sharing it
+// freed objects that were still in use (tests/threads under eager
+// collection). Such a program keeps a word per value.
+//
+// Values whose lives do not overlap share a word, the way the register
+// allocator shares registers. A life is the run from the value's write
+// to its last read, widened over any loop it is live across part of: a
+// value read inside a loop it was made before stays live until the
+// loop's last instruction, since the back edge reads it again, and one
+// made inside a loop and read after it is live from the loop's head.
+// In a long top level each statement's values used to take words of
+// their own, so the frame grew with the program and every access to it
+// needed a four-byte offset.
 func (e *Emitter) layoutRegs(f *Func) {
 	e.vslot = make(map[Reg]int64, f.NRegs)
-	var n int64
+	defOf := make([]int, f.NRegs)
+	lastOf := make([]int, f.NRegs)
+	for i := range defOf {
+		defOf[i] = -1
+	}
+	note := func(r Reg, pos int) {
+		if r >= 0 && int(r) < f.NRegs {
+			if defOf[r] < 0 || pos < defOf[r] {
+				defOf[r] = pos
+			}
+			if pos > lastOf[r] {
+				lastOf[r] = pos
+			}
+		}
+	}
+	for i := range f.Code {
+		in := &f.Code[i]
+		note(in.Dst, i)
+		note(in.A, i)
+		note(in.B, i)
+		for _, a := range in.Args {
+			note(a, i)
+		}
+	}
+	// Every backward jump closes a loop from its label to itself.
+	labelAt := labelPositions(f)
+	type loop struct{ head, end int }
+	var loops []loop
+	for i, in := range f.Code {
+		switch in.Op {
+		case OpJump, OpJumpIf, OpJumpNot:
+			if h, ok := labelAt[in.Imm]; ok && h <= i {
+				loops = append(loops, loop{h, i})
+			}
+		}
+	}
+	type span struct {
+		r         Reg
+		def, last int
+	}
+	var spans []span
 	for r := 0; r < f.NRegs; r++ {
-		if _, pooled := e.homes[Reg(r)]; pooled {
+		if _, pooled := e.homes[Reg(r)]; pooled || defOf[r] < 0 {
 			continue
 		}
-		e.vslot[Reg(r)] = n
-		n++
+		d, l := defOf[r], lastOf[r]
+		for changed := true; changed; {
+			changed = false
+			for _, lp := range loops {
+				if d < lp.head && l >= lp.head && l < lp.end {
+					l, changed = lp.end, true
+				}
+				if d > lp.head && d <= lp.end && l > lp.end {
+					d, changed = lp.head, true
+				}
+			}
+		}
+		spans = append(spans, span{Reg(r), d, l})
 	}
-	e.nvslots = n + 1
+	// Linear scan, in order of the start of each life: a word is free
+	// again once its value has been read for the last time, at or before
+	// this one is written - an instruction reads before it writes.
+	sort.Slice(spans, func(i, j int) bool {
+		if spans[i].def != spans[j].def {
+			return spans[i].def < spans[j].def
+		}
+		return spans[i].r < spans[j].r
+	})
+	var busyUntil []int
+	for _, sp := range spans {
+		word := -1
+		for w, u := range busyUntil {
+			if !e.mod.Threaded && u <= sp.def {
+				word = w
+				break
+			}
+		}
+		if word < 0 {
+			busyUntil = append(busyUntil, 0)
+			word = len(busyUntil) - 1
+		}
+		busyUntil[word] = sp.last
+		e.vslot[sp.r] = int64(word)
+	}
+	e.nvslots = int64(len(busyUntil)) + 1
 }
 
 // loc is where a virtual register lives: a machine register for the few
@@ -210,12 +306,44 @@ func (e *Emitter) outgoing() int {
 }
 
 func (e *Emitter) frameSize() int {
-	n := (int64(e.f.NSlots) + e.nvslots + 2*int64(len(e.saved))) * 8
+	n := (int64(e.f.NSlots) + e.nvslots + 2*int64(len(e.saved)-e.pushedGP)) * 8
 	n += int64(e.outgoing())
-	if n%16 != 0 {
-		n += 16 - n%16
+	// rsp is aligned after push rbp; the pushes and this together must
+	// keep it so.
+	for (n+int64(e.pushedGP)*8)%16 != 0 {
+		n += 8
 	}
 	return int(n)
+}
+
+// endsFlow reports whether nothing runs after an instruction of this
+// kind in a straight line.
+func endsFlow(op Op) bool {
+	switch op {
+	case OpRet, OpJump, OpBoundsFail, OpMustFail:
+		return true
+	}
+	return false
+}
+
+// boundsCall reports a failed index: the index in rcx, the length in
+// rdx and where it happened in r8, for __vy_bounds to record. Passing
+// the place in a register, rather than storing it here, is eleven bytes
+// less at every index the program checks.
+func (e *Emitter) boundsCall(in Instr, idx, length string) {
+	if length == "rcx" {
+		e.line("mov rdx, rcx")
+		e.line("mov rcx, %s", idx)
+	} else {
+		e.line("mov rcx, %s", idx)
+		e.line("mov rdx, %s", length)
+	}
+	if in.Imm > 0 {
+		e.line("lea r8, __str%d[rip]", in.Imm-1)
+	} else {
+		e.line("xor r8d, r8d")
+	}
+	e.line("call __vy_bounds")
 }
 
 func Emit(m *Module) string {
@@ -301,6 +429,19 @@ func Emit(m *Module) string {
 	if e.mod.Helpers["floattostr"] {
 		e.b.WriteString(ryuTables())
 	}
+	if len(m.FnTable) > 0 {
+		// Each row is two offsets from the row itself: the function and
+		// its name. Offsets rather than addresses, so the table needs no
+		// relocation when the image moves, and stays eight bytes a row.
+		e.b.WriteString("    .align 8\n")
+		e.label("__vy_fntab")
+		e.b.WriteString(fmt.Sprintf("    .quad %d\n", len(m.FnTable)))
+		for _, f := range m.FnTable {
+			e.b.WriteString(fmt.Sprintf("    .long %s - .\n", f.Sym))
+			e.b.WriteString(fmt.Sprintf("    .long __str%d - .\n", f.Str))
+		}
+	}
+
 	for i, v := range m.Floats {
 		// .quad with the raw IEEE 754 bit pattern, computed here rather
 		// than trusting the assembler's own float literal syntax - the
@@ -558,6 +699,12 @@ func (e *Emitter) function(f *Func) {
 		e.planConsts(f)
 	}
 	e.saved = e.savedRegs()
+	e.pushedGP = 0
+	for _, r := range e.saved {
+		if !isXmm(r) {
+			e.pushedGP++
+		}
+	}
 	e.layoutRegs(f)
 	name := f.Name
 	if name != "main" {
@@ -570,9 +717,19 @@ func (e *Emitter) function(f *Func) {
 		f.NParams, f.NSlots, f.NRegs))
 	e.line("push rbp")
 	e.line("mov rbp, rsp")
+	// The general callee-saved registers are pushed, after rbp is the
+	// frame pointer so the unwind description stays the same; see
+	// pushedGP. The xmm ones go in the frame.
+	for _, r := range e.saved {
+		if !isXmm(r) {
+			e.line("push %s", r)
+		}
+	}
 	e.reserve(e.frameSize())
 	for i, r := range e.saved {
-		e.saveReg(i, r)
+		if isXmm(r) {
+			e.saveReg(i, r)
+		}
 	}
 
 	if f.Env {
@@ -619,6 +776,22 @@ func (e *Emitter) function(f *Func) {
 	e.jumps = jumpsTo(f)
 	fixed := e.fixedSlots(f)
 	steady := e.steadyLoads(f)
+	// The slots written exactly once, whose address is never taken.
+	onceSlots := map[int64]bool{}
+	stores := map[int64]int{}
+	for _, in := range f.Code {
+		switch in.Op {
+		case OpStore:
+			stores[in.Imm]++
+		case OpSlotAddr, OpStoreByte:
+			stores[in.Imm] += 2
+		}
+	}
+	for slot, n := range stores {
+		if n == 1 {
+			onceSlots[slot] = true
+		}
+	}
 	for i := 0; i < len(f.Code); i++ {
 		in := f.Code[i]
 		if in.Op == OpLoad {
@@ -648,6 +821,21 @@ func (e *Emitter) function(f *Func) {
 				e.alias[in.Dst] = r
 			}
 		}
+		if in.Op == OpParam && j >= 0 && f.Code[j].Op == OpStore && f.Code[j].A == in.Dst &&
+			onceSlots[f.Code[j].Imm] {
+			if _, kept := e.promoted[f.Code[j].Imm]; !kept {
+				if _, aliased := e.alias[in.Dst]; !aliased {
+					// A parameter stored into a local that nothing writes
+					// again lives in that local's slot: it arrives there,
+					// rather than in a frame word of its own and then a
+					// copy.
+					e.alias[in.Dst] = e.slotAddr(f.Code[j].Imm)
+					e.instr(in)
+					i = j
+					continue
+				}
+			}
+		}
 		if j >= 0 && e.fuseFloatBranch(in, f.Code[j], uses) {
 			i = j
 			continue
@@ -675,11 +863,17 @@ func (e *Emitter) function(f *Func) {
 	}
 
 	// Fallthrough epilogue, for a void function with no explicit return.
-	e.comment("epilogue")
-	e.line("xor eax, eax")
-	e.line("mov rsp, rbp")
-	e.line("pop rbp")
-	e.line("ret")
+	// The lowerer ends nearly every function with a return of its own,
+	// and then nothing can reach this; it is written only when the last
+	// instruction could fall through.
+	if n := len(f.Code); n == 0 || !endsFlow(f.Code[n-1].Op) {
+		e.comment("epilogue")
+		e.line("xor eax, eax")
+		e.restoreSaved()
+		e.line("mov rsp, rbp")
+		e.line("pop rbp")
+		e.line("ret")
+	}
 	e.b.WriteString(e.cold.String())
 }
 
@@ -828,10 +1022,7 @@ func (e *Emitter) checkIndex(in Instr) {
 	main := e.b
 	e.b = e.cold
 	e.label(label)
-	e.where(in)
-	e.line("mov rcx, %s", a)
-	e.line("mov rdx, %s", b)
-	e.line("call __vy_bounds")
+	e.boundsCall(in, a, b)
 	e.cold = e.b
 	e.b = main
 }
@@ -1170,9 +1361,7 @@ func (e *Emitter) instr(in Instr) {
 		default:
 			e.line("xor eax, eax")
 		}
-		for i, r := range e.saved {
-			e.restoreReg(i, r)
-		}
+		e.restoreSaved()
 		e.line("mov rsp, rbp")
 		e.line("pop rbp")
 		e.line("ret")
@@ -1377,10 +1566,7 @@ func (e *Emitter) instr(in Instr) {
 		e.checkIndex(in)
 
 	case OpBoundsFail:
-		e.where(in)
-		e.line("mov rcx, %s", e.loc(in.A))
-		e.line("mov rdx, %s", e.loc(in.B))
-		e.line("call __vy_bounds")
+		e.boundsCall(in, e.loc(in.A), e.loc(in.B))
 
 	case OpMustFail:
 		e.where(in)
@@ -1843,6 +2029,12 @@ __vy_bounds:
     push rbp
     mov rbp, rsp
     sub rsp, 256
+    # r8 is where the failed index was, or zero; see boundsCall.
+    test r8, r8
+    je .Lbounds_nowhere
+    lea rax, __globals[rip]
+    mov qword ptr [rax+72], r8
+.Lbounds_nowhere:
     mov qword ptr [rbp-208], rcx
     mov qword ptr [rbp-216], rdx
     xor ecx, ecx
