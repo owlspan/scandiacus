@@ -316,6 +316,18 @@ func (e *Emitter) frameSize() int {
 	return int(n)
 }
 
+// simpleIntDef is an instruction that writes its result with no
+// register of its own on the side - not a shift, which wants cl, nor a
+// division, which takes rdx - so its result may go straight into rax or
+// an argument register.
+func simpleIntDef(in Instr) bool {
+	switch in.Op {
+	case OpAdd, OpSub, OpBAnd, OpBOr, OpBXor, OpConst, OpLoad, OpLoadMem:
+		return true
+	}
+	return false
+}
+
 // endsFlow reports whether nothing runs after an instruction of this
 // kind in a straight line.
 func endsFlow(op Op) bool {
@@ -862,6 +874,27 @@ func (e *Emitter) function(f *Func) {
 				}
 			}
 		}
+		if j >= 0 && in.Dst != NoReg && uses[in.Dst] == 1 && e.homes != nil && simpleIntDef(in) &&
+			int(in.Dst) < len(f.RegTypes) && f.RegTypes[in.Dst].k != kFloat {
+			if _, aliased := e.alias[in.Dst]; !aliased {
+				// A value whose one reader is the very next instruction,
+				// a return or a call taking it among the first four
+				// arguments, is worked out in the register that reader
+				// wants: no copy into rax or rcx afterwards.
+				nx := f.Code[j]
+				if nx.Op == OpRet && nx.A == in.Dst && e.f.Ret.k != kFloat {
+					e.alias[in.Dst] = "rax"
+				} else if nx.Op == OpCall && len(nx.Args) <= 4 {
+					// rcx and rdx only: r8 and r9 are pool registers too,
+					// and another argument may still be waiting in one.
+					for ai, a := range nx.Args {
+						if ai < 2 && a == in.Dst && nx.ArgTypes[ai].k != kFloat {
+							e.alias[in.Dst] = argRegs[ai]
+						}
+					}
+				}
+			}
+		}
 		if j >= 0 && e.fuseFloatBranch(in, f.Code[j], uses) {
 			i = j
 			continue
@@ -1383,7 +1416,9 @@ func (e *Emitter) instr(in Instr) {
 		case in.A != NoReg && e.f.Ret.k == kFloat:
 			e.line("movsd xmm0, %s", e.loc(in.A))
 		case in.A != NoReg:
-			e.line("mov rax, %s", e.loc(in.A))
+			if src := e.loc(in.A); src != "rax" {
+				e.line("mov rax, %s", src)
+			}
 		default:
 			e.line("xor eax, eax")
 		}
@@ -1696,7 +1731,7 @@ func (e *Emitter) loadWindowArgs(in Instr) {
 				if in.Variadic && src != argRegs[i] {
 					e.line("mov %s, %s", argRegs[i], src)
 				}
-			} else {
+			} else if src != argRegs[i] {
 				e.line("mov %s, %s", argRegs[i], src)
 			}
 		}
