@@ -12,12 +12,12 @@
 
 #define AppName "Scandiacus"
 #define ShortName "scandiacus"
-#define AppVersion "1.93.0"
+#define AppVersion "1.94.0"
 #define AppPublisher "Scandiacus"
 #define AppExeName "scandiacus.exe"
 ; Has to match editors/vscode/package.json, which is the version VS
 ; Code records for the extension. build.ps1 checks both against scandiacus.exe.
-#define ExtVersion "1.93.0"
+#define ExtVersion "1.94.0"
 
 [Setup]
 AppId={{B7D42A19-3E6C-4F80-A5D3-91C7E20B4F68}
