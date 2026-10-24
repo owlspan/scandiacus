@@ -3,6 +3,20 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.92.0
+
+**toFloat is about three times faster.** It made two throwaway strings
+for every number - a lowered copy to rule out `inf` and `nan`, and a
+copy with underscores removed whether there were any or not - before
+calling the C library's strtod. Those copies are gone, and a number
+with at most fifteen significant digits and a power of ten within
+10^22 either way, which is nearly every number in a CSV file or a
+form, is converted without strtod: both parts are exact doubles, so
+one multiply or divide gives the correctly rounded value. Results are
+identical to Go's ParseFloat on 200000 generated strings. Reading a
+million CSV lines and summing a float column went from 0.79 s to
+0.55 s.
+
 ## 1.91.0
 
 **json.decode is about twice as fast.** Each value in a parsed document
