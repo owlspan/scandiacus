@@ -613,20 +613,28 @@ peephole and the register allocator from step 10. On top of those:
   next call in a callee-saved register; and a frame only has words for
   the values that are not in registers.
 
-`SCANDIACUS_NOOPT=1` turns all of it off. Against `gcc -O2` on the same
-programs, best of three on one machine:
+- **Hoisted arithmetic.** `i * n` in `c[i * n + j]` is worked out once
+  before the `j` loop, not on every trip.
+- **Tail calls.** `return f(...)` inside `f` is a jump, and
+  `return e + f(...)` on ints keeps an accumulator.
+- **Byte-sized bools.** A `[]bool` takes one byte per element.
 
-| | Scandiacus | gcc -O2 |
+`SCANDIACUS_NOOPT=1` turns all of it off. Against C built by
+`zig cc -O2` (clang, for the machine's own CPU, so it may use AVX2) on
+the same programs, best of five on one machine, 1.89.0:
+
+| | Scandiacus | C |
 | --- | ---: | ---: |
-| fib(32), recursive calls | 122 ms | 99 ms |
-| 200M iterations of `total += (i * i) % 7` | 417 ms | 406 ms |
-| sieve over a 20M-element list | 917 ms | 584 ms |
-| 100M float multiply-adds | 506 ms | 367 ms |
-| summing a `*i32` of 10M elements, ten times | 195 ms | 132 ms |
-| 300k int map inserts and lookups | 249 ms | 133 ms |
+| fib(37), recursive calls | 198 ms | 143 ms |
+| 400M iterations of `s += (i * i) % 7 + (i >> 3)` | 645 ms | 499 ms |
+| sieve of Eratosthenes to 50M, a `[]bool` | 639 ms | 439 ms |
+| 400x400 float matrix multiply | 93 ms | 43 ms |
+| 1000 structs moved 20000 times | 68 ms | 60 ms |
 
-The C map is a hand-written open-addressed table. The Scandiacus list is
-bounds-checked on every access, and the C array is not.
+Clang vectorises the matrix multiply with AVX2, four doubles at a time;
+Scandiacus has no vectoriser. The Scandiacus lists are bounds-checked on
+every access, and the C arrays are not. The programs are in
+`asm-src/bench`.
 
 ## What comes next
 
