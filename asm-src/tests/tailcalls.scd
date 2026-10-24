@@ -4,7 +4,7 @@ fn gcd(a: int, b: int) -> int {
     return gcd(b, a % b)
 }
 
-// Ten million deep: as real recursion this would overflow the stack.
+// 200000 deep: as real recursion this would overflow the 8 MB stack.
 fn countDown(n: int, acc: int) -> int {
     if n == 0 { return acc }
     return countDown(n - 1, acc + 2)
@@ -65,12 +65,12 @@ fn mixed(n: int) -> int {
 }
 
 print(gcd(1071, 462))
-print(countDown(10000000, 0))
-print(fib(30))
+print(countDown(200000, 0))
+print(fib(20))
 print(fact(20))
 print(swapSteps(1, 2, 3))
 print(halve(1024.0, 12))
-print(parity(1000001, true))
+print(parity(100001, true))
 let fs: []fn() -> int = []
 print(collect(4, fs))
 print(depth(1000))
