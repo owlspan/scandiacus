@@ -43,16 +43,23 @@ func licm(m *Module, fn *Func) {
 		escaped[0] = true
 	}
 	tried := map[int64]bool{}
+	triedPure := map[int64]bool{}
 	for round := 0; round < 256; round++ {
 		moved := false
 		for _, lp := range findLoops(fn) {
-			if tried[lp.label] {
-				continue
+			if !tried[lp.label] {
+				tried[lp.label] = true
+				if hoistLoop(m, fn, lp, escaped) {
+					moved = true
+					break // positions have shifted; find the loops again
+				}
 			}
-			tried[lp.label] = true
-			if hoistLoop(m, fn, lp, escaped) {
-				moved = true
-				break // positions have shifted; find the loops again
+			if !triedPure[lp.label] {
+				triedPure[lp.label] = true
+				if hoistPure(fn, lp, escaped) {
+					moved = true
+					break
+				}
 			}
 		}
 		if !moved {
@@ -246,6 +253,151 @@ func hoistLoop(m *Module, fn *Func, lp loopSpan, escaped map[int64]bool) bool {
 		pre = append(pre,
 			Instr{Op: OpLoadMem, Dst: v, A: base, B: NoReg, Imm: key.off, Comment: "hoisted"},
 			Instr{Op: OpStore, Dst: NoReg, A: v, B: NoReg, Imm: slotOf[key]})
+	}
+
+	out := make([]Instr, 0, len(code)+len(pre))
+	out = append(out, code[:lp.head]...)
+	out = append(out, pre...)
+	for p := lp.head; p < len(code); p++ {
+		in := code[p]
+		if s, ok := replace[p]; ok {
+			in = Instr{Op: OpLoad, Dst: in.Dst, A: NoReg, B: NoReg, Imm: s, Comment: in.Comment}
+		}
+		out = append(out, in)
+	}
+	fn.Code = out
+	return true
+}
+
+// hoistPure moves arithmetic whose inputs do not change in the loop to
+// just before it. In
+//
+//	for k in 0..n { for j in 0..n { c[i * n + j] += x * b[k * n + j] } }
+//
+// i * n and k * n were multiplied again on every trip of the inner
+// loop. An input is unchanging when it is defined before the loop, is a
+// constant, is a load of a local the loop never stores to (and whose
+// address never escaped), or is itself such a computation. Only csePure
+// operations move: none of them can fault, so working one out on the
+// way into a loop whose body would have skipped it costs a few cycles
+// and changes nothing. The result waits in a new slot, read where the
+// computation was; the loads it no longer needs are left to dce.
+func hoistPure(fn *Func, lp loopSpan, escaped map[int64]bool) bool {
+	code := fn.Code
+	defAt := map[Reg]int{}
+	for i, in := range code {
+		if in.Dst != NoReg {
+			defAt[in.Dst] = i
+		}
+	}
+	assigned := map[int64]bool{}
+	for p := lp.head; p <= lp.end; p++ {
+		if code[p].Op == OpStore {
+			assigned[code[p].Imm] = true
+		}
+	}
+	inv := map[Reg]bool{}
+	steady := func(r Reg) bool {
+		if r == NoReg {
+			return true
+		}
+		if inv[r] {
+			return true
+		}
+		d, ok := defAt[r]
+		return ok && d < lp.head
+	}
+	var cands []int
+	for p := lp.head; p <= lp.end; p++ {
+		in := code[p]
+		if in.Dst == NoReg || int(in.Dst) >= len(fn.RegTypes) {
+			continue
+		}
+		switch {
+		case in.Op == OpConst || in.Op == OpFConst:
+			inv[in.Dst] = true
+		case in.Op == OpLoad && !assigned[in.Imm] && !escaped[in.Imm]:
+			inv[in.Dst] = true
+		case csePure(in.Op) && len(in.Args) == 0 && steady(in.A) && steady(in.B):
+			inv[in.Dst] = true
+			cands = append(cands, p)
+		}
+	}
+	if len(cands) == 0 {
+		return false
+	}
+	// Only the outermost of each chain moves as a value: i * n + 1 moves
+	// once, with i * n worked out on the way, not twice.
+	usedByCand := map[Reg]bool{}
+	for _, p := range cands {
+		usedByCand[code[p].A] = true
+		usedByCand[code[p].B] = true
+	}
+	usedInLoop := map[Reg]bool{}
+	for p := lp.head; p <= lp.end; p++ {
+		for _, r := range instrRegs(code[p]) {
+			usedInLoop[r] = true
+		}
+	}
+	var roots []int
+	for _, p := range cands {
+		d := code[p].Dst
+		if !usedInLoop[d] {
+			continue
+		}
+		// A root unless every reader is another invariant computation.
+		readByOther := false
+		for q := lp.head; q <= lp.end; q++ {
+			if q == p {
+				continue
+			}
+			for _, r := range instrRegs(code[q]) {
+				if r == d && !(inv[code[q].Dst] && code[q].Dst != NoReg && csePure(code[q].Op)) {
+					readByOther = true
+				}
+			}
+		}
+		if readByOther {
+			roots = append(roots, p)
+		}
+	}
+	if len(roots) == 0 {
+		return false
+	}
+
+	var pre []Instr
+	replace := map[int]int64{}
+	for _, p := range roots {
+		rename := map[Reg]Reg{}
+		var emit func(r Reg) Reg
+		emit = func(r Reg) Reg {
+			if r == NoReg {
+				return r
+			}
+			if n, ok := rename[r]; ok {
+				return n
+			}
+			d, ok := defAt[r]
+			if !ok || d < lp.head {
+				return r
+			}
+			in := code[d]
+			in.A = emit(in.A)
+			in.B = emit(in.B)
+			n := Reg(fn.NRegs)
+			fn.NRegs++
+			fn.RegTypes = append(fn.RegTypes, fn.RegTypes[in.Dst])
+			rename[in.Dst] = n
+			in.Dst = n
+			in.Comment = "hoisted"
+			pre = append(pre, in)
+			return n
+		}
+		v := emit(code[p].Dst)
+		slot := int64(fn.NSlots)
+		fn.NSlots++
+		pre = append(pre, Instr{Op: OpStore, Dst: NoReg, A: v, B: NoReg, Imm: slot})
+		replace[p] = slot
 	}
 
 	out := make([]Instr, 0, len(code)+len(pre))
