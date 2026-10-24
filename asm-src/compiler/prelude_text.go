@@ -548,15 +548,19 @@ fn __vy_floatForm(t: str) -> int {
         neg = first == 45
         p = 1
     }
-    let word = lower(__substrB(t, p, n))
-    if word == "inf" || word == "infinity" {
-        if neg {
-            return 3
+    // Only a letter can start inf or nan; lowering a copy of every
+    // number just to rule them out was two allocations a call.
+    if p < n && ((__strByte(t, p) | 32) == 105 || (__strByte(t, p) | 32) == 110) {
+        let word = lower(__substrB(t, p, n))
+        if word == "inf" || word == "infinity" {
+            if neg {
+                return 3
+            }
+            return 2
         }
-        return 2
-    }
-    if word == "nan" && !signed {
-        return 4
+        if word == "nan" && !signed {
+            return 4
+        }
     }
     if p + 1 < n && __strByte(t, p) == 48 && (__strByte(t, p + 1) == 120 || __strByte(t, p + 1) == 88) {
         return __vy_hexFloatForm(t, p + 2, n)
@@ -667,9 +671,119 @@ fn __vy_toFloat(s: str, fallback: float) -> float {
     if form == 4 {
         return __frombits(9221120237041090561)
     }
-    let f = __strtod(replace(t, "_", ""))
+    let exact = __vy_exactFloat(t)
+    if __bits(exact) != __vy_notExact() {
+        return exact
+    }
+    let clean = t
+    if contains(t, "_") {
+        clean = replace(t, "_", "")
+    }
+    let f = __strtod(clean)
     if ((__bits(f) >> 52) & 2047) == 2047 {
         return fallback
+    }
+    return f
+}
+
+// The bits __vy_exactFloat answers with when it cannot help: a NaN no
+// arithmetic produces, so a real answer never matches it.
+fn __vy_notExact() -> int {
+    return 9221120237041090611
+}
+
+// __vy_exactFloat converts decimal text that is already known to be a
+// valid number without strtod, in the case where that is exact: at most
+// fifteen significant digits m and a power of ten 10^e with |e| <= 22.
+// Both are doubles exactly then, and one multiplication or division,
+// rounded once by the hardware, is the correctly rounded result - the
+// fast path of Clinger's algorithm, the one Go and Rust take first.
+// Anything else - more digits, a bigger exponent, hex, underscores -
+// answers __vy_notExact() and goes to strtod.
+fn __vy_exactFloat(t: str) -> float {
+    let none = __frombits(__vy_notExact())
+    let n = len(t)
+    let p = 0
+    let neg = false
+    let first = __strByte(t, 0)
+    if first == 43 || first == 45 {
+        neg = first == 45
+        p = 1
+    }
+    let m = 0
+    let digits = 0
+    let exp = 0
+    let seenDot = false
+    while p < n {
+        let b = __strByte(t, p)
+        if b >= 48 && b <= 57 {
+            if m > 0 || b != 48 {
+                digits += 1
+                if digits > 15 {
+                    return none
+                }
+                m = m * 10 + (b - 48)
+            }
+            if seenDot {
+                exp -= 1
+            }
+        } else if b == 46 && !seenDot {
+            seenDot = true
+        } else {
+            break
+        }
+        p += 1
+    }
+    if p < n {
+        let e = __strByte(t, p)
+        if e != 101 && e != 69 {
+            return none
+        }
+        p += 1
+        let eneg = false
+        if p < n && (__strByte(t, p) == 43 || __strByte(t, p) == 45) {
+            eneg = __strByte(t, p) == 45
+            p += 1
+        }
+        let ev = 0
+        while p < n {
+            let b = __strByte(t, p)
+            if b < 48 || b > 57 {
+                return none
+            }
+            if ev < 100000 {
+                ev = ev * 10 + (b - 48)
+            }
+            p += 1
+        }
+        if eneg {
+            exp -= ev
+        } else {
+            exp += ev
+        }
+    }
+    let f = float(m)
+    if m != 0 {
+        if exp < -22 || exp > 22 {
+            return none
+        }
+        let scale = 1.0
+        let k = exp
+        if k < 0 {
+            k = -k
+        }
+        while k > 0 {
+            scale = scale * 10.0
+            k -= 1
+        }
+        if exp < 0 {
+            f = f / scale
+        } else {
+            f = f * scale
+        }
+    }
+    if neg {
+        return -f
     }
     return f
 }
