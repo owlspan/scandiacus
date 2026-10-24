@@ -3,6 +3,15 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.97.0
+
+**Cheaper calls.** A value whose only use is the instruction right
+after it - a `return`, or a call taking it as its first or second
+argument - is now computed straight into the register that instruction
+reads, instead of into another register and then copied. In `fib`,
+`n - 1` becomes a single `lea rcx, [rbx-1]` and the result is added
+straight into `rax`. fib(40) uses about 3% less CPU time.
+
 ## 1.96.0
 
 **Loops over float lists run two elements at a time.** A counted loop
