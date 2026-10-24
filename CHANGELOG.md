@@ -3,6 +3,23 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.88.0
+
+**A `[]bool` takes one byte per element**, not eight. Fifty million
+flags are 50 MB instead of 400 MB, and a sieve over them runs about
+twice as fast. Nothing changes for a program: indexing, push, for, sort,
+slice, JSON and printing all behave as before.
+
+**push is cheaper.** The common case - the list has room - is a few
+instructions with the list, its length and the value in registers; the
+full case is one call that grows the list and stores the element. 50
+million pushes took 0.76 s in 1.87.0 and take 0.24 s now. The register
+allocator learned the general rule behind it: a call after which a
+value is never read again does not force that value into memory.
+
+The sieve of Eratosthenes over 50 million, against C compiled by zig cc
+-O2 on the same machine: 1.5 s in 1.87.0, 0.68 s now, C 0.53 s.
+
 ## 1.87.0
 
 Speed, measured against C compiled by zig cc -O2 on the same machine.
