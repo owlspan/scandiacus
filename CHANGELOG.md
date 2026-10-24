@@ -3,6 +3,29 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.86.0
+
+**MIT license.** The compiler, its runtime and the packages in the
+registry are MIT: use them, change them, ship them, build libraries on
+them, commercial or not. Programs you compile are yours under any
+license you like.
+
+**Floats print about 17 times faster.** `print(x)`, `str(x)`,
+interpolation and `json.encode` used to find the shortest decimal that
+reads back to the same double by asking the C library for 1, 2, 3...
+digits and parsing each answer back. They now use Ryu, integer
+arithmetic only. The text is the same as before and the same as Go's,
+digit for digit (checked on 200000 random doubles); a million `str(x)`
+calls went from 20.8 s to 1.2 s.
+
+**Long list literals compile quickly.** Each element of a literal
+carried the code for growing the list, a loop, and an optimizer pass
+was quadratic in loops. A 4000-element literal took 2 min 42 s to
+compile and now takes 0.2 s; one of 40000 elements ran out of memory
+and now takes 3.6 s.
+
+**A simpler mark**: flat white and yellow hexagons, no outlines.
+
 ## 1.85.0
 
 **Veyl is now Scandiacus**, after the snowy owl, *Bubo scandiacus*.
