@@ -90,6 +90,7 @@ Name: "desktopicon"; Description: "Put that shortcut on the Desktop too"; \
 Source: "..\scandiacus.exe";           DestDir: "{app}"; Components: core; Flags: ignoreversion
 Source: "..\..\icons\scandiacus.ico";     DestDir: "{app}"; Components: core; Flags: ignoreversion
 Source: "..\..\README.md";          DestDir: "{app}"; Components: core; Flags: ignoreversion
+Source: "..\..\LICENSE";            DestDir: "{app}"; Components: core; Flags: ignoreversion
 
 Source: "..\..\docs\SYNTAX.md";   DestDir: "{app}"; Components: docs; Flags: ignoreversion
 Source: "..\..\docs\TUTORIAL.md"; DestDir: "{app}"; Components: docs; Flags: ignoreversion

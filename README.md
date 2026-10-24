@@ -636,3 +636,9 @@ bounds-checked on every access, and the C array is not.
 - **More from the language server**: rename, find references, and
   signature help as you type a call.
 - **Closures as callbacks.**
+
+## License
+
+MIT; see `LICENSE`. Use it, change it, ship it, build libraries on it,
+commercial or not. Keep the copyright notice in copies of the compiler
+itself. Programs you compile with it are yours under any license you like.
