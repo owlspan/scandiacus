@@ -3,6 +3,51 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.96.0
+
+**Loops over float lists run two elements at a time.** A counted loop
+whose body is one assignment to an element of a `[]float` - indexed by
+the loop variable plus something that does not change in the loop, and
+computed from such elements, float variables and literals with `+`, `-`
+and `*` - now runs on SSE2's packed doubles, two elements per
+instruction:
+
+```scandiacus
+for j in 0..n {
+    c[i * n + j] += x * b[k * n + j]
+}
+```
+
+Every element gets the same operations in the same order, so results
+are the same to the bit. Whether every index is in range, and whether
+the list written is also read elsewhere under another name, is checked
+once before the loop; when it is not safe, the loop runs one element at
+a time as before, and an index out of range stops it with the same
+message at the same element. A 400x400 matrix multiply: 0.111 s to
+about 0.065 s.
+
+**Faster function calls and loops.** A parameter goes straight from its
+argument register to the register its variable lives in; `n - 1` into
+an argument is one `lea`; `if !flags[i]` branches on the byte instead
+of building its negation; storing a constant into a `[]bool` or through
+`mem.write8`/`write32`/`write64` is one instruction; and a loop that
+pushes onto a list no longer checks for a collection on every trip,
+only after a push that grew the list. Virtual register 0 is no longer
+handed out: an instruction that leaves an operand unset left it 0, and
+every such instruction counted as a use of the function's first
+parameter.
+
+Against C compiled by zig cc -O2 and against Go 1.26, best of seven on
+one machine (s):
+
+| | Scandiacus | C | Go |
+| --- | ---: | ---: | ---: |
+| fib(37) | 0.21 | 0.13 | 0.17 |
+| 400M iterations of `(i * i) % 7 + (i >> 3)` | 0.71 | 0.58 | 0.76 |
+| 400x400 float matrix multiply | 0.067 | 0.048 | 0.115 |
+| sieve to 50M | 0.94 | 0.78 | 0.99 |
+| 1000 structs, 20000 steps | 0.070 | 0.062 | 0.057 |
+
 ## 1.95.0
 
 **Smaller executables.** A program's size grew by about 416 bytes for
