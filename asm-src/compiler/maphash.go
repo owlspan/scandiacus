@@ -139,9 +139,25 @@ func (l *lowerer) mapHash(key Reg, t vty) Reg {
 		l.setSlot(i, l.arith(OpAdd, l.load(i, vInt), l.constant(1)))
 		l.jump(tail)
 		l.mark(done)
-		l.ret(l.load(h, vInt))
+		l.ret(l.fmix64(l.load(h, vInt)))
 	})
 	return l.callHelper(sym, []Reg{key}, []vty{kt}, vInt)
+}
+
+// fmix64 is MurmurHash3's finalizer: every bit of the result depends
+// on every bit of h. The word step above only multiplies, which carries
+// bits upward, so without it the last bytes of an eight-byte word never
+// reached the low bits the table index is taken from. Keys like
+// "key12345" and "key12399", the same apart from their last two
+// characters, landed in one slot run of a hundred, and an insert took
+// a microsecond walking it.
+func (l *lowerer) fmix64(h Reg) Reg {
+	mix := func(h Reg) Reg { return l.arith(OpBXor, h, l.arith(OpShrU, h, l.constant(33))) }
+	h = mix(h)
+	h = l.arith(OpMul, h, l.constant(-49064778989728563))
+	h = mix(h)
+	h = l.arith(OpMul, h, l.constant(-4265267296055464877))
+	return mix(h)
 }
 
 // mapFind probes for a key and returns a table slot: the one pointing

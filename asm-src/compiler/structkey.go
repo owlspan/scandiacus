@@ -46,7 +46,7 @@ func (l *lowerer) structKeyHash(v Reg, kt vty) Reg {
 			m := l.arith(OpMul, l.arith(OpBXor, l.load(h, vInt), x), l.constant(-7046029254386353131))
 			l.setSlot(h, l.arith(OpBXor, m, l.arith(OpShrU, m, l.constant(29))))
 		}
-		l.ret(l.load(h, vInt))
+		l.ret(l.fmix64(l.load(h, vInt))) // see fmix64 in maphash.go
 	})
 	return l.callHelper(sym, []Reg{v}, []vty{kt}, vInt)
 }
