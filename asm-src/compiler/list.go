@@ -198,6 +198,10 @@ func (l *lowerer) compare(op Op, a, b Reg) Reg {
 // listPush appends one element, growing the element block when it is
 // full. Growth doubles, so a list built by repeated pushes costs
 // amortised constant time rather than quadratic copying.
+//
+// The growth is a call, not inline: it used to be written out at every
+// push, a copying loop included, which crowded the registers of the
+// loop doing the pushing and made every push site long.
 func (l *lowerer) listPush(list, val Reg) {
 	length := l.field(list, listLenOff, vInt)
 	capacity := l.field(list, listCapOff, vInt)
@@ -205,62 +209,7 @@ func (l *lowerer) listPush(list, val Reg) {
 	ready := l.newLabel()
 	room := l.compare(OpLt, length, capacity)
 	l.emit(Instr{Op: OpJumpIf, A: room, Dst: NoReg, Imm: ready, Comment: "push: room?"})
-
-	// Growing. The new capacity goes through a slot because two branches
-	// decide it, which is exactly what a virtual register cannot express
-	// while every one of them has a single definition site.
-	capSlot := l.temp(vInt)
-	doubled := l.arith(OpMul, capacity, l.constant(2))
-	l.emit(Instr{Op: OpStore, A: doubled, Dst: NoReg, Imm: capSlot})
-
-	haveCap := l.newLabel()
-	big := l.compare(OpGe, doubled, l.constant(initialCap))
-	l.emit(Instr{Op: OpJumpIf, A: big, Dst: NoReg, Imm: haveCap})
-	l.emit(Instr{Op: OpStore, A: l.constant(initialCap), Dst: NoReg, Imm: capSlot})
-	l.mark(haveCap)
-
-	newCap := l.newReg()
-	l.regTy[newCap] = vInt
-	l.emit(Instr{Op: OpLoad, Dst: newCap, A: NoReg, B: NoReg, Imm: capSlot})
-
-	fresh := l.allocObj(l.arith(OpMul, newCap, l.constant(wordSize)), elemTag(l.regTy[list]))
-	old := l.field(list, listDataOff, vInt)
-
-	// Copy the old elements one word at a time. memcpy would be faster
-	// and would mean another external symbol; this is a loop the byte
-	// writer already knows how to emit.
-	iSlot := l.temp(vInt)
-	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: iSlot})
-	top := l.newLabel()
-	copied := l.newLabel()
-	l.mark(top)
-	i := l.newReg()
-	l.regTy[i] = vInt
-	l.emit(Instr{Op: OpLoad, Dst: i, A: NoReg, B: NoReg, Imm: iSlot})
-	more := l.compare(OpLt, i, length)
-	l.emit(Instr{Op: OpJumpNot, A: more, Dst: NoReg, Imm: copied})
-
-	from := l.newReg()
-	l.regTy[from] = vInt
-	l.emit(Instr{Op: OpIndexAddr, Dst: from, A: old, B: i})
-	v := l.newReg()
-	l.regTy[v] = vInt
-	l.emit(Instr{Op: OpLoadMem, Dst: v, A: from, B: NoReg, Imm: 0})
-	to := l.newReg()
-	l.regTy[to] = vInt
-	l.emit(Instr{Op: OpIndexAddr, Dst: to, A: fresh, B: i})
-	l.emit(Instr{Op: OpStoreMem, A: to, B: v, Imm: 0})
-
-	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, i, l.constant(1)), Dst: NoReg, Imm: iSlot})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
-	l.mark(copied)
-
-	l.emit(Instr{Op: OpStoreMem, A: list, B: newCap, Imm: listCapOff})
-	l.emit(Instr{Op: OpStoreMem, A: list, B: fresh, Imm: listDataOff})
-	if l.gcOff {
-		l.freeObject(old) // no collector will; see gcoff.go
-	}
-
+	l.listGrow(list)
 	l.mark(ready)
 
 	// The length and the data pointer are re-read here rather than
@@ -273,6 +222,47 @@ func (l *lowerer) listPush(list, val Reg) {
 	l.emit(Instr{Op: OpStoreMem, A: addr, B: val, Imm: 0})
 	l.emit(Instr{Op: OpStoreMem, A: list, B: l.arith(OpAdd, at, l.constant(1)),
 		Imm: listLenOff})
+}
+
+// listGrow doubles a full list's element block (to initialCap at
+// least), copying the elements over with memcpy. One helper per element
+// tag, since the new block's tag says whether it holds pointers.
+func (l *lowerer) listGrow(list Reg) {
+	tag := elemTag(l.regTy[list])
+	name := "__listgrow_w"
+	if tag == tagPtrs {
+		name = "__listgrow_p"
+	}
+	sym := l.helperFunc(name, []vty{vInt}, vInt, func(a []Reg) {
+		lst := a[0]
+		length := l.field(lst, listLenOff, vInt)
+		capacity := l.field(lst, listCapOff, vInt)
+
+		// The new capacity goes through a slot because two branches
+		// decide it, which is exactly what a virtual register cannot
+		// express while every one of them has a single definition site.
+		capSlot := l.temp(vInt)
+		doubled := l.arith(OpMul, capacity, l.constant(2))
+		l.emit(Instr{Op: OpStore, A: doubled, Dst: NoReg, Imm: capSlot})
+		haveCap := l.newLabel()
+		big := l.compare(OpGe, doubled, l.constant(initialCap))
+		l.emit(Instr{Op: OpJumpIf, A: big, Dst: NoReg, Imm: haveCap})
+		l.emit(Instr{Op: OpStore, A: l.constant(initialCap), Dst: NoReg, Imm: capSlot})
+		l.mark(haveCap)
+		newCap := l.load(capSlot, vInt)
+
+		fresh := l.allocObj(l.arith(OpMul, newCap, l.constant(wordSize)), tag)
+		old := l.field(lst, listDataOff, vInt)
+		l.ccall("memcpy", []Reg{fresh, old, l.arith(OpMul, length, l.constant(wordSize))},
+			[]vty{vInt, vInt, vInt}, vInt, false, false)
+		l.emit(Instr{Op: OpStoreMem, A: lst, B: newCap, Imm: listCapOff})
+		l.emit(Instr{Op: OpStoreMem, A: lst, B: fresh, Imm: listDataOff})
+		if l.gcOff {
+			l.freeObject(old) // no collector will; see gcoff.go
+		}
+		l.emit(Instr{Op: OpRet, A: fresh, Dst: NoReg})
+	})
+	l.callHelper(sym, []Reg{list}, []vty{vInt}, vInt)
 }
 
 // listFill stores a literal's elements into a list made with room for
