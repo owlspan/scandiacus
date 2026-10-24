@@ -1138,6 +1138,16 @@ func Lower(p *Program, file string) (*Module, []string) {
 	l.popScope()
 	l.seal()
 
+	// The runtime's string routines allocate through __vy_talloc, which
+	// takes a slot in a page when __alloc exists and goes to malloc when
+	// it does not. A program whose only allocations were strings - built
+	// with + and str() - had no __alloc, so every string was a malloc
+	// and every collection a round of free: four million of them took
+	// twice as long as they do in pages.
+	if l.mod.Helpers["concat"] || l.mod.Helpers["inttostr"] || l.mod.Helpers["floattostr"] {
+		l.allocHelper()
+	}
+
 	l.dllCollector(p)
 
 	// Before the crash handler, which lists every function by name.

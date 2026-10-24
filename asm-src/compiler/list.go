@@ -117,7 +117,12 @@ func (l *lowerer) allocObj(bytes Reg, tag int64) Reg {
 // allocates in eight hundred places was carrying eight hundred copies.
 // The call costs nothing next to malloc itself.
 func (l *lowerer) allocTagged(bytes, header Reg) Reg {
-	sym := l.helperFunc("__alloc", []vty{vInt, vInt}, vInt, func(a []Reg) {
+	return l.callHelper(l.allocHelper(), []Reg{bytes, header}, []vty{vInt, vInt}, vInt)
+}
+
+// allocHelper defines __alloc if it is not already, and names it.
+func (l *lowerer) allocHelper() string {
+	return l.helperFunc("__alloc", []vty{vInt, vInt}, vInt, func(a []Reg) {
 		// A small object is a slot in a page; see heap.go.
 		large := l.newLabel()
 		total := l.arith(OpAdd, a[0], l.constant(objHeader))
@@ -130,7 +135,6 @@ func (l *lowerer) allocTagged(bytes, header Reg) Reg {
 		l.trackObject(raw, obj, a[0])
 		l.emit(Instr{Op: OpRet, A: obj, Dst: NoReg})
 	})
-	return l.callHelper(sym, []Reg{bytes, header}, []vty{vInt, vInt}, vInt)
 }
 
 // initialCap is what an empty list grows to on its first push. Four is
