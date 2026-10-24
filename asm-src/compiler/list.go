@@ -148,7 +148,7 @@ func (l *lowerer) newList(t vty, capacity int64) Reg {
 	hdr := l.allocObj(l.constant(listHeader), tagList)
 	l.regTy[hdr] = t
 
-	data := l.allocObj(l.constant(capacity*wordSize), elemTag(t))
+	data := l.allocObj(l.constant(capacity*elemWidth(t)), elemTag(t))
 
 	l.emit(Instr{Op: OpStoreMem, A: hdr, B: l.constant(0), Imm: listLenOff})
 	l.emit(Instr{Op: OpStoreMem, A: hdr, B: l.constant(capacity), Imm: listCapOff})
@@ -216,10 +216,7 @@ func (l *lowerer) listPush(list, val Reg) {
 	// reused from above: the growth path may have replaced both.
 	at := l.field(list, listLenOff, vInt)
 	data := l.field(list, listDataOff, vInt)
-	addr := l.newReg()
-	l.regTy[addr] = vInt
-	l.emit(Instr{Op: OpIndexAddr, Dst: addr, A: data, B: at})
-	l.emit(Instr{Op: OpStoreMem, A: addr, B: val, Imm: 0})
+	l.elemStore(data, at, val, l.regTy[list].elemType())
 	l.emit(Instr{Op: OpStoreMem, A: list, B: l.arith(OpAdd, at, l.constant(1)),
 		Imm: listLenOff})
 }
@@ -229,9 +226,13 @@ func (l *lowerer) listPush(list, val Reg) {
 // tag, since the new block's tag says whether it holds pointers.
 func (l *lowerer) listGrow(list Reg) {
 	tag := elemTag(l.regTy[list])
+	width := elemWidth(l.regTy[list])
 	name := "__listgrow_w"
 	if tag == tagPtrs {
 		name = "__listgrow_p"
+	}
+	if width == 1 {
+		name = "__listgrow_b"
 	}
 	sym := l.helperFunc(name, []vty{vInt}, vInt, func(a []Reg) {
 		lst := a[0]
@@ -251,9 +252,9 @@ func (l *lowerer) listGrow(list Reg) {
 		l.mark(haveCap)
 		newCap := l.load(capSlot, vInt)
 
-		fresh := l.allocObj(l.arith(OpMul, newCap, l.constant(wordSize)), tag)
+		fresh := l.allocObj(l.arith(OpMul, newCap, l.constant(width)), tag)
 		old := l.field(lst, listDataOff, vInt)
-		l.ccall("memcpy", []Reg{fresh, old, l.arith(OpMul, length, l.constant(wordSize))},
+		l.ccall("memcpy", []Reg{fresh, old, l.arith(OpMul, length, l.constant(width))},
 			[]vty{vInt, vInt, vInt}, vInt, false, false)
 		l.emit(Instr{Op: OpStoreMem, A: lst, B: newCap, Imm: listCapOff})
 		l.emit(Instr{Op: OpStoreMem, A: lst, B: fresh, Imm: listDataOff})
@@ -272,36 +273,72 @@ func (l *lowerer) listGrow(list Reg) {
 // optimizer were slow to wade through.
 func (l *lowerer) listFill(list Reg, vals []Reg) {
 	data := l.field(list, listDataOff, vInt)
+	elem := l.regTy[list].elemType()
 	for i, v := range vals {
+		if elemWidth(l.regTy[list]) == 1 {
+			l.elemStore(data, l.constant(int64(i)), v, elem)
+			continue
+		}
 		l.emit(Instr{Op: OpStoreMem, A: data, B: v, Imm: int64(i) * wordSize})
 	}
 	l.emit(Instr{Op: OpStoreMem, A: list, B: l.constant(int64(len(vals))), Imm: listLenOff})
 }
 
-// elemAddr bounds-checks an index and returns the address of that
-// element. Out of range exits with the same sentence the Go backend
+// elemData bounds-checks an index and returns the element block of
+// the list. Out of range exits with the same sentence the Go backend
 // prints, because the differential test compares stderr too.
-func (l *lowerer) elemAddr(list, idx Reg) Reg {
+func (l *lowerer) elemData(list, idx Reg) Reg {
 	length := l.field(list, listLenOff, vInt)
 	l.checkIndex(idx, length)
-	data := l.field(list, listDataOff, vInt)
-	addr := l.newReg()
-	l.regTy[addr] = vInt
-	l.emit(Instr{Op: OpIndexAddr, Dst: addr, A: data, B: idx})
-	return addr
+	return l.field(list, listDataOff, vInt)
 }
 
 func (l *lowerer) listGet(list, idx Reg, elem vty) Reg {
-	addr := l.elemAddr(list, idx)
+	return l.elemLoad(l.elemData(list, idx), idx, elem)
+}
+
+func (l *lowerer) listSet(list, idx, val Reg) {
+	l.elemStore(l.elemData(list, idx), idx, val, l.regTy[list].elemType())
+}
+
+// elemWidth is the bytes one element takes in a list's element block.
+// A bool takes one, which makes a []bool an eighth of the memory and
+// lets a sieve over fifty million of them fit the cache far better;
+// everything else takes a word.
+func elemWidth(t vty) int64 {
+	if t.elemType().eq(vBool) {
+		return 1
+	}
+	return wordSize
+}
+
+// elemLoad and elemStore read and write element idx of an element
+// block, a word or, for a bool, a byte.
+func (l *lowerer) elemLoad(data, idx Reg, elem vty) Reg {
+	addr := l.newReg()
+	l.regTy[addr] = vInt
 	d := l.newReg()
 	l.regTy[d] = elem
+	if elem.eq(vBool) {
+		l.emit(Instr{Op: OpIndexAddr, Dst: addr, A: data, B: idx, Imm: 1})
+		l.emit(Instr{Op: OpPeek, Dst: d, A: addr, B: NoReg, Imm: memU8})
+		return d
+	}
+	l.emit(Instr{Op: OpIndexAddr, Dst: addr, A: data, B: idx})
 	l.emit(Instr{Op: OpLoadMem, Dst: d, A: addr, B: NoReg, Imm: 0})
 	return d
 }
 
-func (l *lowerer) listSet(list, idx, val Reg) {
-	addr := l.elemAddr(list, idx)
-	l.emit(Instr{Op: OpStoreMem, A: addr, B: val, Imm: 0})
+func (l *lowerer) elemStore(data, idx, v Reg, elem vty) {
+	addr := l.newReg()
+	l.regTy[addr] = vInt
+	if elem.eq(vBool) {
+		l.emit(Instr{Op: OpIndexAddr, Dst: addr, A: data, B: idx, Imm: 1})
+		l.emit(Instr{Op: OpPoke, Dst: NoReg, A: addr, B: v, Imm: memU8})
+		return
+	}
+	l.emit(Instr{Op: OpIndexAddr, Dst: addr, A: data, B: idx})
+	l.emit(Instr{Op: OpStoreMem, A: addr, B: v, Imm: 0})
 }
 
 // printList writes a list the way the Go backend does: [1, 2, 3], with
@@ -331,13 +368,8 @@ func (l *lowerer) writeList(n Node, list Reg, t vty) {
 	l.writeLit(", ")
 	l.mark(noComma)
 
-	addr := l.newReg()
-	l.regTy[addr] = vInt
 	data := l.field(list, listDataOff, vInt)
-	l.emit(Instr{Op: OpIndexAddr, Dst: addr, A: data, B: i})
-	v := l.newReg()
-	l.regTy[v] = t.elemType()
-	l.emit(Instr{Op: OpLoadMem, Dst: v, A: addr, B: NoReg, Imm: 0})
+	v := l.elemLoad(data, i, t.elemType())
 
 	l.writeValue(n, v, t.elemType())
 

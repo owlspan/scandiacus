@@ -67,17 +67,17 @@ func (l *lowerer) mergeSortList(list Reg, lt vty, less func(a, b Reg) Reg) {
 	l.jumpNot(l.compare(OpLt, ld(k), ld(hi)), mergeDone)
 	l.jumpNot(l.compare(OpLt, ld(p), ld(mid)), takeRight)
 	l.jumpNot(l.compare(OpLt, ld(q), ld(hi)), takeLeft)
-	right := l.wordAt(data(a), ld(q), elem)
-	left := l.wordAt(data(a), ld(p), elem)
+	right := l.elemLoad(data(a), ld(q), elem)
+	left := l.elemLoad(data(a), ld(p), elem)
 	l.jumpIf(less(right, left), takeRight)
 	l.jump(takeLeft)
 
 	l.mark(takeLeft)
-	l.setWordAt(data(b), ld(k), l.wordAt(data(a), ld(p), elem))
+	l.elemStore(data(b), ld(k), l.elemLoad(data(a), ld(p), elem), elem)
 	l.setSlot(p, l.arith(OpAdd, ld(p), l.constant(1)))
 	l.jump(next)
 	l.mark(takeRight)
-	l.setWordAt(data(b), ld(k), l.wordAt(data(a), ld(q), elem))
+	l.elemStore(data(b), ld(k), l.elemLoad(data(a), ld(q), elem), elem)
 	l.setSlot(q, l.arith(OpAdd, ld(q), l.constant(1)))
 	l.mark(next)
 	l.setSlot(k, l.arith(OpAdd, ld(k), l.constant(1)))
@@ -100,7 +100,7 @@ func (l *lowerer) mergeSortList(list Reg, lt vty, less func(a, b Reg) Reg) {
 	// An odd number of passes left the result in the other list.
 	done := l.newLabel()
 	l.jumpIf(l.compare(OpEq, ld(swapped), l.constant(0)), done)
-	l.copyBytes(l.field(list, listDataOff, vInt), data(a), l.arith(OpMul, ld(n), l.constant(wordSize)))
+	l.copyBytes(l.field(list, listDataOff, vInt), data(a), l.arith(OpMul, ld(n), l.constant(elemWidth(lt))))
 	l.mark(done)
 }
 
@@ -118,9 +118,9 @@ func (l *lowerer) newListLen(t vty, n Reg) Reg {
 	l.regTy[hdr] = t
 	hs := l.temp(t)
 	l.setSlot(hs, hdr)
-	bytes := l.arith(OpMul, l.load(capacity, vInt), l.constant(wordSize))
+	bytes := l.arith(OpMul, l.load(capacity, vInt), l.constant(elemWidth(t)))
 	blk := l.allocObj(bytes, elemTag(t))
-	l.ccall("memset", []Reg{blk, l.constant(0), l.arith(OpMul, l.load(capacity, vInt), l.constant(wordSize))},
+	l.ccall("memset", []Reg{blk, l.constant(0), l.arith(OpMul, l.load(capacity, vInt), l.constant(elemWidth(t)))},
 		[]vty{vInt, vInt, vInt}, vInt, false, false)
 	l.emit(Instr{Op: OpStoreMem, A: l.load(hs, t), B: blk, Imm: listDataOff})
 	l.emit(Instr{Op: OpStoreMem, A: l.load(hs, t), B: l.load(ns, vInt), Imm: listLenOff})
