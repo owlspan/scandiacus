@@ -3,6 +3,16 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.93.0
+
+**Long functions with many loops compile quickly.** Two optimizer
+passes, the one that moves a loop's test to its bottom and the one that
+moves unchanging work out of loops, rebuilt the whole function after
+every loop they touched, which made compile time grow with the square
+of the number of loops in one function. A top level with 2000 small
+loops took 32 s to compile and takes 3 s now. The code produced is the
+same.
+
 ## 1.92.0
 
 **toFloat is about three times faster.** It made two throwaway strings
