@@ -1907,60 +1907,72 @@ __vy_must:
 	}
 
 	if e.mod.Helpers["inttostr"] {
-		// 24 bytes holds the longest 64-bit integer, its sign and the
-		// terminator with room to spare.
+		// The digits are written backwards into a buffer on the stack,
+		// dividing by ten as a multiply (x * ceil(2^67/10) >> 67 is x/10
+		// for every 64-bit x), then copied into a new str. This used to
+		// be _snprintf with "%lld", which cost more than everything else
+		// about building a short string. The signed entry negates and
+		// joins the unsigned one, so the most negative int comes out
+		// right: its negation is itself, read unsigned.
 		e.b.WriteString(`
 __vy_inttostr:
     push rbp
     mov rbp, rsp
     sub rsp, 96
-    mov qword ptr [rbp-8], rcx
-    lea rcx, [rbp-64]
-    mov rdx, 32
-    lea r8, __fmt_int_raw[rip]
-    mov r9, qword ptr [rbp-8]
-    call _snprintf
-    mov qword ptr [rbp-24], rax
-    mov rcx, rax
-    add rcx, 1
-    mov rdx, rcx
-    shl rdx, 8
-    call __vy_talloc
-    mov qword ptr [rbp-16], rax
-    mov rcx, rax
-    lea rdx, [rbp-64]
-    mov r8, qword ptr [rbp-24]
-    add r8, 1
-    call memmove
-    mov rax, qword ptr [rbp-16]
-    mov rsp, rbp
-    pop rbp
-    ret
+    xor r10d, r10d
+    mov rax, rcx
+    test rax, rax
+    jns .Litoa_digits
+    neg rax
+    mov r10d, 1
+    jmp .Litoa_digits
 
 # The same for a u64, read unsigned.
 __vy_uinttostr:
     push rbp
     mov rbp, rsp
     sub rsp, 96
-    mov qword ptr [rbp-8], rcx
-    lea rcx, [rbp-64]
-    mov rdx, 32
-    lea r8, __fmt_uint_raw[rip]
-    mov r9, qword ptr [rbp-8]
-    call _snprintf
-    mov qword ptr [rbp-24], rax
-    mov rcx, rax
+    xor r10d, r10d
+    mov rax, rcx
+.Litoa_digits:
+    lea r8, [rbp-8]
+    mov r9, -3689348814741910323
+.Litoa_loop:
+    mov r11, rax
+    mul r9
+    shr rdx, 3
+    lea rax, [rdx+rdx*4]
+    add rax, rax
+    sub r11, rax
+    add r11, 48
+    mov rcx, r11
+    sub r8, 1
+    mov byte ptr [r8], cl
+    mov rax, rdx
+    test rax, rax
+    jne .Litoa_loop
+    test r10, r10
+    je .Litoa_copy
+    sub r8, 1
+    mov byte ptr [r8], 45
+.Litoa_copy:
+    lea rcx, [rbp-8]
+    sub rcx, r8
+    mov qword ptr [rbp-48], rcx
+    mov qword ptr [rbp-56], r8
     add rcx, 1
     mov rdx, rcx
     shl rdx, 8
     call __vy_talloc
-    mov qword ptr [rbp-16], rax
+    mov qword ptr [rbp-64], rax
     mov rcx, rax
-    lea rdx, [rbp-64]
-    mov r8, qword ptr [rbp-24]
-    add r8, 1
+    mov rdx, qword ptr [rbp-56]
+    mov r8, qword ptr [rbp-48]
     call memmove
-    mov rax, qword ptr [rbp-16]
+    mov rax, qword ptr [rbp-64]
+    add rax, qword ptr [rbp-48]
+    mov byte ptr [rax], 0
+    mov rax, qword ptr [rbp-64]
     mov rsp, rbp
     pop rbp
     ret
