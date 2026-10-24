@@ -3472,9 +3472,7 @@ func (l *lowerer) listLit(x *ListLit) Reg {
 		}
 		t := vListOf(elem)
 		list := l.newList(t, int64(len(vals)))
-		for _, v := range vals {
-			l.listPush(list, v)
-		}
+		l.listFill(list, vals)
 		l.regTy[list] = t
 		return list
 	}
@@ -3525,9 +3523,7 @@ func (l *lowerer) listLit(x *ListLit) Reg {
 
 	t := vListOf(elem)
 	list := l.newList(t, int64(len(vals)))
-	for _, v := range vals {
-		l.listPush(list, v)
-	}
+	l.listFill(list, vals)
 	l.regTy[list] = t
 	return list
 }

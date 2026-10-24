@@ -275,6 +275,19 @@ func (l *lowerer) listPush(list, val Reg) {
 		Imm: listLenOff})
 }
 
+// listFill stores a literal's elements into a list made with room for
+// exactly them, then sets the length once. Going through listPush put
+// its growth path - a copying loop - in the code once per element,
+// which a long literal does not need and the loop passes in the
+// optimizer were slow to wade through.
+func (l *lowerer) listFill(list Reg, vals []Reg) {
+	data := l.field(list, listDataOff, vInt)
+	for i, v := range vals {
+		l.emit(Instr{Op: OpStoreMem, A: data, B: v, Imm: int64(i) * wordSize})
+	}
+	l.emit(Instr{Op: OpStoreMem, A: list, B: l.constant(int64(len(vals))), Imm: listLenOff})
+}
+
 // elemAddr bounds-checks an index and returns the address of that
 // element. Out of range exits with the same sentence the Go backend
 // prints, because the differential test compares stderr too.

@@ -1,5 +1,7 @@
 package main
 
+import "sort"
+
 // Loop-invariant loads.
 //
 // `for j in 0..n { c[j] += x * b[j] }` reads c's and b's length and
@@ -107,14 +109,13 @@ func findLoops(fn *Func) []loopSpan {
 	}
 	// Smallest first, so inner loops go before the loops around them;
 	// ties by position, so the order does not depend on map iteration.
-	for i := 1; i < len(out); i++ {
-		for j := i; j > 0; j-- {
-			a, b := out[j-1], out[j]
-			if b.end-b.head < a.end-a.head || (b.end-b.head == a.end-a.head && b.head < a.head) {
-				out[j-1], out[j] = b, a
-			}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.end-a.head != b.end-b.head {
+			return a.end-a.head < b.end-b.head
 		}
-	}
+		return a.head < b.head
+	})
 	return out
 }
 
@@ -284,7 +285,18 @@ func rotateLoops(fn *Func) {
 	if len(fn.RegTypes) < fn.NRegs {
 		return
 	}
-	for _, lp := range findLoops(fn) {
+	// The loops are found once. Rotating one moves the code after its
+	// test, so the positions of the loops still to do are shifted to
+	// match rather than found again: that was quadratic, and a long
+	// list literal has a loop per element.
+	loops := findLoops(fn)
+	uses := map[Reg]int{}
+	for _, in := range fn.Code {
+		for _, r := range instrRegs(in) {
+			uses[r]++
+		}
+	}
+	for li, lp := range loops {
 		code := fn.Code
 		h, end := lp.head, lp.end
 		if code[end].Op != OpJump || end+1 >= len(code) || code[end+1].Op != OpLabel {
@@ -312,15 +324,18 @@ func rotateLoops(fn *Func) {
 				mine[code[p].Dst] = true
 			}
 		}
-		leaks := false
-		for p, in := range code {
-			if p > h && p <= k {
-				continue
-			}
-			for _, r := range append([]Reg{in.A, in.B}, in.Args...) {
-				if r != NoReg && mine[r] {
-					leaks = true
+		inside := map[Reg]int{}
+		for p := h + 1; p <= k; p++ {
+			for _, r := range instrRegs(code[p]) {
+				if mine[r] {
+					inside[r]++
 				}
+			}
+		}
+		leaks := false
+		for r := range mine {
+			if uses[r] > inside[r] {
+				leaks = true
 			}
 		}
 		if leaks {
@@ -334,6 +349,7 @@ func rotateLoops(fn *Func) {
 			if n, ok := rename[r]; ok {
 				return n
 			}
+			uses[r]++
 			return r
 		}
 		var copyTest []Instr
@@ -344,6 +360,11 @@ func rotateLoops(fn *Func) {
 			}
 			if in.B != NoReg {
 				in.B = fresh(in.B)
+			}
+			for _, r := range in.Args {
+				if r != NoReg {
+					uses[r]++
+				}
 			}
 			if in.Dst != NoReg {
 				n := Reg(fn.NRegs)
@@ -367,7 +388,39 @@ func rotateLoops(fn *Func) {
 		out = append(out, copyTest...)
 		out = append(out, code[end+1:]...)
 		fn.Code = out
-		rotateLoops(fn) // positions have moved; the rest from scratch
-		return
+
+		// One instruction went in after k, and the jump at end became
+		// the copied test.
+		shift := func(p int) int {
+			switch {
+			case p <= k:
+				return p
+			case p < end:
+				return p + 1
+			default:
+				return p + len(copyTest)
+			}
+		}
+		for lj := li + 1; lj < len(loops); lj++ {
+			loops[lj].head = shift(loops[lj].head)
+			loops[lj].end = shift(loops[lj].end)
+		}
 	}
+}
+
+// instrRegs lists the registers an instruction reads.
+func instrRegs(in Instr) []Reg {
+	var out []Reg
+	if in.A != NoReg {
+		out = append(out, in.A)
+	}
+	if in.B != NoReg {
+		out = append(out, in.B)
+	}
+	for _, r := range in.Args {
+		if r != NoReg {
+			out = append(out, r)
+		}
+	}
+	return out
 }
