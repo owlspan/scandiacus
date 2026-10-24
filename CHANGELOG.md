@@ -3,6 +3,28 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.87.0
+
+Speed, measured against C compiled by zig cc -O2 on the same machine.
+
+**Arithmetic that does not change in a loop moves out of it.** In
+`c[i * n + j] += x * b[k * n + j]` the inner loop no longer multiplies
+`i * n` and `k * n` on every trip. A 400x400 float matrix multiply:
+0.205 s before, 0.114 s now, C 0.112 s.
+
+**Self calls in tail position are jumps.** `return f(args)` inside `f`
+reuses the frame, so tail recursion runs in constant stack (ten million
+deep is fine). `return e + f(args)` and `return e * f(args)` on ints
+keep an accumulator, which removes one of fib's two calls: fib(42)
+went from 2.3 s to 1.6 s (C 1.1 s). This applies to functions whose
+parameters are int, float or bool and that have no `defer`. A tail
+call that recursed forever used to stop with the stack overflow report;
+it now loops forever, as it would in C.
+
+**push grows the list out of line**, copying with memcpy: the code at
+each push is a few instructions and a call taken only when the list is
+full. 50 million pushes: 0.76 s to 0.54 s.
+
 ## 1.86.0
 
 **MIT license.** The compiler, its runtime and the packages in the
