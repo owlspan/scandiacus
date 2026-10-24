@@ -456,6 +456,10 @@ func (b *block) encode(m string, ops []operand) error {
 		return b.encodeMovsd(ops)
 	case "movups":
 		return b.encodeMovups(ops)
+	case "movupd":
+		return b.encodeMovupd(ops)
+	case "addpd", "subpd", "mulpd", "unpcklpd", "movapd":
+		return b.encodePacked(m, ops)
 	case "comisd", "ucomisd":
 		return b.encodeComisd(m, ops)
 	case "cvtsi2sd", "cvtsi2ss":
@@ -880,6 +884,40 @@ func (b *block) encodeMovups(ops []operand) error {
 	b.prefix(32, src.reg, dst)
 	b.put(0x0F, 0x11)
 	b.modrm(src.reg, dst)
+	return nil
+}
+
+// encodeMovupd is movups with the 66 prefix: two doubles, unaligned.
+func (b *block) encodeMovupd(ops []operand) error {
+	if len(ops) != 2 {
+		return fmt.Errorf("movupd wants two operands")
+	}
+	dst, src := ops[0], ops[1]
+	if dst.kind == opXmm {
+		b.prefix(32, dst.reg, src, 0x66)
+		b.put(0x0F, 0x10)
+		b.modrm(dst.reg, src)
+		return nil
+	}
+	if src.kind != opXmm {
+		return fmt.Errorf("movupd needs an xmm register")
+	}
+	b.prefix(32, src.reg, dst, 0x66)
+	b.put(0x0F, 0x11)
+	b.modrm(src.reg, dst)
+	return nil
+}
+
+// encodePacked is the packed-double arithmetic, 66 0F xx, for the
+// two-at-a-time loops of vecloop.go.
+func (b *block) encodePacked(m string, ops []operand) error {
+	if len(ops) != 2 || ops[0].kind != opXmm {
+		return fmt.Errorf("%s wants an xmm destination", m)
+	}
+	code := map[string]byte{"addpd": 0x58, "mulpd": 0x59, "subpd": 0x5C, "unpcklpd": 0x14, "movapd": 0x28}[m]
+	b.prefix(32, ops[0].reg, ops[1], 0x66)
+	b.put(0x0F, code)
+	b.modrm(ops[0].reg, ops[1])
 	return nil
 }
 

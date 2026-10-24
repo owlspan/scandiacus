@@ -572,6 +572,14 @@ const (
 	// unsigned, with the stop out of line - and no labels, so a value
 	// alive across an index stays in its register.
 	OpCheckIndex
+
+	// Packed doubles, for the two-at-a-time loops of vecloop.go. They
+	// name xmm0 or xmm1 in Imm and define no virtual register, so the
+	// register allocator never sees a vector. Appended, not inserted.
+	OpVLoad  // xmm[Imm] = the two doubles at address A
+	OpVStore // the two doubles in xmm[Imm] are written at address A
+	OpVSplat // xmm[Imm] = the float A, twice
+	OpVArith // xmm[Imm>>4&15] op= xmm[Imm&15], op = Imm>>8: add, sub, mul
 )
 
 // The widths OpPeek and OpPoke move. A narrow store keeps the low bits,
@@ -602,7 +610,8 @@ var opNames = [...]string{
 	"callclosure", "calladdr", "atomicadd", "atomicswap", "atomiccas",
 	"gcpoll", "peek", "poke", "ext", "f32round", "inttof32", "u64tofloat",
 	"u64tof32", "floattou64", "divu", "modu", "shru", "ltu", "leu", "gtu",
-	"geu", "f32bits", "f32frombits", "checkindex",
+	"geu", "f32bits", "f32frombits", "checkindex", "vload", "vstore",
+	"vsplat", "varith",
 }
 
 func (o Op) String() string {
@@ -1998,6 +2007,12 @@ func (l *lowerer) forRange(st *ForStmt) {
 	end := l.expr(st.End)
 	endSlot := l.temp(vInt)
 	l.emit(Instr{Op: OpStore, A: end, Dst: NoReg, Imm: endSlot, Comment: "limit"})
+
+	if step == 1 && !st.Inclusive && !envOff("SCANDIACUS_NOVEC") {
+		if plan, ok := l.vectorizable(st); ok {
+			l.vecLoop(plan, iSlot, endSlot)
+		}
+	}
 
 	top := l.newLabel()
 	cont := l.newLabel()

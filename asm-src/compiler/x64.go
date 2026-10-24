@@ -1591,6 +1591,33 @@ func (e *Emitter) instr(in Instr) {
 	case OpCheckIndex:
 		e.checkIndex(in)
 
+	case OpVLoad, OpVStore:
+		base := e.loc(in.A)
+		if !isGPR(base) {
+			e.line("mov rax, %s", base)
+			base = "rax"
+		}
+		if in.Op == OpVLoad {
+			e.line("movupd xmm%d, [%s]", in.Imm, base)
+		} else {
+			e.line("movupd [%s], xmm%d", base, in.Imm)
+		}
+
+	case OpVSplat:
+		// From a register, movapd: movsd between registers keeps the
+		// upper half of the destination, which made each trip wait on
+		// the result the last one left in it.
+		if src := e.loc(in.A); isXmm(src) {
+			e.line("movapd xmm%d, %s", in.Imm, src)
+		} else {
+			e.line("movsd xmm%d, %s", in.Imm, src)
+		}
+		e.line("unpcklpd xmm%d, xmm%d", in.Imm, in.Imm)
+
+	case OpVArith:
+		m := [...]string{"addpd", "subpd", "mulpd"}[in.Imm>>8]
+		e.line("%s xmm%d, xmm%d", m, in.Imm>>4&15, in.Imm&15)
+
 	case OpBoundsFail:
 		e.boundsCall(in, e.loc(in.A), e.loc(in.B))
 

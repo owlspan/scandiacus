@@ -497,7 +497,7 @@ func (e *Emitter) fuseIndex(ix, next Instr, uses map[Reg]int) bool {
 		return false
 	}
 	switch next.Op {
-	case OpLoadMem, OpPeek:
+	case OpLoadMem, OpPeek, OpVLoad, OpVStore:
 	case OpStoreMem, OpPoke:
 		if next.B == ix.Dst {
 			return false
@@ -520,6 +520,14 @@ func (e *Emitter) fuseIndex(ix, next Instr, uses map[Reg]int) bool {
 	}
 	if next.Op == OpPeek {
 		e.emitPeek(next, fmt.Sprintf("[%s+%s*%d]", base, idx, indexScale(ix)))
+		return true
+	}
+	if next.Op == OpVLoad {
+		e.line("movupd xmm%d, [%s+%s*%d]", next.Imm, base, idx, indexScale(ix))
+		return true
+	}
+	if next.Op == OpVStore {
+		e.line("movupd [%s+%s*%d], xmm%d", base, idx, indexScale(ix), next.Imm)
 		return true
 	}
 	if next.Op == OpPoke {
