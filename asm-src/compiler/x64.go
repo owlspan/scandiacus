@@ -511,7 +511,7 @@ func (e *Emitter) function(f *Func) {
 		e.homes = nil
 	} else {
 		if !envOff("SCANDIACUS_NOPROMOTE") {
-			e.promoted = promoteSlots(f)
+			e.promoted = promoteSlots(f, e.mod.Threaded)
 			for s, r := range promoteFloatSlots(f) {
 				e.promoted[s] = r
 			}

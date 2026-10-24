@@ -655,9 +655,15 @@ type Func struct {
 	Ret  vty
 	Code []Instr
 
-	NRegs   int // virtual registers used
-	NSlots  int // stack slots for locals and spilled temporaries
-	NLabels int
+	NRegs  int // virtual registers used
+	NSlots int // stack slots for locals and spilled temporaries
+
+	// Boxed and Temps list the slots that may hold a pointer under an int
+	// type: a captured local's slot holds its cell, and the lowerer's
+	// own temporaries hold allocations as ints. promoteSlots keeps them
+	// in memory where another thread's collection must see them.
+	Boxed, Temps map[int64]bool
+	NLabels      int
 
 	// RegTypes is the type of every virtual register, parallel to the
 	// register numbers. The register allocator reads it to decide which
@@ -1327,6 +1333,10 @@ func (l *lowerer) declareMaybeBoxed(name string, t vty, box bool) int64 {
 			l.boxed = map[int64]bool{}
 		}
 		l.boxed[slot] = true
+		if l.fn.Boxed == nil {
+			l.fn.Boxed = map[int64]bool{}
+		}
+		l.fn.Boxed[slot] = true
 		cell := l.newBox(t)
 		l.emit(Instr{Op: OpStore, A: cell, Dst: NoReg, Imm: slot,
 			Comment: "box " + name})
@@ -1415,6 +1425,10 @@ func (l *lowerer) temp(t vty) int64 {
 	slot := int64(l.fn.NSlots)
 	l.fn.NSlots++
 	l.slotTy[slot] = t
+	if l.fn.Temps == nil {
+		l.fn.Temps = map[int64]bool{}
+	}
+	l.fn.Temps[slot] = true
 	return slot
 }
 

@@ -72,7 +72,15 @@ func loopWeights(f *Func) []int {
 }
 
 // promoteSlots picks the slots to keep in registers.
-func promoteSlots(f *Func) map[int64]string {
+//
+// Not a captured local's slot, which holds a pointer to its cell, and in
+// a program with threads not the lowerer's own temporaries either, which
+// hold new objects as ints. A thread parked for another thread's
+// collection is scanned on its stack only: a pointer held nowhere but a
+// callee-saved register is invisible to that collection and gets freed.
+// One thread alone collects in its own call, which saves the registers
+// first, so there the temporaries are safe.
+func promoteSlots(f *Func, threaded bool) map[int64]string {
 	ok := map[int64]bool{}
 	uses := map[int64]int{}
 	weight := map[int64]int{}
@@ -86,6 +94,14 @@ func promoteSlots(f *Func) map[int64]string {
 			(t.k == kInt || t.k == kBool)
 	}
 	bad := map[int64]bool{}
+	for slot := range f.Boxed {
+		bad[slot] = true
+	}
+	if threaded {
+		for slot := range f.Temps {
+			bad[slot] = true
+		}
+	}
 	for i, in := range f.Code {
 		switch in.Op {
 		case OpLoad:

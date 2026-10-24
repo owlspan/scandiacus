@@ -871,6 +871,21 @@ func packSlots(fn *Func) {
 			fn.Code[i].Imm = remap[fn.Code[i].Imm]
 		}
 	}
+	// The slots promoteSlots must leave alone follow their new numbers;
+	// a slot shared by several keeps the mark if any of them had it.
+	moved := func(m map[int64]bool) map[int64]bool {
+		if m == nil {
+			return nil
+		}
+		out := map[int64]bool{}
+		for s := range m {
+			if n, ok := remap[s]; ok {
+				out[n] = true
+			}
+		}
+		return out
+	}
+	fn.Boxed, fn.Temps = moved(fn.Boxed), moved(fn.Temps)
 	fn.NSlots = int(next)
 }
 
