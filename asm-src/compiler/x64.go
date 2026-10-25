@@ -1681,8 +1681,7 @@ func (e *Emitter) call(in Instr) {
 	// honour; a plain integer-register move carries the bits unchanged
 	// either way.
 	for i := len(in.Args) - 1; i >= 4; i-- {
-		e.line("mov rax, %s", e.loc(in.Args[i]))
-		e.line("mov qword ptr [rsp+%d], rax", i*8)
+		e.stackArg(i, e.loc(in.Args[i]), "rax")
 	}
 	e.loadWindowArgs(in)
 	if in.Extern {
@@ -1811,6 +1810,20 @@ func (e *Emitter) callResult(in Instr) {
 	}
 }
 
+// stackArg writes argument i, read from src, to its place in the
+// outgoing area, by way of scratch. A float the allocator kept in an
+// xmm register goes there with one movsd: "mov rax, xmm12" is not an
+// instruction, and a sixth argument of type float in a function with
+// enough float values to fill the pool used to stop the build.
+func (e *Emitter) stackArg(i int, src, scratch string) {
+	if isXmm(src) {
+		e.line("movsd qword ptr [rsp+%d], %s", i*8, src)
+		return
+	}
+	e.line("mov %s, %s", scratch, src)
+	e.line("mov qword ptr [rsp+%d], %s", i*8, scratch)
+}
+
 // callClosure calls through a function value.
 //
 // With allocation off this emits exactly what it always has, so that
@@ -1863,8 +1876,7 @@ func (e *Emitter) callClosure(in Instr) {
 		// scratch with rcx. Not r10: it is a pool register and may hold
 		// one of the four arguments still to be loaded. rcx never holds
 		// a value here and is only written once these are done.
-		e.line("mov rcx, %s", e.loc(in.Args[i]))
-		e.line("mov qword ptr [rsp+%d], rcx", i*8)
+		e.stackArg(i, e.loc(in.Args[i]), "rcx")
 	}
 	e.loadWindowArgs(in)
 
@@ -1882,8 +1894,7 @@ func (e *Emitter) callAddr(in Instr) {
 	e.comment("mem.call: the address to rax first, then the arguments")
 	e.line("mov rax, %s", e.loc(in.A))
 	for i := len(in.Args) - 1; i >= 4; i-- {
-		e.line("mov rcx, %s", e.loc(in.Args[i]))
-		e.line("mov qword ptr [rsp+%d], rcx", i*8)
+		e.stackArg(i, e.loc(in.Args[i]), "rcx")
 	}
 	e.loadWindowArgs(in)
 	e.line("call rax")
