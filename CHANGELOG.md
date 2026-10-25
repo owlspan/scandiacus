@@ -3,6 +3,21 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.97.1
+
+Two optimiser bugs, both in 1.97.0, found by a new differential fuzzer
+that builds random programs with and without optimisation and compares
+what they print.
+
+**`x + x` of a known float.** Once inlining or folding made `x` a
+float constant, `x + x` (and `p += p`) could add to whatever an xmm
+register happened to hold: `fn f(p: float) -> int { p += p ... }`
+called as `f(0.5)` in a loop gave the wrong answer.
+
+**A float passed fifth or later.** When a float argument beyond the
+fourth was being kept in an xmm register, the build stopped with "the
+assembler rejected the generated code". It now compiles and runs.
+
 ## 1.97.0
 
 **Cheaper calls.** A value whose only use is the instruction right
