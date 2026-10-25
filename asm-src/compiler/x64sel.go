@@ -54,10 +54,16 @@ func (e *Emitter) planConsts(f *Func) {
 	}
 	needed := map[Reg]bool{}
 	for _, in := range f.Code {
-		for _, r := range []Reg{in.A, in.B} {
-			if _, ok := e.fconsts[r]; ok && r != NoReg && !(r == in.B && isFArith(in.Op)) {
-				needed[r] = true
-			}
+		// A float constant is read from memory as the B operand of
+		// arithmetic, and needs its register anywhere else - including
+		// as the A operand of the same instruction, as in x + x once x
+		// is known: deciding by register rather than by position used
+		// to skip that one, and the add read whatever the register held.
+		if _, ok := e.fconsts[in.A]; ok && in.A != NoReg {
+			needed[in.A] = true
+		}
+		if _, ok := e.fconsts[in.B]; ok && in.B != NoReg && !isFArith(in.Op) {
+			needed[in.B] = true
 		}
 		if _, ok := e.consts[in.A]; ok && in.A != NoReg {
 			if _, imm := e.immA(in); !imm {
