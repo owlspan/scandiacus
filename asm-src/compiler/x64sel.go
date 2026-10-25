@@ -293,8 +293,9 @@ func (e *Emitter) selInstr(in Instr) bool {
 
 	case OpDiv, OpMod:
 		if d, ok := e.immB(in); ok {
-			e.selDivConst(in, d)
-			e.put(in.Dst, "rdx")
+			if !e.selDivConst(in, d) {
+				e.put(in.Dst, "rdx")
+			}
 			return true
 		}
 		e.line("mov rax, %s", e.loc(in.A))

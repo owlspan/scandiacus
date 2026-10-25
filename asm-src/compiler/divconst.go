@@ -67,13 +67,14 @@ func udivMagic(d int64) (uint64, uint) {
 }
 
 // selDivConst emits n / d or n % d for a constant d the check above
-// accepted. The result is left in rdx.
-func (e *Emitter) selDivConst(in Instr, d int64) {
-	e.line("mov rcx, %s", e.loc(in.A)) // n
+// accepted. The result is left in rdx, unless the
+// return value says it was already put in the destination.
+func (e *Emitter) selDivConst(in Instr, d int64) bool {
+	n := e.loc(in.A)
 	if e.nonNeg(in.A) {
-		e.selUDivConst(in, d)
-		return
+		return e.selUDivConst(in, d, n)
 	}
+	e.line("mov rcx, %s", n)
 	if isPow2(d) {
 		k := bits.TrailingZeros64(uint64(d))
 		// (n + (n < 0 ? d-1 : 0)) >> k rounds towards zero.
@@ -83,14 +84,14 @@ func (e *Emitter) selDivConst(in Instr, d int64) {
 		e.line("add rdx, rcx")
 		if in.Op == OpDiv {
 			e.line("sar rdx, %d", k)
-			return
+			return false
 		}
 		// n - (q << k): the low bits are what the rounding dropped.
 		e.line("and rdx, %d", -d)
 		e.line("mov rax, rcx")
 		e.line("sub rax, rdx")
 		e.line("mov rdx, rax")
-		return
+		return false
 	}
 	m, sh := divMagic(d)
 	e.line("mov rax, %d", m)
@@ -103,22 +104,29 @@ func (e *Emitter) selDivConst(in Instr, d int64) {
 	e.line("sar rax, 63")
 	e.line("sub rdx, rax")
 	if in.Op == OpDiv {
-		return
+		return false
 	}
 	// n - q*d.
 	e.line("mov rax, %d", d)
 	e.line("imul rax, rdx")
 	e.line("mov rdx, rcx")
 	e.line("sub rdx, rax")
+	return false
 }
 
 // selUDivConst is selDivConst for a dividend known not to be negative
-// (see ranges.go), already in rcx: unsigned, so no rounding fix, and a
-// power of two is one shift or one and. clang does the same once it
-// knows the sign.
-func (e *Emitter) selUDivConst(in Instr, d int64) {
+// (see ranges.go): unsigned, so no rounding fix, and a power of two is
+// one shift or one and. clang does the same once it knows the sign.
+// n is where the dividend sits. A pooled register is read in place; rax
+// and rdx are overwritten and anything in memory is read twice, so
+// those two go through rcx.
+func (e *Emitter) selUDivConst(in Instr, d int64, n string) bool {
+	if !isRegLoc(n) || n == "rax" || n == "rdx" {
+		e.line("mov rcx, %s", n)
+		n = "rcx"
+	}
 	if isPow2(d) {
-		e.line("mov rdx, rcx")
+		e.line("mov rdx, %s", n)
 		if in.Op == OpDiv {
 			e.line("shr rdx, %d", bits.TrailingZeros64(uint64(d)))
 		} else if fits32(d - 1) {
@@ -127,24 +135,34 @@ func (e *Emitter) selUDivConst(in Instr, d int64) {
 			e.line("mov rax, %d", d-1)
 			e.line("and rdx, rax")
 		}
-		return
+		return false
 	}
 	m, sh := udivMagic(d)
 	e.line("mov rax, %d", int64(m))
-	e.line("mul rcx")
+	e.line("mul %s", n)
 	if sh > 0 {
 		e.line("shr rdx, %d", sh)
 	}
 	if in.Op == OpDiv {
-		return
+		return false
 	}
 	// n - q*d.
 	if fits32(d) {
-		e.line("imul rax, rdx, %d", d)
+		e.line("imul rdx, rdx, %d", d)
 	} else {
 		e.line("mov rax, %d", d)
-		e.line("imul rax, rdx")
+		e.line("imul rdx, rax")
 	}
-	e.line("mov rdx, rcx")
-	e.line("sub rdx, rax")
+	// Subtract into the result's own register when it has one, which
+	// saves the trip through rdx.
+	if r := e.loc(in.Dst); isRegLoc(r) && r != "rax" && r != "rcx" && r != "rdx" {
+		if r != n {
+			e.line("mov %s, %s", r, n)
+		}
+		e.line("sub %s, rdx", r)
+		return true
+	}
+	e.line("neg rdx")
+	e.line("add rdx, %s", n)
+	return false
 }
