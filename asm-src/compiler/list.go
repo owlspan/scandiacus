@@ -692,10 +692,10 @@ func (l *lowerer) forList(st *ForStmt) {
 	idxSlot := int64(-1)
 	varName := st.Var
 	if st.Var2 != "" {
-		idxSlot = l.declare(st.Var, vInt)
+		idxSlot = l.declareLoopVar(st.Var, vInt)
 		varName = st.Var2
 	}
-	varSlot := l.declare(varName, t.elemType())
+	varSlot := l.declareLoopVar(varName, t.elemType())
 
 	top := l.newLabel()
 	cont := l.newLabel()
@@ -720,10 +720,9 @@ func (l *lowerer) forList(st *ForStmt) {
 	l.regTy[list] = t
 	l.emit(Instr{Op: OpLoad, Dst: list, A: NoReg, B: NoReg, Imm: listSlot})
 	if idxSlot >= 0 {
-		l.emit(Instr{Op: OpStore, A: i, Dst: NoReg, Imm: idxSlot, Comment: st.Var})
+		l.bindTrip(idxSlot, i, st.Var)
 	}
-	l.emit(Instr{Op: OpStore, A: l.listGet(list, i, t.elemType()), Dst: NoReg,
-		Imm: varSlot, Comment: varName})
+	l.bindTrip(varSlot, l.listGet(list, i, t.elemType()), varName)
 
 	l.loops = append(l.loops, loopTarget{brk: done, cont: cont, defers: len(l.defers)})
 	l.stmt(st.Body)

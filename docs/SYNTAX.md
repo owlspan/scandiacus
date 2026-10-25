@@ -1217,7 +1217,9 @@ The bounds are evaluated once, before the loop starts, so a function
 call in the range is not re-run on every iteration.
 
 The loop variable is scoped to the loop and may shadow an outer name
-without disturbing it.
+without disturbing it. A closure made in the body that captures it
+keeps the value of its own trip, so a loop that collects callbacks
+gets one value per callback.
 
 ### defer
 

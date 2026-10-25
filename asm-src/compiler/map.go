@@ -379,10 +379,10 @@ func (l *lowerer) forMap(st *ForStmt, m Reg, t vty) {
 	iSlot := l.temp(vInt)
 	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: iSlot})
 
-	keySlot := l.declare(st.Var, t.keyType())
+	keySlot := l.declareLoopVar(st.Var, t.keyType())
 	valSlot := int64(-1)
 	if st.Var2 != "" {
-		valSlot = l.declare(st.Var2, t.elemType())
+		valSlot = l.declareLoopVar(st.Var2, t.elemType())
 	}
 
 	top := l.newLabel()
@@ -401,10 +401,9 @@ func (l *lowerer) forMap(st *ForStmt, m Reg, t vty) {
 	if t.key == kStruct {
 		key = l.copyStruct(keyNode, key, t.keyType()) // see structkey.go
 	}
-	l.emit(Instr{Op: OpStore, A: key, Dst: NoReg, Imm: keySlot, Comment: st.Var})
+	l.bindTrip(keySlot, key, st.Var)
 	if valSlot >= 0 {
-		l.emit(Instr{Op: OpStore, A: l.cellAt(cur, mapValsOff, i, t.elemType()),
-			Dst: NoReg, Imm: valSlot, Comment: st.Var2})
+		l.bindTrip(valSlot, l.cellAt(cur, mapValsOff, i, t.elemType()), st.Var2)
 	}
 
 	l.loops = append(l.loops, loopTarget{brk: done, cont: cont, defers: len(l.defers)})

@@ -1364,6 +1364,39 @@ func (l *lowerer) declareMaybeBoxed(name string, t vty, box bool) int64 {
 	return slot
 }
 
+// declareLoopVar declares a variable a loop sets on every trip. When a
+// closure captures it, it is boxed like any captured local, but the
+// cell is made by bindTrip on each trip rather than once here: each
+// trip's closures keep that trip's value, which is what a loop that
+// builds a list of callbacks means. With l.declare, as before, the
+// closure read the bare value as if it were a cell and crashed.
+func (l *lowerer) declareLoopVar(name string, t vty) int64 {
+	slot := l.declare(name, t)
+	if l.boxNames[name] {
+		if l.boxed == nil {
+			l.boxed = map[int64]bool{}
+		}
+		l.boxed[slot] = true
+		if l.fn.Boxed == nil {
+			l.fn.Boxed = map[int64]bool{}
+		}
+		l.fn.Boxed[slot] = true
+	}
+	return slot
+}
+
+// bindTrip gives a loop variable its value for this trip; see
+// declareLoopVar.
+func (l *lowerer) bindTrip(slot int64, v Reg, comment string) {
+	if l.boxed[slot] {
+		cell := l.newBox(l.slotTy[slot])
+		l.emit(Instr{Op: OpStore, A: cell, Dst: NoReg, Imm: slot, Comment: "box " + comment})
+		l.storeLocal(slot, v)
+		return
+	}
+	l.emit(Instr{Op: OpStore, A: v, Dst: NoReg, Imm: slot, Comment: comment})
+}
+
 // storeLocal writes a value to a declared slot, through the box when
 // there is one.
 func (l *lowerer) storeLocal(slot int64, v Reg) {
@@ -2000,15 +2033,22 @@ func (l *lowerer) forRange(st *ForStmt) {
 	l.pushScope()
 
 	start := l.expr(st.Start)
-	iSlot := l.declare(st.Var, vInt)
-	l.emit(Instr{Op: OpStore, A: start, Dst: NoReg, Imm: iSlot,
+	iSlot := l.declareLoopVar(st.Var, vInt)
+	// A captured counter lives in a slot of its own, copied into each
+	// trip's cell at the top of the body and read back from it at the
+	// bottom, so an assignment to the variable still moves the loop.
+	ctr := iSlot
+	if l.boxed[iSlot] {
+		ctr = l.temp(vInt)
+	}
+	l.emit(Instr{Op: OpStore, A: start, Dst: NoReg, Imm: ctr,
 		Comment: "for " + st.Var})
 
 	end := l.expr(st.End)
 	endSlot := l.temp(vInt)
 	l.emit(Instr{Op: OpStore, A: end, Dst: NoReg, Imm: endSlot, Comment: "limit"})
 
-	if step == 1 && !st.Inclusive && !envOff("SCANDIACUS_NOVEC") {
+	if step == 1 && !st.Inclusive && ctr == iSlot && !envOff("SCANDIACUS_NOVEC") {
 		if plan, ok := l.vectorizable(st); ok {
 			l.vecLoop(plan, iSlot, endSlot)
 		}
@@ -2035,7 +2075,7 @@ func (l *lowerer) forRange(st *ForStmt) {
 
 	iv := l.newReg()
 	l.regTy[iv] = vInt
-	l.emit(Instr{Op: OpLoad, Dst: iv, A: NoReg, B: NoReg, Imm: iSlot})
+	l.emit(Instr{Op: OpLoad, Dst: iv, A: NoReg, B: NoReg, Imm: ctr})
 	ev := l.newReg()
 	l.regTy[ev] = vInt
 	l.emit(Instr{Op: OpLoad, Dst: ev, A: NoReg, B: NoReg, Imm: endSlot})
@@ -2044,6 +2084,10 @@ func (l *lowerer) forRange(st *ForStmt) {
 	l.emit(Instr{Op: cmp, Dst: test, A: iv, B: ev})
 	l.emit(Instr{Op: OpJumpNot, A: test, Dst: NoReg, Imm: done})
 
+	if ctr != iSlot {
+		l.bindTrip(iSlot, l.load(ctr, vInt), st.Var)
+	}
+
 	// continue jumps to the increment, not the test, or the counter
 	// never advances and the loop never ends.
 	l.loops = append(l.loops, loopTarget{brk: done, cont: cont, defers: len(l.defers)})
@@ -2051,16 +2095,21 @@ func (l *lowerer) forRange(st *ForStmt) {
 	l.loops = l.loops[:len(l.loops)-1]
 
 	l.mark(cont)
-	cur := l.newReg()
-	l.regTy[cur] = vInt
-	l.emit(Instr{Op: OpLoad, Dst: cur, A: NoReg, B: NoReg, Imm: iSlot})
+	var cur Reg
+	if ctr != iSlot {
+		cur = l.loadLocal(iSlot)
+	} else {
+		cur = l.newReg()
+		l.regTy[cur] = vInt
+		l.emit(Instr{Op: OpLoad, Dst: cur, A: NoReg, B: NoReg, Imm: iSlot})
+	}
 	inc := l.newReg()
 	l.regTy[inc] = vInt
 	l.emit(Instr{Op: OpConst, Dst: inc, A: NoReg, B: NoReg, Imm: step})
 	next := l.newReg()
 	l.regTy[next] = vInt
 	l.emit(Instr{Op: OpAdd, Dst: next, A: cur, B: inc})
-	l.emit(Instr{Op: OpStore, A: next, Dst: NoReg, Imm: iSlot})
+	l.emit(Instr{Op: OpStore, A: next, Dst: NoReg, Imm: ctr})
 	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
 
 	l.mark(done)
