@@ -1,6 +1,6 @@
 # Scandiacus Language Reference
 
-**Version 1.98.1** - the language as currently implemented.
+**Version 1.99.0** - the language as currently implemented.
 
 Scandiacus compiles straight to x86-64 and writes the Windows executable
 itself. A finished program is a single self-contained `.exe` with no
@@ -4331,7 +4331,7 @@ hello.scd:6:7: undefined function "lenn" - did you mean "len"?
 
 ## Known limitations
 
-Honest list of what v1.98.1 does not do yet.
+Honest list of what v1.99.0 does not do yet.
 
 **The language**
 

@@ -3,6 +3,20 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.99.0
+
+**Faster loops over counters.** Two changes, measured on Linux against
+C built with `zig cc -O2`:
+
+- Dividing or taking the remainder of a value the compiler can prove
+  is never negative, such as a loop counter starting at 0, now uses
+  unsigned division: a shift and mask for powers of two, and a
+  multiply-high for other constants, without the sign fix-up. The
+  `loop` benchmark went from 0.55s to 0.51s.
+- A loop whose whole body is `push(xs, <literal>)` now grows the list
+  once and fills it in one call instead of pushing one element per
+  trip. The `sieve` benchmark went from 0.40s to 0.32s (C: 0.33s).
+
 ## 1.98.1
 
 **A closure can capture a loop variable.** A function literal inside
