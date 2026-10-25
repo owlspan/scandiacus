@@ -24,9 +24,17 @@ package main
 // ordinary loop does all of it, and so an index out of range stops the
 // program with the same message at the same trip as it always did.
 //
-// Only xmm0 and xmm1 are used, the two float registers nothing keeps a
-// value in, so the expression has to fit in two: c[...] += x * b[...]
-// does, a * b + d * e does not, and is left alone.
+// Only xmm0 and xmm1 are used for the expression, the two float
+// registers nothing keeps a value in, so it has to fit in two: c[...] +=
+// x * b[...] does, a * b + d * e does not, and is left alone. One scalar
+// that is only ever the right-hand operand of its operation is spread
+// across xmm5 once, before the loop, and read from there; the register
+// allocator is told to leave xmm5 alone in a function with such a loop.
+
+// vecHoistReg holds the scalar spread out before the loop. xmm5 is the
+// last of the allocator's float pool, and the one nothing else here
+// names.
+const vecHoistReg = 5
 
 const (
 	vecAdd = iota
@@ -265,6 +273,37 @@ func sameExpr(a, b Expr) bool {
 	return false
 }
 
+// vecCanon swaps the operands of + and * so that a scalar sits on the
+// right, where it can be read straight from its register, and returns
+// the first scalar leaf found there. IEEE addition and multiplication
+// commute, so the results do not change.
+func vecCanon(n *vecNode) *vecNode {
+	if n.leaf {
+		return nil
+	}
+	if n.op != vecSub && n.l.leaf && !n.l.isElem && !(n.r.leaf && !n.r.isElem) {
+		n.l, n.r = n.r, n.l
+	}
+	if h := vecCanon(n.l); h != nil {
+		return h
+	}
+	if n.r.leaf && !n.r.isElem {
+		return n.r
+	}
+	return vecCanon(n.r)
+}
+
+// usesVecHoist reports whether a function spreads a scalar into
+// vecHoistReg before a packed loop.
+func usesVecHoist(f *Func) bool {
+	for i := range f.Code {
+		if f.Code[i].Op == OpVSplat && f.Code[i].Imm == vecHoistReg {
+			return true
+		}
+	}
+	return false
+}
+
 // vecLoop writes the packed loop. iSlot holds the loop variable and
 // endSlot the limit; the packed loop advances iSlot past every pair it
 // does, and the ordinary loop after it finishes the range.
@@ -328,6 +367,11 @@ func (l *lowerer) vecLoop(p *vecPlan, iSlot, endSlot int64) {
 		}
 	}
 
+	hoisted := vecCanon(p.root)
+	if hoisted != nil {
+		l.emit(Instr{Op: OpVSplat, Dst: NoReg, A: l.load(scal[hoisted.scalar], vFloat), B: NoReg, Imm: vecHoistReg})
+	}
+
 	top := l.newLabel()
 	l.mark(top)
 	j := ld(iSlot)
@@ -340,6 +384,9 @@ func (l *lowerer) vecLoop(p *vecPlan, iSlot, endSlot int64) {
 	}
 	var gen func(n *vecNode, reg int) int
 	gen = func(n *vecNode, reg int) int {
+		if n == hoisted {
+			return vecHoistReg
+		}
 		if n.leaf {
 			if n.isElem {
 				l.emit(Instr{Op: OpVLoad, Dst: NoReg, A: addr(n.access), B: NoReg, Imm: int64(reg)})

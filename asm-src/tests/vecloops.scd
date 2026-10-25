@@ -65,3 +65,23 @@ for j in 0..n {
     c[j] = a[j] * b[j] + a[j] * k
 }
 print(c)
+
+// A scalar on the left of - or on both sides of an operation, in an
+// expression whose scalar is spread once before the loop.
+let m = 1.5
+for j in 0..n {
+    c[j] = k - a[j]
+}
+print(c)
+for j in 0..n {
+    c[j] = k * m
+}
+print(c)
+for j in 0..n {
+    c[j] += k * a[j] - m * 0.5
+}
+print(c)
+for j in 0..n {
+    c[j] = a[j] - k * b[j]
+}
+print(c)

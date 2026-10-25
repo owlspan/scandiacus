@@ -707,6 +707,9 @@ func (e *Emitter) function(f *Func) {
 		}
 		intPool := append([]string{}, raIntRegs[:]...)
 		floatPool := append([]string{}, raFloatRegs[:]...)
+		if usesVecHoist(f) {
+			floatPool = floatPool[:len(floatPool)-1] // xmm5, see vecloop.go
+		}
 		if f.Name != collectSym {
 			for _, r := range calleeSaved {
 				if !taken[r] {
