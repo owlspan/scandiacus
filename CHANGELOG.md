@@ -3,6 +3,27 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.98.0
+
+**Faster recursive functions.** Two changes, measured on fib(40) on
+Linux against C built with `zig cc -O2`:
+
+- A loop that starts by deciding whether to return - which is what a
+  function like `fib` becomes once its tail call is a loop - is laid
+  out with the return after the loop, so the loop can be rotated to
+  one compare and jump a trip instead of two jumps. 0.42 s to 0.40 s.
+- A function whose frame is smaller than a page no longer sets up a
+  frame pointer: no `push rbp`/`mov rbp, rsp` on entry and no
+  `mov rsp, rbp`/`pop rbp` on the way out, and saved registers come
+  back with `pop`. Windows gets an unwind description for each such
+  function, so debuggers, crash reports and the stack-overflow report
+  still walk the stack. 0.40 s to 0.36 s; C is 0.33 s.
+
+fib(37), the benchmark in `asm-src/bench`: 0.100 s to 0.088 s, C 0.077.
+The other four benchmarks are unchanged. Executables are within about
+1% of their old size (a little larger on Windows, smaller on Linux).
+`SCANDIACUS_FRAMEPTR=1` keeps the frame pointer everywhere.
+
 ## 1.97.1
 
 Two optimiser bugs, both in 1.97.0, found by a new differential fuzzer
