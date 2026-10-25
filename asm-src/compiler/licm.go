@@ -461,6 +461,209 @@ func hoistPure(fn *Func, lp loopSpan, escaped map[int64]bool, defAt map[Reg]int)
 	return plan
 }
 
+// sinkLoopExits moves a block that leaves a loop from the top of the
+// loop to after it. A loop that starts by deciding whether to stop,
+// which is what a recursive function turned into a loop looks like,
+//
+//	top:  test; jumpnot body
+//	      ...; ret
+//	body: ...
+//	      jump top
+//
+// takes two jumps a trip, into the body and back, and rotateLoops does
+// not see it, since the test does not jump past the end. With the
+// leaving block moved out,
+//
+//	top:  test; jumpif out
+//	body: ...
+//	      jump top
+//	out:  ...; ret
+//
+// it is the shape rotateLoops turns into one jump a trip. The moved
+// block must end in a jump, a return or a stop, so nothing ran on from
+// it into the body before and nothing runs on from it into what follows
+// the loop now. A register the test's preparation computed and the
+// block reads is computed again at the top of the block with registers
+// of its own: rotation will bring control there from a copy of the test
+// at the bottom, which computes the same values into other registers.
+// The preparation is loads, constants and pure arithmetic, and nothing
+// writes memory between it and the block, so working it out again gives
+// the same values.
+func sinkLoopExits(fn *Func) {
+	if len(fn.RegTypes) < fn.NRegs {
+		return
+	}
+	for round := 0; round < 4; round++ {
+		if !sinkLoopExitsOnce(fn) {
+			return
+		}
+	}
+}
+
+func sinkLoopExitsOnce(fn *Func) bool {
+	code := fn.Code
+	at := map[int64]int{}
+	for i, in := range code {
+		if in.Op == OpLabel {
+			at[in.Imm] = i
+		}
+	}
+	type sink struct {
+		h, k, b, end int
+		out          int64
+	}
+	var plans []sink
+	taken := map[int]bool{} // positions inside a loop already being changed
+	for _, lp := range findLoops(fn) {
+		h, end := lp.head, lp.end
+		if code[end].Op != OpJump {
+			continue
+		}
+		k := h + 1
+		for k < end && testPrep(code[k].Op) {
+			k++
+		}
+		if k >= end || k-h > 12 {
+			continue
+		}
+		test := code[k]
+		if test.Op != OpJumpNot && test.Op != OpJumpIf {
+			continue
+		}
+		b, ok := at[test.Imm]
+		if !ok || b <= k+1 || b > end || !endsFlow(code[b-1].Op) {
+			continue
+		}
+		clash := false
+		for p := h; p <= end; p++ {
+			if taken[p] {
+				clash = true
+				break
+			}
+		}
+		if clash {
+			continue
+		}
+		for p := h; p <= end; p++ {
+			taken[p] = true
+		}
+		out := int64(fn.NLabels)
+		fn.NLabels++
+		plans = append(plans, sink{h, k, b, end, out})
+	}
+	if len(plans) == 0 {
+		return false
+	}
+	byTest := map[int]sink{}
+	byEnd := map[int]sink{}
+	for _, pl := range plans {
+		byTest[pl.k] = pl
+		byEnd[pl.end] = pl
+	}
+	moved := func(pl sink) []Instr {
+		// What the block reads of the preparation, worked out again.
+		defs := map[Reg]bool{}
+		for p := pl.h + 1; p < pl.k; p++ {
+			if code[p].Dst != NoReg {
+				defs[code[p].Dst] = true
+			}
+		}
+		read := false
+		for p := pl.k + 1; p < pl.b && !read; p++ {
+			for _, r := range instrRegs(code[p]) {
+				if defs[r] {
+					read = true
+				}
+			}
+		}
+		block := []Instr{{Op: OpLabel, Dst: NoReg, A: NoReg, B: NoReg, Imm: pl.out}}
+		rename := map[Reg]Reg{}
+		re := func(r Reg) Reg {
+			if n, ok := rename[r]; ok {
+				return n
+			}
+			return r
+		}
+		renameIn := func(in Instr) Instr {
+			if in.A != NoReg {
+				in.A = re(in.A)
+			}
+			if in.B != NoReg {
+				in.B = re(in.B)
+			}
+			if len(in.Args) > 0 {
+				args := make([]Reg, len(in.Args))
+				for i, r := range in.Args {
+					args[i] = r
+					if r != NoReg {
+						args[i] = re(r)
+					}
+				}
+				in.Args = args
+			}
+			return in
+		}
+		if read {
+			for p := pl.h + 1; p < pl.k; p++ {
+				if code[p].Op == OpGCPoll {
+					continue // checked at the top already
+				}
+				in := renameIn(code[p])
+				if in.Dst != NoReg {
+					n := Reg(fn.NRegs)
+					fn.NRegs++
+					fn.RegTypes = append(fn.RegTypes, fn.RegTypes[in.Dst])
+					rename[in.Dst] = n
+					in.Dst = n
+				}
+				block = append(block, in)
+			}
+		}
+		for p := pl.k + 1; p < pl.b; p++ {
+			block = append(block, renameIn(code[p]))
+		}
+		return block
+	}
+	res := make([]Instr, 0, len(code)+8*len(plans))
+	skipTo := -1
+	for p, in := range code {
+		if p < skipTo {
+			continue
+		}
+		if pl, ok := byTest[p]; ok {
+			flip := in
+			flip.Imm = pl.out
+			if in.Op == OpJumpIf {
+				flip.Op = OpJumpNot
+			} else {
+				flip.Op = OpJumpIf
+			}
+			res = append(res, flip)
+			skipTo = pl.b
+			continue
+		}
+		res = append(res, in)
+		if pl, ok := byEnd[p]; ok {
+			res = append(res, moved(pl)...)
+		}
+	}
+	fn.Code = res
+	return true
+}
+
+// testPrep is what may come between a loop's label and its test for
+// sinkLoopExits and rotateLoops to take the test on: loads, constants
+// and pure arithmetic, which give the same values worked out again,
+// and a collection check. The check is copied with the test, so a loop
+// still checks once a trip: in a threaded program that is where a
+// thread stops for another's collection, and one spinning without it
+// would never stop. Where nothing in the body allocates, dropPolls then
+// removes the copy.
+func testPrep(op Op) bool {
+	return op == OpLoad || op == OpConst || op == OpFConst || op == OpLoadMem ||
+		op == OpGCPoll || csePure(op)
+}
+
 // rotateLoops moves a loop's test to the bottom. A loop is lowered as
 //
 //	top:  test; jumpnot exit
@@ -478,8 +681,8 @@ func hoistPure(fn *Func, lp loopSpan, escaped map[int64]bool, defAt map[Reg]int)
 //
 // it takes one. The copy is made with registers of its own, every
 // register being written once, and only of a test simple enough to
-// copy: loads, constants and pure arithmetic, no calls. A `continue`
-// still jumps to the top and its test.
+// copy (see testPrep). A `continue` still jumps to the top and its
+// test.
 func rotateLoops(fn *Func) {
 	if len(fn.RegTypes) < fn.NRegs {
 		return
@@ -503,8 +706,7 @@ func rotateLoops(fn *Func) {
 		}
 		exit := code[end+1].Imm
 		k := h + 1
-		for k < end && (code[k].Op == OpLoad || code[k].Op == OpConst ||
-			code[k].Op == OpFConst || code[k].Op == OpLoadMem || csePure(code[k].Op)) {
+		for k < end && testPrep(code[k].Op) {
 			k++
 		}
 		if k >= end || k-h > 12 {

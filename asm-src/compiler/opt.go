@@ -49,6 +49,7 @@ func Optimize(m *Module) {
 		// the body reading registers the top's test defined, and until
 		// forwarding the body loads its locals for itself.
 		if !envOff("SCANDIACUS_NOROTATE") {
+			sinkLoopExits(fn)
 			rotateLoops(fn)
 		}
 		if !envOff("SCANDIACUS_NOFORWARD") {
