@@ -197,9 +197,13 @@ func writePE(obj *object, out string, opt peOptions) error {
 		text = append(text, 0)
 	}
 	infoAt := len(text)
-	text = append(text, unwindInfo()...)
-
 	textRVA := sectionAlignment
+	// The unwind tables, so Windows can walk the stack; see unwind.go.
+	// The UNWIND_INFOs are read-only data at the end of the text, and
+	// .pdata holds nothing but the table.
+	infos, pdata := buildUnwind(obj, text, textRVA, infoAt)
+	text = append(text, infos...)
+
 	rdataRVA := alignUp(textRVA+len(text), sectionAlignment)
 	if rdataAt >= 0 {
 		rdataRVA = textRVA + rdataAt
@@ -208,12 +212,8 @@ func writePE(obj *object, out string, opt peOptions) error {
 
 	idata, slots, iatRVA, iatSize := buildImports(obj.externs, idataRVA)
 
-	// The unwind tables, so Windows can walk the stack; see unwind.go.
-	// The one UNWIND_INFO they share is read-only data at the end of the
-	// text, and .pdata holds nothing but the table.
 	next := alignUp(idataRVA+len(idata), sectionAlignment)
 	pdataRVA := next
-	pdata := buildPdata(obj, text, textRVA, textRVA+infoAt)
 	if len(pdata) > 0 {
 		next = alignUp(pdataRVA+len(pdata), sectionAlignment)
 	}

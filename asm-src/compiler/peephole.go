@@ -50,16 +50,24 @@ func between(ln, prefix, suffix string) (string, bool) {
 	return ln[len(prefix) : len(ln)-len(suffix)], true
 }
 
-// peepLoad: mov rax, qword ptr [rbp-N]
+// peepLoad: mov rax, qword ptr [rbp-N], or [rsp+N] in a function with
+// no frame pointer. The base stays in the answer so the two never match
+// each other.
 func peepLoad(ln string) (string, bool) {
-	m, ok := between(ln, "    mov rax, qword ptr [rbp-", "]")
-	return m, ok && allDigits(m)
+	if m, ok := between(ln, "    mov rax, qword ptr [rbp-", "]"); ok && allDigits(m) {
+		return "rbp-" + m, true
+	}
+	m, ok := between(ln, "    mov rax, qword ptr [rsp+", "]")
+	return "rsp+" + m, ok && allDigits(m)
 }
 
-// peepStore: mov qword ptr [rbp-N], rax
+// peepStore: mov qword ptr [rbp-N], rax, or [rsp+N]
 func peepStore(ln string) (string, bool) {
-	m, ok := between(ln, "    mov qword ptr [rbp-", "], rax")
-	return m, ok && allDigits(m)
+	if m, ok := between(ln, "    mov qword ptr [rbp-", "], rax"); ok && allDigits(m) {
+		return "rbp-" + m, true
+	}
+	m, ok := between(ln, "    mov qword ptr [rsp+", "], rax")
+	return "rsp+" + m, ok && allDigits(m)
 }
 
 // peepImm: mov rax, N

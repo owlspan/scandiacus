@@ -45,6 +45,12 @@ type Emitter struct {
 	// pushed, right under rbp: the frame's slots start below them.
 	pushedGP int
 
+	// frameless is set for a function that keeps no frame pointer: its
+	// words are addressed from rsp, which the body never moves, and
+	// frameBytes is what the prologue subtracted from it. See frameRef.
+	frameless  bool
+	frameBytes int
+
 	b   strings.Builder
 	f   *Func
 	mod *Module
@@ -141,7 +147,21 @@ func (e *Emitter) slotAddr(slot int64) string {
 	if r, ok := e.promoted[slot]; ok {
 		return r // see promote.go
 	}
-	return fmt.Sprintf("qword ptr [rbp-%d]", (slot+1)*8+int64(e.pushedGP)*8)
+	return "qword ptr " + e.frameRef((slot+1)*8+int64(e.pushedGP)*8)
+}
+
+// frameRef addresses the frame word off bytes below where rbp would
+// point. Without a frame pointer that place is rsp plus the allocation
+// plus the pushes, so the layout above is the same either way and only
+// the base register changes. rbp is still cheaper to encode by a byte
+// per access (rsp as a base needs a SIB byte), but setting it up and
+// tearing it down was four instructions on every call, which is most
+// of what a small recursive function does.
+func (e *Emitter) frameRef(off int64) string {
+	if e.frameless {
+		return "[rsp+" + strconv.FormatInt(int64(e.frameBytes)+int64(e.pushedGP)*8-off, 10) + "]"
+	}
+	return "[rbp-" + strconv.FormatInt(off, 10) + "]"
 }
 
 func (e *Emitter) regAddr(r Reg) string {
@@ -150,7 +170,7 @@ func (e *Emitter) regAddr(r Reg) string {
 		idx = e.nvslots - 1 // pooled: nothing should land here, but a word is kept for it
 	}
 	off := (idx+int64(e.f.NSlots)+1)*8 + int64(e.pushedGP)*8
-	return fmt.Sprintf("qword ptr [rbp-%d]", off)
+	return "qword ptr " + e.frameRef(off)
 }
 
 // layoutRegs gives a frame word only to the virtual registers that
@@ -309,8 +329,13 @@ func (e *Emitter) frameSize() int {
 	n := (int64(e.f.NSlots) + e.nvslots + 2*int64(len(e.saved)-e.pushedGP)) * 8
 	n += int64(e.outgoing())
 	// rsp is aligned after push rbp; the pushes and this together must
-	// keep it so.
-	for (n+int64(e.pushedGP)*8)%16 != 0 {
+	// keep it so. With no rbp pushed the return address alone leaves it
+	// eight off.
+	lead := int64(0)
+	if e.frameless {
+		lead = 8
+	}
+	for (lead+n+int64(e.pushedGP)*8)%16 != 0 {
 		n += 8
 	}
 	return int(n)
@@ -727,8 +752,24 @@ func (e *Emitter) function(f *Func) {
 	e.label(name)
 	e.comment(fmt.Sprintf("%d param(s), %d slot(s), %d vreg(s)",
 		f.NParams, f.NSlots, f.NRegs))
-	e.line("push rbp")
-	e.line("mov rbp, rsp")
+	// A frame that fits in a page needs no probes, so its prologue is
+	// pushes and one sub, which unwind.go can describe function by
+	// function; such a function keeps no frame pointer. A bigger one
+	// keeps the rbp frame and the one shared description. With the
+	// optimisations off every function keeps rbp, which leaves the
+	// differential fuzzers a reference that does not depend on this.
+	e.frameless = false
+	if !envOff("SCANDIACUS_NOOPT") && !envOff("SCANDIACUS_FRAMEPTR") {
+		e.frameless = true
+		if e.frameSize() >= pageSize {
+			e.frameless = false
+		}
+	}
+	e.frameBytes = e.frameSize()
+	if !e.frameless {
+		e.line("push rbp")
+		e.line("mov rbp, rsp")
+	}
 	// The general callee-saved registers are pushed, after rbp is the
 	// frame pointer so the unwind description stays the same; see
 	// pushedGP. The xmm ones go in the frame.
@@ -737,7 +778,7 @@ func (e *Emitter) function(f *Func) {
 			e.line("push %s", r)
 		}
 	}
-	e.reserve(e.frameSize())
+	e.reserve(e.frameBytes)
 	for i, r := range e.saved {
 		if isXmm(r) {
 			e.saveReg(i, r)
@@ -928,10 +969,7 @@ func (e *Emitter) function(f *Func) {
 	if n := len(f.Code); n == 0 || !endsFlow(f.Code[n-1].Op) {
 		e.comment("epilogue")
 		e.line("xor eax, eax")
-		e.restoreSaved()
-		e.line("mov rsp, rbp")
-		e.line("pop rbp")
-		e.line("ret")
+		e.epilogue()
 	}
 	e.b.WriteString(e.cold.String())
 }
@@ -1361,12 +1399,17 @@ func (e *Emitter) instr(in Instr) {
 		// caller wrote argument i at [R+i*8], with 0..3 being the shadow
 		// space it reserves but does not fill. call pushed the return
 		// address and the prologue pushed rbp, so rbp is R-16 and
-		// argument i is at [rbp+16+i*8] - argument 4 at rbp+48.
+		// argument i is at [rbp+16+i*8] - argument 4 at rbp+48. With
+		// no rbp pushed, R-8 is where frameRef counts from.
 		//
 		// Getting this wrong is quiet: the first four arguments still
 		// arrive correctly, so a six-argument function returns garbage
 		// while every smaller one looks fine.
-		e.line("mov rax, qword ptr [rbp+%d]", 16+in.Imm*8)
+		if e.frameless {
+			e.line("mov rax, qword ptr %s", e.frameRef(-8-in.Imm*8))
+		} else {
+			e.line("mov rax, qword ptr [rbp+%d]", 16+in.Imm*8)
+		}
 		e.put(in.Dst, "rax")
 
 	case OpCall:
@@ -1422,10 +1465,7 @@ func (e *Emitter) instr(in Instr) {
 		default:
 			e.line("xor eax, eax")
 		}
-		e.restoreSaved()
-		e.line("mov rsp, rbp")
-		e.line("pop rbp")
-		e.line("ret")
+		e.epilogue()
 
 	case OpPrintInt:
 		e.line("lea rcx, __fmt_int[rip]")
