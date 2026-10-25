@@ -283,6 +283,130 @@ func (l *lowerer) listPushSlow(t vty) (string, vty) {
 	return sym, valTy
 }
 
+// pushLoop lowers a counted loop whose whole body pushes one literal
+// onto a list,
+//
+//	for i in 0..n + 1 {
+//	    push(comp, false)
+//	}
+//
+// to one call that makes room for every element at once and fills them
+// in: memset for a []bool. Pushed one at a time, each element paid for
+// reading the list's header and writing its length back, and the list
+// was copied every time it doubled; that was a third of the sieve
+// benchmark. A literal is the same value on every trip and reads
+// nothing the loop changes, which is what makes the trips
+// interchangeable. Lists of pointers are left alone.
+func (l *lowerer) pushLoop(st *ForStmt, start, end Reg) bool {
+	if envOff("SCANDIACUS_NOOPT") || len(st.Body.Stmts) != 1 {
+		return false
+	}
+	es, ok := st.Body.Stmts[0].(*ExprStmt)
+	if !ok {
+		return false
+	}
+	c, ok := es.X.(*Call)
+	if !ok || len(c.Args) != 2 {
+		return false
+	}
+	if fn, ok := c.Callee.(*Ident); !ok || fn.Name != "push" {
+		return false
+	}
+	if _, ok := c.Args[0].(*Ident); !ok {
+		return false
+	}
+	switch c.Args[1].(type) {
+	case *BoolLit, *IntLit, *FloatLit:
+	default:
+		return false
+	}
+	list := l.expr(c.Args[0])
+	t := l.regTy[list]
+	if t.k != kList || elemTag(t) == tagPtrs {
+		return false
+	}
+	v := l.rvalueAs(c.Args[1], t.elemType())
+	if !l.regTy[v].eq(t.elemType()) {
+		l.errorAt(c, "cannot push %s into %s", l.regTy[v], t)
+		return true
+	}
+	n := l.arith(OpSub, end, start)
+	if st.Inclusive {
+		n = l.arith(OpAdd, n, l.constant(1))
+	}
+	done := l.newLabel()
+	l.emit(Instr{Op: OpJumpNot, A: l.compare(OpGt, n, l.constant(0)), Dst: NoReg, Imm: done})
+	sym, valTy := l.listFillN(t)
+	l.callHelper(sym, []Reg{list, v, n}, []vty{vInt, valTy, vInt}, vInt)
+	l.maybeCollect()
+	l.mark(done)
+	return true
+}
+
+// listFillN is the helper behind pushLoop: it appends n copies of v,
+// growing the element block once, to double its capacity or to what is
+// needed if that is more. One per element shape, as for listPushSlow.
+func (l *lowerer) listFillN(t vty) (string, vty) {
+	tag, width := elemTag(t), elemWidth(t)
+	name, valTy := "__listfilln_w", vInt
+	switch {
+	case width == 1:
+		name, valTy = "__listfilln_b", vBool
+	case t.elemType().k == kFloat:
+		name, valTy = "__listfilln_f", vFloat
+	}
+	elem := t.elemType()
+	sym := l.helperFunc(name, []vty{vInt, valTy, vInt}, vInt, func(a []Reg) {
+		lst, v, n := a[0], a[1], a[2]
+		length := l.field(lst, listLenOff, vInt)
+		need := l.arith(OpAdd, length, n)
+		have := l.newLabel()
+		l.emit(Instr{Op: OpJumpIf, A: l.compare(OpLe, need, l.field(lst, listCapOff, vInt)),
+			Dst: NoReg, Imm: have})
+
+		capSlot := l.temp(vInt)
+		doubled := l.arith(OpMul, l.field(lst, listCapOff, vInt), l.constant(2))
+		l.emit(Instr{Op: OpStore, A: doubled, Dst: NoReg, Imm: capSlot})
+		enough := l.newLabel()
+		l.emit(Instr{Op: OpJumpIf, A: l.compare(OpGe, doubled, need), Dst: NoReg, Imm: enough})
+		l.emit(Instr{Op: OpStore, A: need, Dst: NoReg, Imm: capSlot})
+		l.mark(enough)
+		newCap := l.load(capSlot, vInt)
+		fresh := l.allocObj(l.arith(OpMul, newCap, l.constant(width)), tag)
+		old := l.field(lst, listDataOff, vInt)
+		l.ccall("memcpy", []Reg{fresh, old, l.arith(OpMul, l.field(lst, listLenOff, vInt), l.constant(width))},
+			[]vty{vInt, vInt, vInt}, vInt, false, false)
+		l.emit(Instr{Op: OpStoreMem, A: lst, B: newCap, Imm: listCapOff})
+		l.emit(Instr{Op: OpStoreMem, A: lst, B: fresh, Imm: listDataOff})
+		if l.gcOff {
+			l.freeObject(old) // no collector will; see gcoff.go
+		}
+		l.mark(have)
+
+		at := l.field(lst, listLenOff, vInt)
+		data := l.field(lst, listDataOff, vInt)
+		if width == 1 {
+			l.ccall("memset", []Reg{l.arith(OpAdd, data, at), v, n},
+				[]vty{vInt, vInt, vInt}, vInt, false, false)
+		} else {
+			kSlot := l.temp(vInt)
+			l.emit(Instr{Op: OpStore, A: at, Dst: NoReg, Imm: kSlot})
+			top, out := l.newLabel(), l.newLabel()
+			end := l.arith(OpAdd, at, n)
+			l.mark(top)
+			k := l.load(kSlot, vInt)
+			l.emit(Instr{Op: OpJumpNot, A: l.compare(OpLt, k, end), Dst: NoReg, Imm: out})
+			l.elemStore(data, k, v, elem)
+			l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, k, l.constant(1)), Dst: NoReg, Imm: kSlot})
+			l.jump(top)
+			l.mark(out)
+		}
+		l.emit(Instr{Op: OpStoreMem, A: lst, B: l.arith(OpAdd, at, n), Imm: listLenOff})
+		l.emit(Instr{Op: OpRet, A: l.constant(0), Dst: NoReg})
+	})
+	return sym, valTy
+}
+
 // listFill stores a literal's elements into a list made with room for
 // exactly them, then sets the length once. Going through listPush put
 // its growth path - a copying loop - in the code once per element,

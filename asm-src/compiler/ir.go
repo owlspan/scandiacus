@@ -2055,6 +2055,11 @@ func (l *lowerer) forRange(st *ForStmt) {
 	endAt := len(l.fn.Code)
 	l.emit(Instr{Op: OpStore, A: end, Dst: NoReg, Imm: endSlot, Comment: "limit"})
 
+	if step == 1 && ctr == iSlot && l.pushLoop(st, start, end) {
+		l.popScope()
+		return
+	}
+
 	if step == 1 && !st.Inclusive && ctr == iSlot && !envOff("SCANDIACUS_NOVEC") {
 		if plan, ok := l.vectorizable(st); ok {
 			l.vecLoop(plan, iSlot, endSlot)
