@@ -32,7 +32,7 @@ import (
 	"strings"
 )
 
-const Version = "1.98.0"
+const Version = "1.98.1"
 
 const usage = `scandiacus ` + Version + ` - the Scandiacus compiler
 

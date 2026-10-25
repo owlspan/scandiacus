@@ -3,6 +3,24 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.98.1
+
+**A closure can capture a loop variable.** A function literal inside
+a `for` loop that used the loop's variable crashed with an access
+violation when called (in 1.97.0 and 1.98.0 too):
+
+```scandiacus
+let fs: []fn() -> int = []
+for k in 0..3 {
+    push(fs, fn() -> int { return k * 10 })
+}
+for f in fs { print(f()) }     // 0, 10, 20
+```
+
+Each trip's closures now keep that trip's value, for counted loops and
+for loops over lists and maps. Assigning to a counted loop's variable
+still changes where the loop goes next, as before.
+
 ## 1.98.0
 
 **Faster recursive functions.** Two changes, measured on fib(40) on
