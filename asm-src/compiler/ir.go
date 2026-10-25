@@ -674,6 +674,11 @@ type Func struct {
 	Boxed, Temps map[int64]bool
 	NLabels      int
 
+	// Ranges bounds the values a slot ever holds, for the counters of
+	// counted loops with constant bounds that nothing else writes; see
+	// valueRanges in ranges.go. A slot missing from it may hold anything.
+	Ranges map[int64]span
+
 	// RegTypes is the type of every virtual register, parallel to the
 	// register numbers. The register allocator reads it to decide which
 	// values may sit in a machine register: only non-pointers, because a
@@ -2041,11 +2046,13 @@ func (l *lowerer) forRange(st *ForStmt) {
 	if l.boxed[iSlot] {
 		ctr = l.temp(vInt)
 	}
+	initAt := len(l.fn.Code)
 	l.emit(Instr{Op: OpStore, A: start, Dst: NoReg, Imm: ctr,
 		Comment: "for " + st.Var})
 
 	end := l.expr(st.End)
 	endSlot := l.temp(vInt)
+	endAt := len(l.fn.Code)
 	l.emit(Instr{Op: OpStore, A: end, Dst: NoReg, Imm: endSlot, Comment: "limit"})
 
 	if step == 1 && !st.Inclusive && ctr == iSlot && !envOff("SCANDIACUS_NOVEC") {
@@ -2109,11 +2116,68 @@ func (l *lowerer) forRange(st *ForStmt) {
 	next := l.newReg()
 	l.regTy[next] = vInt
 	l.emit(Instr{Op: OpAdd, Dst: next, A: cur, B: inc})
+	incAt := len(l.fn.Code)
 	l.emit(Instr{Op: OpStore, A: next, Dst: NoReg, Imm: ctr})
 	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
 
 	l.mark(done)
 	l.popScope()
+	l.counterRange(ctr, start, end, step, st.Inclusive, initAt, endAt, incAt)
+}
+
+// counterRange records the values a counted loop's counter can hold,
+// when its bounds are constants and nothing but the loop's own first
+// store and increment writes it: the start, and every value the
+// increment makes from one that passed the test, so up to the last one
+// below (or at) the end plus one step. That is what lets i * i in a
+// loop to 400000000 be known not to overflow, and so be divided as an
+// unsigned number.
+func (l *lowerer) counterRange(slot int64, start, end Reg, step int64, inclusive bool, initAt, endAt, incAt int) {
+	if step <= 0 {
+		return
+	}
+	a, ok1 := l.recentConst(start, initAt)
+	b, ok2 := l.recentConst(end, endAt)
+	if !ok1 || !ok2 {
+		return
+	}
+	for p := initAt + 1; p < len(l.fn.Code); p++ {
+		in := l.fn.Code[p]
+		switch in.Op {
+		case OpStore, OpSlotAddr, OpStoreByte:
+			if in.Imm == slot && p != incAt {
+				return // the body or a vector loop writes it too
+			}
+		}
+	}
+	last := b - 1 // the largest value that passes the test
+	if inclusive {
+		last = b
+	}
+	hi := a
+	if last >= a {
+		if last > math.MaxInt64-step {
+			return
+		}
+		hi = last + step
+	}
+	if l.fn.Ranges == nil {
+		l.fn.Ranges = map[int64]span{}
+	}
+	l.fn.Ranges[slot] = span{a, hi}
+}
+
+// recentConst finds the constant r was set to, looking back a few
+// instructions from before: a bound written as a literal is lowered
+// just ahead of the store that uses it.
+func (l *lowerer) recentConst(r Reg, before int) (int64, bool) {
+	for p := before - 1; p >= 0 && p >= before-8; p-- {
+		in := l.fn.Code[p]
+		if in.Dst == r {
+			return in.Imm, in.Op == OpConst
+		}
+	}
+	return 0, false
 }
 
 // constInt folds the integer expressions the lowerer has to know at

@@ -98,6 +98,10 @@ type Emitter struct {
 	// over a long run of dropped constants (a long list literal).
 	next    []int
 	nextFor *Func
+
+	// ranges is what valueRanges knows of this function's registers;
+	// nil with the optimisations off.
+	ranges map[Reg]span
 }
 
 // Windows x64 calling convention.
@@ -732,8 +736,10 @@ func (e *Emitter) function(f *Func) {
 		}
 	}
 	e.consts, e.dropConst = nil, nil
+	e.ranges = nil
 	if e.homes != nil {
 		e.planConsts(f)
+		e.ranges = valueRanges(f)
 	}
 	e.saved = e.savedRegs()
 	e.pushedGP = 0

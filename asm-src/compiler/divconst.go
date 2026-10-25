@@ -41,10 +41,39 @@ func isPow2(d int64) bool { return d > 0 && d&(d-1) == 0 }
 // than with idiv.
 func constDivisor(d int64) bool { return d >= 2 }
 
+// udivMagic is the multiplier and shift for dividing a number known
+// not to be negative by d >= 2 that is not a power of two:
+//
+//	q = hi(n * m) >> s        unsigned, for 0 <= n < 2^63
+//
+// with m = ceil(2^p / d) for the smallest p from 64 that keeps the
+// error m*d - 2^p within 2^(p-63), Granlund and Montgomery's condition
+// for 63-bit dividends. p = 63 + ceil(log2 d) always qualifies and
+// keeps m below 2^64, so the search ends.
+func udivMagic(d int64) (uint64, uint) {
+	bd := big.NewInt(d)
+	for p := uint(64); ; p++ {
+		two := new(big.Int).Lsh(big.NewInt(1), p)
+		m := new(big.Int).Add(two, new(big.Int).Sub(bd, big.NewInt(1)))
+		m.Quo(m, bd)
+		if m.BitLen() > 64 {
+			continue
+		}
+		err := new(big.Int).Sub(new(big.Int).Mul(m, bd), two)
+		if err.Cmp(new(big.Int).Lsh(big.NewInt(1), p-63)) <= 0 {
+			return m.Uint64(), p - 64
+		}
+	}
+}
+
 // selDivConst emits n / d or n % d for a constant d the check above
 // accepted. The result is left in rdx.
 func (e *Emitter) selDivConst(in Instr, d int64) {
 	e.line("mov rcx, %s", e.loc(in.A)) // n
+	if e.nonNeg(in.A) {
+		e.selUDivConst(in, d)
+		return
+	}
 	if isPow2(d) {
 		k := bits.TrailingZeros64(uint64(d))
 		// (n + (n < 0 ? d-1 : 0)) >> k rounds towards zero.
@@ -79,6 +108,43 @@ func (e *Emitter) selDivConst(in Instr, d int64) {
 	// n - q*d.
 	e.line("mov rax, %d", d)
 	e.line("imul rax, rdx")
+	e.line("mov rdx, rcx")
+	e.line("sub rdx, rax")
+}
+
+// selUDivConst is selDivConst for a dividend known not to be negative
+// (see ranges.go), already in rcx: unsigned, so no rounding fix, and a
+// power of two is one shift or one and. clang does the same once it
+// knows the sign.
+func (e *Emitter) selUDivConst(in Instr, d int64) {
+	if isPow2(d) {
+		e.line("mov rdx, rcx")
+		if in.Op == OpDiv {
+			e.line("shr rdx, %d", bits.TrailingZeros64(uint64(d)))
+		} else if fits32(d - 1) {
+			e.line("and rdx, %d", d-1)
+		} else {
+			e.line("mov rax, %d", d-1)
+			e.line("and rdx, rax")
+		}
+		return
+	}
+	m, sh := udivMagic(d)
+	e.line("mov rax, %d", int64(m))
+	e.line("mul rcx")
+	if sh > 0 {
+		e.line("shr rdx, %d", sh)
+	}
+	if in.Op == OpDiv {
+		return
+	}
+	// n - q*d.
+	if fits32(d) {
+		e.line("imul rax, rdx, %d", d)
+	} else {
+		e.line("mov rax, %d", d)
+		e.line("imul rax, rdx")
+	}
 	e.line("mov rdx, rcx")
 	e.line("sub rdx, rax")
 }

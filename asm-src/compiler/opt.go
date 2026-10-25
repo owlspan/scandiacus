@@ -889,6 +889,20 @@ func packSlots(fn *Func) {
 		return out
 	}
 	fn.Boxed, fn.Temps = moved(fn.Boxed), moved(fn.Temps)
+	// A range holds for a slot only while it is the one variable there.
+	if fn.Ranges != nil {
+		sharers := map[int64]int{}
+		for _, n := range remap {
+			sharers[n]++
+		}
+		out := map[int64]span{}
+		for s, r := range fn.Ranges {
+			if n, ok := remap[s]; ok && sharers[n] == 1 {
+				out[n] = r
+			}
+		}
+		fn.Ranges = out
+	}
 	fn.NSlots = int(next)
 }
 

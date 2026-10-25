@@ -129,6 +129,12 @@ func inlineInto(f *Func, byName map[string]*Func, bodies map[string][]Instr) {
 		f.RegTypes = append(f.RegTypes, callee.RegTypes[:callee.NRegs]...)
 		slotOff := int64(f.NSlots)
 		f.NSlots += callee.NSlots
+		for sl, r := range callee.Ranges {
+			if f.Ranges == nil {
+				f.Ranges = map[int64]span{}
+			}
+			f.Ranges[sl+slotOff] = r
+		}
 		labOff := int64(f.NLabels)
 		f.NLabels += callee.NLabels + 1
 		end := labOff + int64(callee.NLabels)
