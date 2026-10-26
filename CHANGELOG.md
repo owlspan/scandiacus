@@ -3,6 +3,46 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.0.0
+
+**Lists of structs store their elements inline.** A list of a struct
+whose fields are all numbers or bools now keeps the fields of each
+element side by side in one block, like a C array of structs, instead
+of a block of pointers to one heap object per element. Programs mean
+the same as before; what changes is the internal layout of list blocks
+and the collector's object tags, which is why this is 2.0.
+
+Measured on Linux, best of seven, against C built with `zig cc -O2`:
+
+- Filling a list with 1M structs (`asm-src/bench/structfill`): 0.43s
+  with one object per element, 0.17s inline; C takes 0.46s.
+- The struct update benchmarks are unchanged by the layout so far
+  (structs 0.029s vs C 0.040s, structs16 0.057s vs 0.057s, structs3
+  0.054s vs 0.039s, structs5 0.130s vs 0.019s). Each field access
+  still works out the element address on its own; reusing it across a
+  loop is the next step.
+- fib went from 0.092s to 0.072s (C 0.085s), from treating equal
+  integer constants as one value in common subexpression elimination.
+
+Other changes in this release:
+
+- `reverse`, `slice` and `filter` on such a list return independent
+  copies, as the language reference always said; they used to share
+  the elements with the original.
+- A loop over a list whose body may grow a list, and a method called
+  on an element that may, follow the element when the block moves; a
+  method gets a copy of the element as `self`, written back when it
+  returns. See "Structs and collections" in docs/SYNTAX.md.
+- The collector accepts a pointer into the middle of an object on the
+  stack, and knows blocks that hold structs.
+- Threaded programs: allocation results and list data pointers are
+  typed as pointers, so frame words are shared between numbers again
+  and loop counters stay in registers. A threaded sample went from
+  0.77s to 0.67s and from 153208 to 149112 bytes.
+- Structs with a `str`, list, map or struct field are still one object
+  per element. `SCANDIACUS_INLINESTRUCTS=0` stores every struct list
+  the old way.
+
 ## 1.102.0
 
 **Faster packed float loops, and two miscompiles fixed.** Measured on
