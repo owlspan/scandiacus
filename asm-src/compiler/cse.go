@@ -74,6 +74,11 @@ type pureKey struct {
 	op   Op
 	a, b Reg
 	imm  int64
+	// An operand that is an integer constant is keyed by its value
+	// (ca, cb set, a or b cleared), so x * 32 written twice is one
+	// multiplication though each 32 is a register of its own.
+	ca, cb bool
+	av, bv int64
 }
 
 type loadKey struct {
@@ -131,6 +136,12 @@ func cse(m *Module, fn *Func) {
 	}
 
 	sameAs := map[Reg]Reg{}
+	consts := map[Reg]int64{}
+	for _, in := range fn.Code {
+		if in.Op == OpConst && in.Dst != NoReg {
+			consts[in.Dst] = in.Imm
+		}
+	}
 	follow := func(r Reg) Reg {
 		for {
 			next, ok := sameAs[r]
@@ -174,7 +185,13 @@ func cse(m *Module, fn *Func) {
 			reset()
 
 		case csePure(in.Op):
-			k := pureKey{in.Op, in.A, in.B, in.Imm}
+			k := pureKey{op: in.Op, a: in.A, b: in.B, imm: in.Imm}
+			if v, ok := consts[in.A]; ok && in.A != NoReg {
+				k.a, k.ca, k.av = NoReg, true, v
+			}
+			if v, ok := consts[in.B]; ok && in.B != NoReg {
+				k.b, k.cb, k.bv = NoReg, true, v
+			}
 			if d, ok := pure[k]; ok && sameClass(fn, d, in.Dst) {
 				sameAs[in.Dst] = d
 				continue
