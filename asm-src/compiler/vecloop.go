@@ -1,6 +1,8 @@
 package main
 
-// Two elements at a time: a counted loop over []float lists, run with
+import "fmt"
+
+// Four elements a trip: a counted loop over []float lists, run with
 // SSE2's packed doubles.
 //
 //	for j in 0..n {
@@ -12,14 +14,15 @@ package main
 // []float list, at the loop variable plus something that does not
 // change in the loop, set from such elements, float variables and
 // literals with + - and * - the lowerer puts a loop in front of the
-// ordinary one that does two trips at once: movupd to load two elements,
-// mulpd and addpd, movupd to store them. Every element goes through the
-// same operations in the same order as before, so the results are the
-// same to the bit. The ordinary loop then does whatever is left, one
-// trip or the whole range.
+// ordinary one that does four elements at once, as two pairs: movupd to load
+// two elements, mulpd and addpd, movupd to store them, twice. Every
+// element goes through the same operations in the same order as before,
+// so the results are the same to the bit. A pair does two of what is
+// left over, and the ordinary loop then does the one that may remain, or
+// the whole range.
 //
-// The packed loop runs only when, checked once before it, every index it
-// will touch is in range and the list written to is not one read at a
+// The packed loops run only when, checked once before them, every index
+// they will touch is in range and the list written to is not one read at a
 // different place (two names can hold the same list). Otherwise the
 // ordinary loop does all of it, and so an index out of range stops the
 // program with the same message at the same trip as it always did.
@@ -372,14 +375,43 @@ func (l *lowerer) vecLoop(p *vecPlan, iSlot, endSlot int64) {
 		l.emit(Instr{Op: OpVSplat, Dst: NoReg, A: l.load(scal[hoisted.scalar], vFloat), B: NoReg, Imm: vecHoistReg})
 	}
 
+	// Four elements a trip: the body twice, the second at j+2. What is
+	// left is two or three, so at most one more pair, and then the
+	// ordinary loop takes the one that may remain.
 	top := l.newLabel()
+	pair := l.newLabel()
 	l.mark(top)
 	j := ld(iSlot)
-	l.jumpNot(l.compare(OpLt, l.arith(OpAdd, j, l.constant(1)), ld(endSlot)), skip)
+	l.jumpNot(l.compare(OpLt, l.arith(OpAdd, j, l.constant(3)), ld(endSlot)), pair)
+	l.vecBody(p, bases, scal, hoisted, ld(iSlot), 0)
+	l.vecBody(p, bases, scal, hoisted, ld(iSlot), 1)
+	l.setSlot(iSlot, l.arith(OpAdd, ld(iSlot), l.constant(4)))
+	l.jump(top)
+	l.mark(pair)
+	l.jumpNot(l.compare(OpLt, l.arith(OpAdd, ld(iSlot), l.constant(1)), ld(endSlot)), skip)
+	l.vecBody(p, bases, scal, hoisted, ld(iSlot), 0)
+	l.setSlot(iSlot, l.arith(OpAdd, ld(iSlot), l.constant(2)))
+	l.mark(skip)
+}
+
+// vecDisp is the byte offset a packed load or store carries in Imm, as
+// text to follow a base in an address: the second pair of a trip is
+// 16 bytes on from the first, with no register for its index.
+func vecDisp(imm int64) string {
+	if d := imm >> 4; d != 0 {
+		return fmt.Sprintf("+%d", d)
+	}
+	return ""
+}
+
+// vecBody is one packed step: the two elements at j and j+1 of every
+// access, plus 2*pair for the second step of a trip, worked out in xmm0
+// and xmm1 and stored.
+func (l *lowerer) vecBody(p *vecPlan, bases []int64, scal []int64, hoisted *vecNode, j Reg, pair int64) {
 	addr := func(i int) Reg {
 		a := l.newReg()
 		l.regTy[a] = vInt
-		l.emit(Instr{Op: OpIndexAddr, Dst: a, A: ld(bases[i]), B: ld(iSlot)})
+		l.emit(Instr{Op: OpIndexAddr, Dst: a, A: l.load(bases[i], vInt), B: j})
 		return a
 	}
 	var gen func(n *vecNode, reg int) int
@@ -389,7 +421,7 @@ func (l *lowerer) vecLoop(p *vecPlan, iSlot, endSlot int64) {
 		}
 		if n.leaf {
 			if n.isElem {
-				l.emit(Instr{Op: OpVLoad, Dst: NoReg, A: addr(n.access), B: NoReg, Imm: int64(reg)})
+				l.emit(Instr{Op: OpVLoad, Dst: NoReg, A: addr(n.access), B: NoReg, Imm: int64(reg) | pair*16<<4})
 			} else {
 				l.emit(Instr{Op: OpVSplat, Dst: NoReg, A: l.load(scal[n.scalar], vFloat), B: NoReg, Imm: int64(reg)})
 			}
@@ -415,8 +447,5 @@ func (l *lowerer) vecLoop(p *vecPlan, iSlot, endSlot int64) {
 		return b
 	}
 	res := gen(p.root, 0)
-	l.emit(Instr{Op: OpVStore, Dst: NoReg, A: addr(p.target), B: NoReg, Imm: int64(res)})
-	l.setSlot(iSlot, l.arith(OpAdd, ld(iSlot), l.constant(2)))
-	l.jump(top)
-	l.mark(skip)
+	l.emit(Instr{Op: OpVStore, Dst: NoReg, A: addr(p.target), B: NoReg, Imm: int64(res) | pair*16<<4})
 }

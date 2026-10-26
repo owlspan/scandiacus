@@ -1690,9 +1690,9 @@ func (e *Emitter) instr(in Instr) {
 			base = "rax"
 		}
 		if in.Op == OpVLoad {
-			e.line("movupd xmm%d, [%s]", in.Imm, base)
+			e.line("movupd xmm%d, [%s%s]", in.Imm&15, base, vecDisp(in.Imm))
 		} else {
-			e.line("movupd [%s], xmm%d", base, in.Imm)
+			e.line("movupd [%s%s], xmm%d", base, vecDisp(in.Imm), in.Imm&15)
 		}
 
 	case OpVSplat:

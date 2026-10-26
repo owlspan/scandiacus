@@ -85,3 +85,22 @@ for j in 0..n {
     c[j] = a[j] - k * b[j]
 }
 print(c)
+
+// Every length from 0 to 9, starting at 0 and at 1: whole trips of four,
+// then a pair, then a single element.
+let w: []float = []
+for i in 0..12 {
+    push(w, float(i) * 0.5 + 1.0)
+}
+for len in 0..10 {
+    for start in 0..2 {
+        let r: []float = []
+        for i in 0..12 {
+            push(r, 100.0)
+        }
+        for j in start..start + len {
+            r[j] += 2.0 * w[j + 1]
+        }
+        print(str(len) + " " + str(start) + " " + str(r))
+    }
+}

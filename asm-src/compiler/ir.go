@@ -576,8 +576,8 @@ const (
 	// Packed doubles, for the two-at-a-time loops of vecloop.go. They
 	// name xmm0 or xmm1 in Imm and define no virtual register, so the
 	// register allocator never sees a vector. Appended, not inserted.
-	OpVLoad  // xmm[Imm] = the two doubles at address A
-	OpVStore // the two doubles in xmm[Imm] are written at address A
+	OpVLoad  // xmm[Imm&15] = the two doubles at address A + Imm>>4
+	OpVStore // the two doubles in xmm[Imm&15] are written at address A + Imm>>4
 	OpVSplat // xmm[Imm] = the float A, twice
 	OpVArith // xmm[Imm>>4&15] op= xmm[Imm&15], op = Imm>>8: add, sub, mul
 )
