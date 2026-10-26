@@ -3,6 +3,20 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.8.0
+
+**Fixed-size arrays.** `[N]T` holds N C scalars (`i8` through `u64`,
+`f32`, `f64`, `int`, `float`, `bool`, `byte`) and behaves as a value:
+assigning, passing or returning one copies it, `==` compares contents,
+and `len` is a constant. A local array lives in the function's frame,
+so it costs no allocation; one larger than 64 KB goes on the heap. In a
+struct the elements are stored inline, laid out the way C lays them
+out, so a struct with a `[16]f32` field can be passed to native code
+as is. Indexes are checked against the length. `let a: [16]f32` starts
+zeroed, and `[1.0, 2.0]` fills from the front. Arrays can be printed,
+interpolated, iterated with `for` and encoded to JSON; they cannot yet
+be put in a list or map, and JSON decoding rejects them.
+
 ## 2.7.0
 
 **Closures as callbacks.** A closure can now go anywhere native code
