@@ -294,7 +294,9 @@ func (t *Type) Accepts(got *Type) bool {
 		// type at all - unwrap it first.
 		return got.Kind != KVoid && got.Kind != KResult && got.Kind != KErrLit
 	case KNumeric:
-		return got.IsNumeric()
+		// The library's numbers take the fixed widths too: the lowerer
+		// converts one to an int or a float on the way in.
+		return got.IsNumeric() || got.IsFixed()
 	case KNullable:
 		// nil fits any nullable, and so does a plain value of the inner
 		// type - widening a T into a ?T loses nothing. The checker
@@ -558,7 +560,7 @@ func ParseType(s string) *Type {
 				// like a struct here and only the checker knows which a
 				// name is, so a named key is let through and the checker
 				// refuses one that turns out to be a struct.
-				if key.Kind != KStr && key.Kind != KInt && key.Kind != KStruct {
+				if key.Kind != KStr && key.Kind != KInt && key.Kind != KStruct && !key.IsFixedInt() {
 					return nil
 				}
 				return MapOf(key, val)

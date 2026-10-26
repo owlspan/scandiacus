@@ -2070,7 +2070,15 @@ func (l *lowerer) forRange(st *ForStmt) {
 	l.pushScope()
 
 	start := l.expr(st.Start)
-	iSlot := l.declareLoopVar(st.Var, vInt)
+	// A range in a fixed width gives the variable that type. It counts
+	// in the ordinary int slot all the same: every value it takes is
+	// already in range, sign- or zero-extended as such a value is, and
+	// the one past the end is never seen by the body.
+	vt := vInt
+	if w := l.regTy[start]; fixedOf(w) != "" {
+		vt = w
+	}
+	iSlot := l.declareLoopVar(st.Var, vt)
 	// A captured counter lives in a slot of its own, copied into each
 	// trip's cell at the top of the body and read back from it at the
 	// bottom, so an assignment to the variable still moves the loop.
@@ -2792,8 +2800,8 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 // its arguments were written as int literals.
 func (l *lowerer) numeric(e Expr) Reg {
 	v := l.expr(e)
-	if l.regTy[v].k == kInt {
-		return l.toFloat(v)
+	if l.regTy[v].k == kInt || isF32(l.regTy[v]) {
+		return l.convert(v, vFloat) // a u64 as unsigned
 	}
 	return v
 }
@@ -2838,6 +2846,29 @@ func (l *lowerer) numMath(c *Call, name string) Reg {
 		args[i] = l.expr(a)
 	}
 	float := l.regTy[args[0]].k == kFloat
+	if w := l.regTy[args[0]]; fixedOf(w) != "" {
+		// The checker made every argument this width or a literal: the
+		// literal becomes one, and the comparison is unsigned for u64.
+		for i := range args[1:] {
+			args[i+1] = l.convert(args[i+1], w)
+		}
+		lt, gt := OpLt, OpGt
+		switch {
+		case float:
+			lt, gt = OpFLt, OpFGt
+		case isU64(w):
+			lt, gt = OpLtU, OpGtU
+		}
+		best := args[0]
+		for _, v := range args[1:] {
+			op := gt
+			if name == "min" {
+				op = lt
+			}
+			best = l.pick(l.compare(op, best, v), best, v, w)
+		}
+		return best
+	}
 	for i, v := range args {
 		switch {
 		case float && l.regTy[v].k == kInt:

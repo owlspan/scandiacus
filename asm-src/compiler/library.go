@@ -788,9 +788,19 @@ func checkMinMax(c *Checker, x *Call, args []*Type) *Type {
 		if a.IsUnknown() {
 			continue
 		}
-		if a.Kind != KInt && a.Kind != KFloat {
+		if a.Kind != KInt && a.Kind != KFloat && !a.IsFixed() {
 			c.ErrorAt(x.Args[i], "min and max need numbers, got %s", a)
 			return Unknown
+		}
+	}
+	// A fixed width takes others of the same width, or a literal.
+	if args[0].IsFixed() {
+		for i, a := range args[1:] {
+			if !a.IsUnknown() && !a.Equal(args[0]) && !front.IsUntypedInt(x.Args[i+1]) {
+				c.ErrorAt(x.Args[i+1], "min and max started with %s, so argument %d must be one too, got %s",
+					args[0], i+2, a)
+				return Unknown
+			}
 		}
 	}
 	return args[0]

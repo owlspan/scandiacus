@@ -338,6 +338,20 @@ and `>>` work on the integer types, not on `f32`. Reading memory at a
 width gives that width's type: a `*u16` reads a `u16`, and an extern
 struct's `i32` field reads an `i32`.
 
+The math functions take them too. `sqrt`, `pow`, `floor` and the rest
+give back what they give for an `int` or a `float`; `min` and `max`
+give back the width they were given, and want every argument in it (a
+literal fits). A range in a fixed integer width counts in it, and an
+integer width below `u64` can key a map:
+
+```scandiacus
+let n: i32 = 4
+print(sqrt(n))                // 2
+print(max(u8(200), 7))        // 200, a u8
+for i in u8(250)..=255 { }    // i is a u8
+let names: {u16: str} = {80: "http", 443: "https"}
+```
+
 A value of one is still a single machine word, sign- or zero-extended
 from its width, so it costs what an `int` does; the extra instruction
 that puts a result back into range is one `movzx`, `movsx` or 32-bit
@@ -4413,10 +4427,10 @@ Honest list of what v2.4.0 does not do yet.
 - **A native call through an address is untyped.** `mem.call` passes
   words and takes back `rax`; an `extern fn` is still the way to give
   a native function a checked signature.
-- **The library takes `int` and `float`.** `abs`, `min`, `max`, `sqrt`
-  and the rest of the math functions, the `mem` functions and the
-  bounds of a `for` range do not take the fixed-width types yet: convert
-  with `int(x)` or `float(x)`. A map key cannot be one either.
+- **The `mem` functions take `int`.** Convert a fixed-width value
+  with `int(x)` first. A `u64` cannot be a `for` range bound or a map
+  key, since its top half would compare as negative; convert it, or
+  use `int`.
 - **A loop variable and an `f32` global have no address.** A local
   variable, a parameter, a global, a field of an extern struct, `*p`
   and `p[i]` do.

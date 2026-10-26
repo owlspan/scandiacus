@@ -343,7 +343,7 @@ func (c *Checker) resolveAnnotation(text string, n Node) *Type {
 	}
 	t = c.enumTypes(t)
 	if bad := c.badMapKey(t); bad != nil {
-		c.ErrorAt(n, "a map key must be str, int, a plain enum or a struct of those, got %s", bad)
+		c.ErrorAt(n, "a map key must be str, int, a fixed-width integer below u64, a plain enum or a struct of those, got %s", bad)
 		return Unknown
 	}
 	if bad := c.undeclaredStruct(t, n); bad != "" {
@@ -743,12 +743,21 @@ func (c *Checker) stmt(s Stmt) {
 		}
 		startT := c.expr(st.Start)
 		endT := c.expr(st.End)
-		for _, pair := range []struct {
-			t *Type
-			n Node
-		}{{startT, st.Start}, {endT, st.End}} {
-			if !pair.t.IsUnknown() && pair.t.Kind != KInt {
-				c.ErrorAt(pair.n, "a for-loop range must be int, got %s", pair.t)
+		// A range of a fixed integer width counts in that width, and
+		// the variable has its type: both ends that width, or one a
+		// literal. Not u64, whose top half compares as negative in the
+		// loop's signed test.
+		varT := Int
+		if fw := fixedLoopRange(startT, endT, st.Start, st.End); fw != nil {
+			varT = fw
+		} else {
+			for _, pair := range []struct {
+				t *Type
+				n Node
+			}{{startT, st.Start}, {endT, st.End}} {
+				if !pair.t.IsUnknown() && pair.t.Kind != KInt {
+					c.ErrorAt(pair.n, "a for-loop range must be int or a fixed-width integer below u64, got %s", pair.t)
+				}
 			}
 		}
 		if st.Step != nil {
@@ -757,7 +766,7 @@ func (c *Checker) stmt(s Stmt) {
 			}
 		}
 		c.push()
-		c.define(st.Var, Int)
+		c.define(st.Var, varT)
 		c.markLoopVars(st.Var)
 		c.stmts(st.Body.Stmts)
 		c.pop()
@@ -1498,7 +1507,7 @@ func (c *Checker) listLitAs(x *ListLit, want *Type) *Type {
 func (c *Checker) mapLitAs(x *MapLit, want *Type) *Type {
 	ok := true
 	for i := range x.Keys {
-		if got := c.expr(x.Keys[i]); !want.Key.Accepts(got) {
+		if got := c.expr(x.Keys[i]); !want.Key.Accepts(got) && !c.coerce(&x.Keys[i], want.Key, got) {
 			c.ErrorAt(x.Keys[i], "this map has %s keys, but key %d is %s", want.Key, i+1, got)
 			ok = false
 			break
@@ -1572,7 +1581,7 @@ func (c *Checker) mapLit(x *MapLit) *Type {
 
 	keyT := c.expr(x.Keys[0])
 	if !c.keyable(keyT, 0) && !keyT.IsUnknown() {
-		c.ErrorAt(x.Keys[0], "a map key must be str, int, a plain enum or a struct of those, got %s", keyT)
+		c.ErrorAt(x.Keys[0], "a map key must be str, int, a fixed-width integer below u64, a plain enum or a struct of those, got %s", keyT)
 		keyT = Unknown
 	}
 	valT := c.expr(x.Vals[0])
@@ -2560,6 +2569,11 @@ func (c *Checker) keyable(t *Type, depth int) bool {
 	switch t.Kind {
 	case KStr, KInt, KEnum, KBool:
 		return depth > 0 || t.Kind != KBool
+	case KFixed:
+		// The integer widths are words like int, kept in order as int
+		// is. Not f32, a float, or u64, whose top half would sort as
+		// negative.
+		return t.IsFixedInt() && t.Name != "u64"
 	case KStruct:
 		d, ok := c.structs[t.Name]
 		if !ok || d.Extern {
@@ -2769,4 +2783,18 @@ func (c *Checker) forChannel(st *ForStmt, collT *Type) {
 	loop := &WhileStmt{Span: at, Cond: &BoolLit{Span: at, Val: true}, Body: body}
 	st.Lowered = &Block{Span: at, Stmts: []Stmt{&LetStmt{Span: at, Name: tmp, Value: st.Coll}, loop}}
 	c.stmt(st.Lowered)
+}
+
+// fixedLoopRange is the type of a for-loop range written in a fixed integer
+// width, or nil when it is not one: both ends of that width, or one of
+// them a literal.
+func fixedLoopRange(a, b *Type, an, bn Expr) *Type {
+	ok := func(t *Type) bool { return t != nil && t.IsFixed() && t.Name != "f32" && t.Name != "u64" }
+	switch {
+	case ok(a) && (a.Equal(b) || IsUntypedInt(bn)):
+		return a
+	case ok(b) && IsUntypedInt(an):
+		return b
+	}
+	return nil
 }
