@@ -3,6 +3,24 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.1.0
+
+**Float loops no longer wait on the trip before.** A float copied from
+one register to another used `movsd`, which writes only the low half
+of the destination and so depends on whatever last wrote that
+register. When the register allocator reused a register across loop
+trips, every trip waited for the previous one to finish. Such copies
+are now `movapd`, as C compilers emit.
+
+Measured on Linux, best of seven, against C built with `zig cc -O2`:
+
+- structs5 (1000 structs of five floats, 20000 updates): 0.130s to
+  0.033s; C takes 0.020s.
+- structs3: 0.054s to 0.026s; C takes 0.039s.
+- fib 0.073s (C 0.083s), loop 0.431s (C 0.415s), sieve 0.345s
+  (C 0.323s), matmul 0.026s (C 0.018s), structs 0.029s (C 0.040s),
+  structs16 0.057s (C 0.056s): unchanged.
+
 ## 2.0.1
 
 The same compiler as 2.0.0, which made no release: a test's expected
