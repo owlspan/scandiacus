@@ -146,13 +146,38 @@ func (l *lowerer) collectBody() {
 		[]vty{vInt}, vInt, false, false))
 	l.pokeWord(l.load(workS, vInt), wordSize, l.load(roomS, vInt))
 	work = l.load(workS, vInt)
-	workLen := l.rawWord()
+	var workLen Reg
+	if l.gcInline {
+		// Room after the length for the sorted large objects.
+		workLen = l.ccall("calloc", []Reg{l.constant(3), l.constant(wordSize)},
+			[]vty{vInt, vInt}, vInt, false, false)
+	} else {
+		workLen = l.rawWord()
+	}
 
 	// ---- fill the index, and clear the marks from last time ----
+	var sorted, nSorted int64
+	if l.gcInline {
+		sorted, nSorted = l.temp(vInt), l.temp(vInt)
+		l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: nSorted})
+		l.emit(Instr{Op: OpStore, Dst: NoReg, Imm: sorted, A: l.ccall("malloc",
+			[]Reg{l.arith(OpMul, l.arith(OpAdd, l.load(count, vInt), l.constant(1)), l.constant(wordSize))},
+			[]vty{vInt}, vInt, false, false)})
+	}
 	l.walkObjects(func(raw Reg) {
 		l.tableInsert(table, mask, l.arith(OpAdd, raw, l.constant(objHeader)))
 		l.pokeWord(raw, objNextOff, l.unmarkedKeep(l.peekWord(raw, objNextOff)))
+		if l.gcInline {
+			l.pokeWord(l.arith(OpAdd, l.load(sorted, vInt),
+				l.arith(OpMul, l.load(nSorted, vInt), l.constant(wordSize))), 0,
+				l.arith(OpAdd, raw, l.constant(objHeader)))
+			l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, l.load(nSorted, vInt), l.constant(1)),
+				Dst: NoReg, Imm: nSorted})
+		}
 	})
+	if l.gcInline {
+		l.sortInterior(workLen, l.load(sorted, vInt), l.load(nSorted, vInt))
+	}
 
 	// ---- roots ----
 	//
@@ -171,7 +196,7 @@ func (l *lowerer) collectBody() {
 	sp := l.newReg()
 	l.regTy[sp] = vInt
 	l.emit(Instr{Op: OpStackPtr, Dst: sp, A: NoReg, B: NoReg})
-	l.scanRange(sp, l.loadPtr(highOut), table, mask, work, workLen)
+	l.scanRange(sp, l.loadPtr(highOut), true, table, mask, work, workLen)
 
 	// Every other thread's, when the world is stopped for this.
 	l.scanThreadStacks(table, mask, work, workLen)
@@ -181,7 +206,7 @@ func (l *lowerer) collectBody() {
 	base := l.rtSlot(0)
 	l.scanRange(base,
 		l.arith(OpAdd, base, l.arith(OpMul, l.rtLoad(gcNGlobSlot), l.constant(wordSize))),
-		table, mask, work, workLen)
+		false, table, mask, work, workLen)
 
 	l.traceAll(table, mask, work, workLen)
 	l.sweep()
@@ -189,6 +214,9 @@ func (l *lowerer) collectBody() {
 	l.ccall("free", []Reg{table}, []vty{vInt}, vVoid, false, false)
 	l.ccall("free", []Reg{l.peekWord(work, 0)}, []vty{vInt}, vVoid, false, false)
 	l.ccall("free", []Reg{work}, []vty{vInt}, vVoid, false, false)
+	if l.gcInline {
+		l.ccall("free", []Reg{l.peekWord(workLen, interiorArrOff)}, []vty{vInt}, vVoid, false, false)
+	}
 	l.ccall("free", []Reg{workLen}, []vty{vInt}, vVoid, false, false)
 	l.ccall("free", []Reg{lowOut}, []vty{vInt}, vVoid, false, false)
 	l.ccall("free", []Reg{highOut}, []vty{vInt}, vVoid, false, false)
@@ -379,8 +407,10 @@ func (l *lowerer) markAndPush(rawSlot int64, payload func() Reg, work, workLen R
 
 // scanRange offers every word between two addresses as a possible root.
 // This is the conservative half: a word that happens to equal an
-// object's address keeps it alive whether it meant to or not.
-func (l *lowerer) scanRange(from, to Reg, table, mask, work, workLen Reg) {
+// object's address keeps it alive whether it meant to or not. A stack
+// range also keeps an object alive through a pointer into its middle,
+// when the program has blocks that code works on in place.
+func (l *lowerer) scanRange(from, to Reg, stack bool, table, mask, work, workLen Reg) {
 	toSlot := l.temp(vInt)
 	l.emit(Instr{Op: OpStore, A: to, Dst: NoReg, Imm: toSlot})
 
@@ -395,7 +425,11 @@ func (l *lowerer) scanRange(from, to Reg, table, mask, work, workLen Reg) {
 		Dst: NoReg, Imm: done})
 	// Inline in the two loops that offer every word - here and the
 	// fields of an object - since that is where marking spends its time.
-	l.tryMarkBody(l.peekWord(cur, 0), table, mask, work, workLen)
+	if stack && l.gcInline {
+		l.tryMarkInterior(l.peekWord(cur, 0), table, mask, work, workLen)
+	} else {
+		l.tryMarkBody(l.peekWord(cur, 0), table, mask, work, workLen)
+	}
 	l.emit(Instr{Op: OpStore,
 		A:   l.arith(OpAdd, l.load(at, vInt), l.constant(wordSize)),
 		Dst: NoReg, Imm: at})

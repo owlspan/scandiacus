@@ -1,6 +1,6 @@
 // Data blocks with a descriptor (mem.gcblock, a hook for the compiler's
 // tests): the collector follows the pointer words of every element and
-// no others.
+// no others, and a pointer into the middle of a block keeps it alive.
 //
 // Elements are two words, a child block and a number. The number word
 // holds the address of a victim block, which the collector must not
@@ -48,6 +48,12 @@ fn check(b: int, n: int) -> bool {
     return true
 }
 
+// The only reference left is an address inside element `at`.
+fn inside(n: int, at: int) -> int {
+    let b = build(n)
+    return b + at * 16 + 8
+}
+
 fn garbage(n: int) {
     let k = 0
     while k < n {
@@ -82,3 +88,19 @@ mem.collect()
 churn()
 print(check(small, 4))
 print(check(big, 300))
+
+// Interior pointers only.
+let p1 = inside(4, 2)
+let p2 = inside(300, 250)
+churn()
+mem.collect()
+churn()
+print(check(p1 - 2 * 16 - 8, 4))
+print(check(p2 - 250 * 16 - 8, 300))
+
+// The last byte of the block.
+let p3 = inside(300, 299) + 7
+churn()
+mem.collect()
+churn()
+print(check(p3 - 299 * 16 - 8 - 7, 300))

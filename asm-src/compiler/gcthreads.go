@@ -341,7 +341,7 @@ func (l *lowerer) scanThreadStacks(table, mask, work, workLen Reg) {
 		l.emit(Instr{Op: OpStore, A: r, Dst: NoReg, Imm: rSlot})
 		l.emit(Instr{Op: OpJumpIf, A: l.compare(OpEq, l.peekWord(r, recState), l.constant(stDone)), Dst: NoReg, Imm: skip})
 		keep := l.arith(OpAdd, l.load(rSlot, vInt), l.constant(recKeep))
-		l.scanRange(keep, l.arith(OpAdd, keep, l.constant(wordSize)), table, mask, work, workLen)
+		l.scanRange(keep, l.arith(OpAdd, keep, l.constant(wordSize)), false, table, mask, work, workLen)
 		l.mark(skip)
 	})
 	l.eachRecord(func(r Reg) {
@@ -350,7 +350,7 @@ func (l *lowerer) scanThreadStacks(table, mask, work, workLen Reg) {
 		l.emit(Instr{Op: OpStore, A: r, Dst: NoReg, Imm: rSlot})
 		l.emit(Instr{Op: OpJumpNot, A: l.compare(OpEq, l.peekWord(r, recState), l.constant(stHeld)), Dst: NoReg, Imm: skip})
 		rr := l.load(rSlot, vInt)
-		l.scanRange(l.peekWord(rr, recSP), l.peekWord(l.load(rSlot, vInt), recHigh), table, mask, work, workLen)
+		l.scanRange(l.peekWord(rr, recSP), l.peekWord(l.load(rSlot, vInt), recHigh), true, table, mask, work, workLen)
 		l.mark(skip)
 	})
 }

@@ -12,9 +12,10 @@ import (
 
 // TestGCBlocks runs testdata/gcblocks.scd, which builds data blocks with
 // a struct descriptor through the mem.gcblock hook and checks that
-// children survive and victims named only by non-pointer words do not.
-// It runs under each collection mode, because the timing of collections
-// is what differs between them.
+// children survive, victims named only by non-pointer words do not, and
+// a pointer into the middle of a block keeps it alive. It runs under
+// each collection mode, because the stack scan and the timing of
+// collections are what differ between them.
 func TestGCBlocks(t *testing.T) {
 	if !targetLinux() && !targetMac() && runtime.GOOS != "windows" {
 		if _, err := exec.LookPath("wine"); err != nil {
