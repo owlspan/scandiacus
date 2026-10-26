@@ -1257,9 +1257,17 @@ func (e *Emitter) instr(in Instr) {
 	case OpFNeg:
 		// mulsd by -1.0 rather than flipping the sign bit: see the
 		// comment on __neg_one in Emit for why xorpd was not worth it.
+		if d, a := e.loc(in.Dst), e.loc(in.A); isXmm(d) {
+			// The constant is the multiply's memory operand, so it
+			// needs no register and no separate load.
+			if d != a {
+				e.line("movsd %s, %s", d, a)
+			}
+			e.line("mulsd %s, __neg_one[rip]", d)
+			break
+		}
 		e.line("movsd xmm0, %s", e.loc(in.A))
-		e.line("movsd xmm1, __neg_one[rip]")
-		e.line("mulsd xmm0, xmm1")
+		e.line("mulsd xmm0, __neg_one[rip]")
 		e.putf(in.Dst, "xmm0")
 
 	case OpFEq, OpFNe, OpFLt, OpFLe, OpFGt, OpFGe:

@@ -323,26 +323,25 @@ func regUses(f *Func) map[Reg]int {
 // NaN on either side compares false: an unordered pair sets CF, ZF and
 // PF together.
 func (e *Emitter) fuseFloatBranch(cmp, br Instr, uses map[Reg]int) bool {
-	if e.homes == nil || cmp.Dst == NoReg || uses[cmp.Dst] != 1 {
-		return false
-	}
-	if (br.Op != OpJumpIf && br.Op != OpJumpNot) || br.A != cmp.Dst {
+	if e.homes == nil || !fusesFloatBranch(cmp, br, uses) {
 		return false
 	}
 	x, y := cmp.A, cmp.B
-	switch cmp.Op {
-	case OpFLt, OpFLe:
+	if cmp.Op == OpFLt || cmp.Op == OpFLe {
 		x, y = y, x
-	case OpFGt, OpFGe, OpFEq, OpFNe:
-	default:
-		return false
 	}
 	a := e.loc(x)
 	if !isXmm(a) {
 		e.line("movsd xmm0, %s", a)
 		a = "xmm0"
 	}
-	e.line("comisd %s, %s", a, e.loc(y))
+	b := e.loc(y)
+	if idx, ok := e.fconsts[y]; ok {
+		// Read from the pool, which is also how planConsts lets the
+		// constant's own load go when nothing else wants it.
+		b = fmt.Sprintf("__flt%d[rip]", idx)
+	}
+	e.line("comisd %s, %s", a, b)
 	target := fmt.Sprintf(".L%s_%d", e.labelBase(), br.Imm)
 	taken := br.Op == OpJumpIf
 	switch cmp.Op {
@@ -374,6 +373,21 @@ func (e *Emitter) fuseFloatBranch(cmp, br Instr, uses map[Reg]int) bool {
 		}
 	}
 	return true
+}
+
+// fusesFloatBranch is the part of fuseFloatBranch's decision that reads
+// only the two instructions, so planConsts can ask it before any code is
+// written.
+func fusesFloatBranch(cmp, br Instr, uses map[Reg]int) bool {
+	switch cmp.Op {
+	case OpFLt, OpFLe, OpFGt, OpFGe, OpFEq, OpFNe:
+	default:
+		return false
+	}
+	if cmp.Dst == NoReg || uses[cmp.Dst] != 1 {
+		return false
+	}
+	return (br.Op == OpJumpIf || br.Op == OpJumpNot) && br.A == cmp.Dst
 }
 
 func (e *Emitter) fuseBranch(cmp, br Instr, uses map[Reg]int) bool {

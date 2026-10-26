@@ -53,16 +53,25 @@ func (e *Emitter) planConsts(f *Func) {
 		}
 	}
 	needed := map[Reg]bool{}
-	for _, in := range f.Code {
+	uses := regUses(f)
+	for i, in := range f.Code {
 		// A float constant is read from memory as the B operand of
 		// arithmetic, and needs its register anywhere else - including
 		// as the A operand of the same instruction, as in x + x once x
 		// is known: deciding by register rather than by position used
 		// to skip that one, and the add read whatever the register held.
-		if _, ok := e.fconsts[in.A]; ok && in.A != NoReg {
+		// A comparison that fuseFloatBranch turns into a comisd reads
+		// the constant from memory as well, on the operand comisd lets
+		// be memory.
+		memA, memB := false, false
+		if i+1 < len(f.Code) && in.A != in.B && fusesFloatBranch(in, f.Code[i+1], uses) {
+			memA = in.Op == OpFLt || in.Op == OpFLe
+			memB = !memA
+		}
+		if _, ok := e.fconsts[in.A]; ok && in.A != NoReg && !memA {
 			needed[in.A] = true
 		}
-		if _, ok := e.fconsts[in.B]; ok && in.B != NoReg && !isFArith(in.Op) {
+		if _, ok := e.fconsts[in.B]; ok && in.B != NoReg && !isFArith(in.Op) && !memB {
 			needed[in.B] = true
 		}
 		if _, ok := e.consts[in.A]; ok && in.A != NoReg {
