@@ -343,6 +343,14 @@ func (l *lowerer) tryMarkBody(candidate, table, mask, work, workLen Reg) {
 	l.emit(Instr{Op: OpStore, A: l.arith(OpSub, l.load(cand, vInt), l.constant(objHeader)), Dst: NoReg, Imm: rawSlot})
 	l.mark(found)
 
+	l.markAndPush(rawSlot, func() Reg { return l.load(cand, vInt) }, work, workLen, done)
+	l.mark(done)
+}
+
+// markAndPush sets the mark on the object whose header is at rawSlot,
+// unless it is set already, and queues its payload for tracing. Both
+// ways of finding an object, exact and interior, end here.
+func (l *lowerer) markAndPush(rawSlot int64, payload func() Reg, work, workLen Reg, done int64) {
 	link := l.peekWord(l.load(rawSlot, vInt), objNextOff)
 	linkSlot := l.temp(vInt)
 	l.emit(Instr{Op: OpStore, A: link, Dst: NoReg, Imm: linkSlot})
@@ -364,16 +372,15 @@ func (l *lowerer) tryMarkBody(candidate, table, mask, work, workLen Reg) {
 		[]vty{vInt, vInt}, vInt, false, false))
 	l.mark(roomy)
 	l.pokeWord(l.arith(OpAdd, l.peekWord(work, 0), l.arith(OpMul, l.load(n, vInt), l.constant(wordSize))), 0,
-		l.load(cand, vInt))
+		payload())
 	l.pokeWord(workLen, 0, l.arith(OpAdd, l.load(n, vInt), l.constant(1)))
 
-	l.mark(done)
 }
 
 // scanRange offers every word between two addresses as a possible root.
 // This is the conservative half: a word that happens to equal an
 // object's address keeps it alive whether it meant to or not.
-func (l *lowerer) scanRange(from, to, table, mask, work, workLen Reg) {
+func (l *lowerer) scanRange(from, to Reg, table, mask, work, workLen Reg) {
 	toSlot := l.temp(vInt)
 	l.emit(Instr{Op: OpStore, A: to, Dst: NoReg, Imm: toSlot})
 
