@@ -3,6 +3,18 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.10.0
+
+**Full unrolling of small loops.** A `for` loop whose bounds and step
+are literals and which runs at most 16 times is written out once per
+trip, with the variable a constant in each copy, when the copies stay
+small and the body has no `break`, `continue`, `defer`, function
+literal or `while`. Nested loops unroll together. Constant indexes into
+fixed-size arrays then lose their bounds checks and address the frame
+directly, and float array elements stay in xmm registers. A 4x4 f64
+matrix product runs 2.5 times as fast. `SCANDIACUS_NOUNROLL=1` turns it
+off.
+
 ## 2.9.0
 
 **Inline assembly.** `asm(rcx = x, rax -> n) { "popcnt rax, rcx" }`
