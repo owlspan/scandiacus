@@ -3,6 +3,12 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.0.1
+
+The same compiler as 2.0.0, which made no release: a test's expected
+output was checked out with Windows line endings on the Windows CI
+machine, and the test failed there. See 2.0.0 below for what changed.
+
 ## 2.0.0
 
 **Lists of structs store their elements inline.** A list of a struct
