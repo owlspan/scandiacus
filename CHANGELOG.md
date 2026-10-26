@@ -3,6 +3,17 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.11.0
+
+**Structs with string and list fields stored inline.** A list of a
+struct with `str`, list, map or function fields now keeps the fields in
+one block, like a list of numeric structs, instead of one heap object
+per element. Building and walking a million `{str, int, float}` records
+is about 30% faster. A struct with a struct field is still stored one
+object per element. Fixed: a closure that captured the loop variable of
+`for p in ps` could read freed memory after the list was collected.
+`slice`, `sort` and `sortBy` allocate their result once.
+
 ## 2.10.0
 
 **Full unrolling of small loops.** A `for` loop whose bounds and step

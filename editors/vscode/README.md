@@ -25,7 +25,7 @@ the temp folder; or write it somewhere yourself and install it from VS
 Code with **Extensions: Install from VSIX...**:
 
 ```
-scandiacus vscode --vsix scandiacus-lang-2.10.0.vsix editors/vscode
+scandiacus vscode --vsix scandiacus-lang-2.11.0.vsix editors/vscode
 ```
 
 Copying the folder into `~/.vscode/extensions` no longer works. VS Code
