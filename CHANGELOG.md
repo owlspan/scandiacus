@@ -3,6 +3,21 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.99.1
+
+**Fewer antivirus false positives.** The manifest in every built
+Windows program now lists the Windows versions it supports (Vista
+through 11), as a normal linker's output does. Without that list
+Windows applies compatibility shims to the program, and some scanners
+count the missing section against the file. A new test checks that a
+built executable has no writable and executable section, conventional
+section names, ASLR and DEP, a correct checksum, a version resource and
+the manifest.
+
+`docs/ANTIVIRUS.md` explains how to sign the installer and built
+programs, and where to report a false positive to Defender, SmartScreen
+and the main vendors.
+
 ## 1.99.0
 
 **Faster loops over counters.** Two changes, measured on Linux against
