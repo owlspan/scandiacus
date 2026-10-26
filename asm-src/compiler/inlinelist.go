@@ -1,6 +1,9 @@
 package main
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 // Structs stored inside a list's element block.
 //
@@ -86,4 +89,64 @@ func (l *lowerer) freshCopy(v Reg, t vty) Reg {
 // the address of a struct, which is how an inline element is addressed.
 func structAddr(fn *Func, r Reg) bool {
 	return int(r) < len(fn.RegTypes) && fn.RegTypes[r].k == kStruct
+}
+
+// pushLiteral appends a struct literal to a list that stores its
+// elements inline, writing the fields straight into the new slot. The
+// literal never exists as an object of its own, which is most of what
+// building a long list of structs used to cost. It reports false when
+// the literal is not of the list's element type, leaving the ordinary
+// path to say so.
+func (l *lowerer) pushLiteral(list Reg, lit *StructLit) bool {
+	t := l.regTy[list]
+	elem := t.elemType()
+	stride := inlineStrideOf(elem)
+	lay, ok := l.structs[lit.Name]
+	if stride == 0 || !ok || lit.Name != elem.name || lay.bytes != stride {
+		return false
+	}
+
+	// The fields are worked out first, as structLit does, in memory
+	// order: evaluating one may push onto this very list, and the
+	// slot's address must be read after that.
+	given := map[string]Expr{}
+	for i, name := range lit.Fields {
+		if i < len(lit.Vals) {
+			given[name] = lit.Vals[i]
+		}
+	}
+	vals := make([]Reg, len(lay.fields))
+	for i, f := range lay.fields {
+		var v Reg
+		if e, has := given[f.name]; has {
+			v = l.rvalueAs(e, f.t)
+			if f.t.k == kFloat && l.regTy[v].k == kInt {
+				v = l.toFloat(v)
+			}
+		} else {
+			v = l.zeroOf(lit, f.t, 0)
+		}
+		vals[i] = v
+	}
+
+	length := l.field(list, listLenOff, vInt)
+	capacity := l.field(list, listCapOff, vInt)
+	room := l.newLabel()
+	l.emit(Instr{Op: OpJumpIf, A: l.compare(OpLt, length, capacity), Dst: NoReg, Imm: room,
+		Comment: "push: room?"})
+	sym := l.helperFunc(fmt.Sprintf("__listgrow_s%d", stride), []vty{vInt}, vInt, func(a []Reg) {
+		l.growBlock(a[0], tagWords, stride)
+		l.emit(Instr{Op: OpRet, A: l.constant(0), Dst: NoReg})
+	})
+	l.callHelper(sym, []Reg{list}, []vty{vInt}, vInt)
+	l.maybeCollect()
+	l.mark(room)
+
+	at := l.field(list, listLenOff, vInt)
+	slot := l.inlineAddr(l.field(list, listDataOff, vInt), at, stride, elem)
+	for i, f := range lay.fields {
+		l.emit(Instr{Op: OpStoreMem, A: slot, B: vals[i], Imm: f.off})
+	}
+	l.emit(Instr{Op: OpStoreMem, A: list, B: l.arith(OpAdd, at, l.constant(1)), Imm: listLenOff})
+	return true
 }

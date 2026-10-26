@@ -237,6 +237,36 @@ func (l *lowerer) listPush(list, val Reg) {
 	l.mark(done)
 }
 
+// growBlock doubles a list's element block (to initialCap at least) and
+// copies the elements over with memcpy.
+func (l *lowerer) growBlock(lst Reg, tag, width int64) {
+	capacity := l.field(lst, listCapOff, vInt)
+
+	// The new capacity goes through a slot because two branches
+	// decide it, which is exactly what a virtual register cannot
+	// express while every one of them has a single definition site.
+	capSlot := l.temp(vInt)
+	doubled := l.arith(OpMul, capacity, l.constant(2))
+	l.emit(Instr{Op: OpStore, A: doubled, Dst: NoReg, Imm: capSlot})
+	haveCap := l.newLabel()
+	big := l.compare(OpGe, doubled, l.constant(initialCap))
+	l.emit(Instr{Op: OpJumpIf, A: big, Dst: NoReg, Imm: haveCap})
+	l.emit(Instr{Op: OpStore, A: l.constant(initialCap), Dst: NoReg, Imm: capSlot})
+	l.mark(haveCap)
+	newCap := l.load(capSlot, vInt)
+
+	fresh := l.allocObj(l.arith(OpMul, newCap, l.constant(width)), tag)
+	old := l.field(lst, listDataOff, vRawPtr)
+	n := l.field(lst, listLenOff, vInt)
+	l.ccall("memcpy", []Reg{fresh, old, l.arith(OpMul, n, l.constant(width))},
+		[]vty{vInt, vInt, vInt}, vInt, false, false)
+	l.emit(Instr{Op: OpStoreMem, A: lst, B: newCap, Imm: listCapOff})
+	l.emit(Instr{Op: OpStoreMem, A: lst, B: fresh, Imm: listDataOff})
+	if l.gcOff {
+		l.freeObject(old) // no collector will; see gcoff.go
+	}
+}
+
 // listPushSlow is the helper for a push onto a full list: it doubles
 // the element block (to initialCap at least), copies the elements over
 // with memcpy, and stores the value. One per element shape, since the
@@ -259,32 +289,7 @@ func (l *lowerer) listPushSlow(t vty) (string, vty) {
 	}
 	sym := l.helperFunc(name, []vty{vInt, valTy}, vInt, func(a []Reg) {
 		lst, v := a[0], a[1]
-		capacity := l.field(lst, listCapOff, vInt)
-
-		// The new capacity goes through a slot because two branches
-		// decide it, which is exactly what a virtual register cannot
-		// express while every one of them has a single definition site.
-		capSlot := l.temp(vInt)
-		doubled := l.arith(OpMul, capacity, l.constant(2))
-		l.emit(Instr{Op: OpStore, A: doubled, Dst: NoReg, Imm: capSlot})
-		haveCap := l.newLabel()
-		big := l.compare(OpGe, doubled, l.constant(initialCap))
-		l.emit(Instr{Op: OpJumpIf, A: big, Dst: NoReg, Imm: haveCap})
-		l.emit(Instr{Op: OpStore, A: l.constant(initialCap), Dst: NoReg, Imm: capSlot})
-		l.mark(haveCap)
-		newCap := l.load(capSlot, vInt)
-
-		fresh := l.allocObj(l.arith(OpMul, newCap, l.constant(width)), tag)
-		old := l.field(lst, listDataOff, vRawPtr)
-		n := l.field(lst, listLenOff, vInt)
-		l.ccall("memcpy", []Reg{fresh, old, l.arith(OpMul, n, l.constant(width))},
-			[]vty{vInt, vInt, vInt}, vInt, false, false)
-		l.emit(Instr{Op: OpStoreMem, A: lst, B: newCap, Imm: listCapOff})
-		l.emit(Instr{Op: OpStoreMem, A: lst, B: fresh, Imm: listDataOff})
-		if l.gcOff {
-			l.freeObject(old) // no collector will; see gcoff.go
-		}
-
+		l.growBlock(lst, tag, width)
 		at := l.field(lst, listLenOff, vInt)
 		l.elemStore(l.field(lst, listDataOff, vRawPtr), at, v, elem)
 		l.emit(Instr{Op: OpStoreMem, A: lst, B: l.arith(OpAdd, at, l.constant(1)), Imm: listLenOff})

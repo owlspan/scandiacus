@@ -3630,6 +3630,9 @@ func (l *lowerer) pushInto(c *Call, list Reg, arg Expr) bool {
 		l.errorAt(c, "push needs a list")
 		return false
 	}
+	if lit, ok := arg.(*StructLit); ok && l.pushLiteral(list, lit) {
+		return true
+	}
 	v := l.rvalueAs(arg, l.regTy[list].elemType())
 	if !l.regTy[v].eq(l.regTy[list].elemType()) {
 		l.errorAt(c, "cannot push %s into %s", l.regTy[v], l.regTy[list])
