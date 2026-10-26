@@ -26,3 +26,4 @@
 tests/**/*.in  -text
 tests/**/*.out -text
 examples/*.out -text
+compiler/testdata/*.out -text
