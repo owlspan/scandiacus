@@ -2,7 +2,7 @@
   "name": "scandiacus-lang",
   "displayName": "Scandiacus",
   "description": "Highlighting, errors as you type, completion, go to definition, and a button to run or build the file, for the Scandiacus programming language",
-  "version": "1.99.1",
+  "version": "1.100.0",
   "publisher": "scandiacus",
   "license": "MIT",
   "engines": {

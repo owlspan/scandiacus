@@ -3,6 +3,23 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.100.0
+
+**Tighter counted loops.** Two changes, measured on Linux, best of 9,
+against C built with `zig cc -O2`:
+
+- The unsigned remainder by a constant (new in 1.99.0) now reads its
+  operand where it already sits and writes the result straight into
+  its destination register, two fewer moves per use. The `loop`
+  benchmark went from 0.485s to 0.425s; C takes 0.402s, so it is now
+  1.06x of C.
+- A counted loop whose body is a few instructions of straight-line
+  code (no calls, no branches inside the loop) now runs four trips per
+  pass, or two for a body over 12 instructions, with a one-trip loop
+  for what is left over. The gain is small: about 1-2% on `loop`, which
+  is bound by its multiplies, and within noise on `sieve`.
+  `SCANDIACUS_NOUNROLL=1` turns it off.
+
 ## 1.99.1
 
 **Fewer antivirus false positives.** The manifest in every built
