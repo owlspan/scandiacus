@@ -113,7 +113,7 @@ func (l *lowerer) keyAt(keys, i Reg, t vty) Reg {
 // mapScan looks a key up. It writes whether the key is there into
 // hitSlot and, when it is, the entry's index into idxSlot.
 func (l *lowerer) mapScan(m, key Reg, t vty, idxSlot, hitSlot int64) {
-	e := l.wordAt(l.field(m, mapIdxOff, vInt), l.mapFind(m, key, t), vInt)
+	e := l.wordAt(l.field(m, mapIdxOff, vRawPtr), l.mapFind(m, key, t), vInt)
 	l.emit(Instr{Op: OpStore, A: l.compare(OpGt, e, l.constant(0)), Dst: NoReg, Imm: hitSlot})
 	l.emit(Instr{Op: OpStore, A: l.arith(OpSub, e, l.constant(1)), Dst: NoReg, Imm: idxSlot})
 }
@@ -153,7 +153,7 @@ func (l *lowerer) mapGetBody(n Node, m, key Reg, t vty) Reg {
 	found := l.compare(OpNe, hit, l.constant(0))
 	l.emit(Instr{Op: OpJumpNot, A: found, Dst: NoReg, Imm: done})
 
-	vals := l.field(m, mapValsOff, vInt)
+	vals := l.field(m, mapValsOff, vRawPtr)
 	i := l.newReg()
 	l.regTy[i] = vInt
 	l.emit(Instr{Op: OpLoad, Dst: i, A: NoReg, B: NoReg, Imm: idxSlot})
@@ -195,8 +195,8 @@ func (l *lowerer) mapSet(m, key, val Reg, t vty) {
 func (l *lowerer) writeMap(n Node, m Reg, t vty) {
 	l.mapSort(m, t)
 	length := l.field(m, mapLenOff, vInt)
-	keys := l.field(m, mapKeysOff, vInt)
-	vals := l.field(m, mapValsOff, vInt)
+	keys := l.field(m, mapKeysOff, vRawPtr)
+	vals := l.field(m, mapValsOff, vRawPtr)
 
 	l.mod.needs("write")
 	l.writeLit("{")
@@ -271,7 +271,7 @@ func (l *lowerer) printMap(n Node, v Reg, t vty) {
 func (l *lowerer) mapBlockToList(m Reg, t vty, off int64, elem vty) Reg {
 	l.mapSort(m, t)
 	list := l.newList(vListOf(elem), initialCap)
-	block := l.field(m, off, vInt)
+	block := l.field(m, off, vRawPtr)
 
 	iSlot := l.temp(vInt)
 	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: iSlot})
@@ -421,7 +421,7 @@ func (l *lowerer) forMap(st *ForStmt, m Reg, t vty) {
 
 // cellAt reads one entry out of a map's key or value block.
 func (l *lowerer) cellAt(m Reg, off int64, i Reg, elem vty) Reg {
-	block := l.field(m, off, vInt)
+	block := l.field(m, off, vRawPtr)
 	addr := l.newReg()
 	l.regTy[addr] = vInt
 	l.emit(Instr{Op: OpIndexAddr, Dst: addr, A: block, B: i})

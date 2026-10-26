@@ -74,7 +74,8 @@ func loopWeights(f *Func) []int {
 //
 // Not a captured local's slot, which holds a pointer to its cell, and in
 // a program with threads not the lowerer's own temporaries either, which
-// hold new objects as ints. A thread parked for another thread's
+// can hold new objects as ints. A temporary made with scalarTemp is a
+// number by construction and is promoted like a local. A thread parked for another thread's
 // collection is scanned on its stack only: a pointer held nowhere but a
 // callee-saved register is invisible to that collection and gets freed.
 // One thread alone collects in its own call, which saves the registers
@@ -89,6 +90,12 @@ func promoteSlots(f *Func, threaded bool) map[int64]string {
 			return false
 		}
 		t := f.RegTypes[r]
+		// An address from the allocator is as safe in a callee-saved
+		// register as any number when one thread runs: the collector
+		// saves the registers first. See the note above.
+		if t.k == kRawPtr && !threaded && !t.null && !t.res {
+			return true
+		}
 		return !t.holdsPointer() && t.k != kFloat && !t.null && !t.res &&
 			(t.k == kInt || t.k == kBool)
 	}

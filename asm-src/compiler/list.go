@@ -117,12 +117,12 @@ func (l *lowerer) allocObj(bytes Reg, tag int64) Reg {
 // allocates in eight hundred places was carrying eight hundred copies.
 // The call costs nothing next to malloc itself.
 func (l *lowerer) allocTagged(bytes, header Reg) Reg {
-	return l.callHelper(l.allocHelper(), []Reg{bytes, header}, []vty{vInt, vInt}, vInt)
+	return l.callHelper(l.allocHelper(), []Reg{bytes, header}, []vty{vInt, vInt}, vRawPtr)
 }
 
 // allocHelper defines __alloc if it is not already, and names it.
 func (l *lowerer) allocHelper() string {
-	return l.helperFunc("__alloc", []vty{vInt, vInt}, vInt, func(a []Reg) {
+	return l.helperFunc("__alloc", []vty{vInt, vInt}, vRawPtr, func(a []Reg) {
 		// A small object is a slot in a page; see heap.go.
 		large := l.newLabel()
 		total := l.arith(OpAdd, a[0], l.constant(objHeader))
@@ -225,7 +225,7 @@ func (l *lowerer) listPush(list, val Reg) {
 	l.jump(done)
 
 	l.mark(fast)
-	data := l.field(list, listDataOff, vInt)
+	data := l.field(list, listDataOff, vRawPtr)
 	l.elemStore(data, length, val, t.elemType())
 	l.emit(Instr{Op: OpStoreMem, A: list, B: l.arith(OpAdd, length, l.constant(1)),
 		Imm: listLenOff})
@@ -266,7 +266,7 @@ func (l *lowerer) listPushSlow(t vty) (string, vty) {
 		newCap := l.load(capSlot, vInt)
 
 		fresh := l.allocObj(l.arith(OpMul, newCap, l.constant(width)), tag)
-		old := l.field(lst, listDataOff, vInt)
+		old := l.field(lst, listDataOff, vRawPtr)
 		n := l.field(lst, listLenOff, vInt)
 		l.ccall("memcpy", []Reg{fresh, old, l.arith(OpMul, n, l.constant(width))},
 			[]vty{vInt, vInt, vInt}, vInt, false, false)
@@ -276,7 +276,7 @@ func (l *lowerer) listPushSlow(t vty) (string, vty) {
 			l.freeObject(old) // no collector will; see gcoff.go
 		}
 		at := l.field(lst, listLenOff, vInt)
-		l.elemStore(l.field(lst, listDataOff, vInt), at, v, elem)
+		l.elemStore(l.field(lst, listDataOff, vRawPtr), at, v, elem)
 		l.emit(Instr{Op: OpStoreMem, A: lst, B: l.arith(OpAdd, at, l.constant(1)), Imm: listLenOff})
 		l.emit(Instr{Op: OpRet, A: l.constant(0), Dst: NoReg})
 	})
@@ -373,7 +373,7 @@ func (l *lowerer) listFillN(t vty) (string, vty) {
 		l.mark(enough)
 		newCap := l.load(capSlot, vInt)
 		fresh := l.allocObj(l.arith(OpMul, newCap, l.constant(width)), tag)
-		old := l.field(lst, listDataOff, vInt)
+		old := l.field(lst, listDataOff, vRawPtr)
 		l.ccall("memcpy", []Reg{fresh, old, l.arith(OpMul, l.field(lst, listLenOff, vInt), l.constant(width))},
 			[]vty{vInt, vInt, vInt}, vInt, false, false)
 		l.emit(Instr{Op: OpStoreMem, A: lst, B: newCap, Imm: listCapOff})
@@ -384,7 +384,7 @@ func (l *lowerer) listFillN(t vty) (string, vty) {
 		l.mark(have)
 
 		at := l.field(lst, listLenOff, vInt)
-		data := l.field(lst, listDataOff, vInt)
+		data := l.field(lst, listDataOff, vRawPtr)
 		if width == 1 {
 			l.ccall("memset", []Reg{l.arith(OpAdd, data, at), v, n},
 				[]vty{vInt, vInt, vInt}, vInt, false, false)
@@ -413,7 +413,7 @@ func (l *lowerer) listFillN(t vty) (string, vty) {
 // which a long literal does not need and the loop passes in the
 // optimizer were slow to wade through.
 func (l *lowerer) listFill(list Reg, vals []Reg) {
-	data := l.field(list, listDataOff, vInt)
+	data := l.field(list, listDataOff, vRawPtr)
 	elem := l.regTy[list].elemType()
 	for i, v := range vals {
 		if elemWidth(l.regTy[list]) == 1 {
@@ -431,7 +431,7 @@ func (l *lowerer) listFill(list Reg, vals []Reg) {
 func (l *lowerer) elemData(list, idx Reg) Reg {
 	length := l.field(list, listLenOff, vInt)
 	l.checkIndex(idx, length)
-	return l.field(list, listDataOff, vInt)
+	return l.field(list, listDataOff, vRawPtr)
 }
 
 func (l *lowerer) listGet(list, idx Reg, elem vty) Reg {
@@ -509,7 +509,7 @@ func (l *lowerer) writeList(n Node, list Reg, t vty) {
 	l.writeLit(", ")
 	l.mark(noComma)
 
-	data := l.field(list, listDataOff, vInt)
+	data := l.field(list, listDataOff, vRawPtr)
 	v := l.elemLoad(data, i, t.elemType())
 
 	l.writeValue(n, v, t.elemType())

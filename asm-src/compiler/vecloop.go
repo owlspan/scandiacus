@@ -323,7 +323,7 @@ func (l *lowerer) vecLoop(p *vecPlan, iSlot, endSlot int64) {
 		}
 		lst := l.expr(&Ident{Name: a.list})
 		data[a.list] = l.temp(vInt)
-		l.setSlot(data[a.list], l.field(lst, listDataOff, vInt))
+		l.setSlot(data[a.list], l.field(lst, listDataOff, vRawPtr))
 		length[a.list] = l.temp(vInt)
 		l.setSlot(length[a.list], l.field(lst, listLenOff, vInt))
 	}

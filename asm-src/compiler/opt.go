@@ -85,7 +85,7 @@ func Optimize(m *Module) {
 		}
 
 		if !envOff("SCANDIACUS_NOSLOTPACK") {
-			packSlots(fn)
+			packSlots(fn, m.Threaded)
 		}
 	}
 }
@@ -559,8 +559,11 @@ func sameClass(fn *Func, a, b Reg) bool {
 }
 
 // slotKinds sorts the slots by what goes through them: 0 for plain
-// numbers, 1 for floats, 2 for anything else or a mixture.
-func slotKinds(fn *Func) map[int64]int {
+// numbers, 1 for floats, 2 for anything else or a mixture. A raw
+// address counts as a plain number unless the program has threads: only
+// there is it kept out of a callee-saved register (promoteSlots), and
+// so only there does sharing a slot with a list cost it nothing.
+func slotKinds(fn *Func, threaded bool) map[int64]int {
 	kinds := map[int64]int{}
 	of := func(r Reg) int {
 		if r < 0 || int(r) >= len(fn.RegTypes) {
@@ -568,6 +571,8 @@ func slotKinds(fn *Func) map[int64]int {
 		}
 		t := fn.RegTypes[r]
 		switch {
+		case t.k == kRawPtr && !t.null && !t.res && !threaded:
+			return 0
 		case t.null || t.res || t.holdsPointer():
 			return 2
 		case t.k == kFloat:
@@ -620,7 +625,7 @@ func slotKinds(fn *Func) map[int64]int {
 // closure's environment pointer is parked in slot zero by the
 // prologue, named there by number rather than through any instruction
 // this pass sees, so that slot keeps the number zero itself.
-func packSlots(fn *Func) {
+func packSlots(fn *Func, threaded bool) {
 	n := len(fn.Code)
 
 	// ---- basic blocks ----
@@ -837,7 +842,7 @@ func packSlots(fn *Func) {
 	// a register when everything in it is a plain number, or everything
 	// a float; one that has held a list for a while does not qualify, so
 	// a number given that slot's index would lose its register.
-	kinds := slotKinds(fn)
+	kinds := slotKinds(fn, threaded)
 
 	type lease struct {
 		until int

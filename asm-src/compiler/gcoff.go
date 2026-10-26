@@ -49,12 +49,12 @@ func (l *lowerer) deleteValue(c *Call) Reg {
 	case t.null || t.res || t.k == kFunc || l.isView(t):
 		l.errorAt(c.Args[0], "delete frees a list, map, struct, string or bytes, not %s", t)
 	case t.k == kList:
-		l.freeObject(l.field(v, listDataOff, vInt))
+		l.freeObject(l.field(v, listDataOff, vRawPtr))
 		l.freeObject(v)
 	case t.k == kMap:
-		l.freeObject(l.field(v, mapKeysOff, vInt))
-		l.freeObject(l.field(v, mapValsOff, vInt))
-		l.freeObject(l.field(v, mapIdxOff, vInt))
+		l.freeObject(l.field(v, mapKeysOff, vRawPtr))
+		l.freeObject(l.field(v, mapValsOff, vRawPtr))
+		l.freeObject(l.field(v, mapIdxOff, vRawPtr))
 		l.freeObject(v)
 	case t.k == kStruct, t.k == kBytes:
 		l.freeObject(v)

@@ -169,8 +169,8 @@ func (l *lowerer) mapFind(m, key Reg, t vty) Reg {
 	sym := l.helperFunc(mapHelperKey("__map_find", t), []vty{vInt, kt}, vInt, func(a []Reg) {
 		m, key := a[0], a[1]
 		mask := l.arith(OpSub, l.arith(OpMul, l.field(m, mapCapOff, vInt), l.constant(2)), l.constant(1))
-		idx := l.field(m, mapIdxOff, vInt)
-		keys := l.field(m, mapKeysOff, vInt)
+		idx := l.field(m, mapIdxOff, vRawPtr)
+		keys := l.field(m, mapKeysOff, vRawPtr)
 		i := l.temp(vInt)
 		tomb := l.temp(vInt)
 		l.setSlot(i, l.arith(OpBAnd, l.mapHash(key, t), mask))
@@ -211,7 +211,7 @@ func (l *lowerer) mapReindex(m Reg, t vty) {
 		m := a[0]
 		kt := keyVty(t)
 		slots := l.arith(OpMul, l.field(m, mapCapOff, vInt), l.constant(2))
-		l.ccall("memset", []Reg{l.field(m, mapIdxOff, vInt), l.constant(0),
+		l.ccall("memset", []Reg{l.field(m, mapIdxOff, vRawPtr), l.constant(0),
 			l.arith(OpMul, slots, l.constant(wordSize))},
 			[]vty{vInt, vInt, vInt}, vInt, false, false)
 		l.emit(Instr{Op: OpStoreMem, A: m, B: l.constant(0), Imm: mapTombOff})
@@ -222,8 +222,8 @@ func (l *lowerer) mapReindex(m Reg, t vty) {
 		l.mark(top)
 		cur := l.load(j, vInt)
 		l.jumpNot(l.compare(OpLt, cur, l.field(m, mapLenOff, vInt)), done)
-		s := l.mapFind(m, l.wordAt(l.field(m, mapKeysOff, vInt), cur, kt), t)
-		l.setWordAt(l.field(m, mapIdxOff, vInt), s, l.arith(OpAdd, l.load(j, vInt), l.constant(1)))
+		s := l.mapFind(m, l.wordAt(l.field(m, mapKeysOff, vRawPtr), cur, kt), t)
+		l.setWordAt(l.field(m, mapIdxOff, vRawPtr), s, l.arith(OpAdd, l.load(j, vInt), l.constant(1)))
 		l.setSlot(j, l.arith(OpAdd, l.load(j, vInt), l.constant(1)))
 		l.jump(top)
 		l.mark(done)
@@ -251,9 +251,9 @@ func (l *lowerer) mapGrow(m Reg, t vty) {
 		used := l.arith(OpMul, length, l.constant(wordSize))
 		freshK := l.allocObj(bytes, keyTag(t))
 		freshV := l.allocObj(bytes, valTag(t))
-		l.ccall("memmove", []Reg{freshK, l.field(m, mapKeysOff, vInt), used},
+		l.ccall("memmove", []Reg{freshK, l.field(m, mapKeysOff, vRawPtr), used},
 			[]vty{vInt, vInt, vInt}, vInt, false, false)
-		l.ccall("memmove", []Reg{freshV, l.field(m, mapValsOff, vInt), used},
+		l.ccall("memmove", []Reg{freshV, l.field(m, mapValsOff, vRawPtr), used},
 			[]vty{vInt, vInt, vInt}, vInt, false, false)
 		idx := l.newIndex(newCap)
 		l.emit(Instr{Op: OpStoreMem, A: m, B: freshK, Imm: mapKeysOff})
@@ -271,11 +271,11 @@ func (l *lowerer) mapSetBody(m, key, val Reg, t vty) {
 	kt := keyVty(t)
 	slot := l.temp(vInt)
 	l.setSlot(slot, l.mapFind(m, key, t))
-	e := l.wordAt(l.field(m, mapIdxOff, vInt), l.load(slot, vInt), vInt)
+	e := l.wordAt(l.field(m, mapIdxOff, vRawPtr), l.load(slot, vInt), vInt)
 
 	fresh := l.newLabel()
 	l.jumpNot(l.compare(OpGt, e, l.constant(0)), fresh)
-	l.setWordAt(l.field(m, mapValsOff, vInt), l.arith(OpSub, e, l.constant(1)), val)
+	l.setWordAt(l.field(m, mapValsOff, vRawPtr), l.arith(OpSub, e, l.constant(1)), val)
 	l.ret(NoReg)
 
 	// A new key. Make room first - a full array grows, a table choked
@@ -299,7 +299,7 @@ func (l *lowerer) mapSetBody(m, key, val Reg, t vty) {
 	l.mark(placed)
 
 	s := l.load(slot, vInt)
-	idx := l.field(m, mapIdxOff, vInt)
+	idx := l.field(m, mapIdxOff, vRawPtr)
 	wasRemoved := l.newLabel()
 	l.jumpNot(l.compare(OpLt, l.wordAt(idx, s, vInt), l.constant(0)), wasRemoved)
 	l.emit(Instr{Op: OpStoreMem, A: m, Imm: mapTombOff,
@@ -307,14 +307,14 @@ func (l *lowerer) mapSetBody(m, key, val Reg, t vty) {
 	l.mark(wasRemoved)
 
 	n := l.field(m, mapLenOff, vInt)
-	keys := l.field(m, mapKeysOff, vInt)
+	keys := l.field(m, mapKeysOff, vRawPtr)
 	if kt.k == kStruct {
 		// A struct is a value: the map keeps a key of its own, which
 		// changing the caller's struct afterwards cannot move.
 		key = l.copyStruct(keyNode, key, kt)
 	}
 	l.setWordAt(keys, n, key)
-	l.setWordAt(l.field(m, mapValsOff, vInt), n, val)
+	l.setWordAt(l.field(m, mapValsOff, vRawPtr), n, val)
 	l.setWordAt(idx, s, l.arith(OpAdd, n, l.constant(1)))
 	l.emit(Instr{Op: OpStoreMem, A: m, B: l.arith(OpAdd, n, l.constant(1)), Imm: mapLenOff})
 
@@ -334,7 +334,7 @@ func (l *lowerer) mapRemove(m, key Reg, t vty) {
 	sym := l.helperFunc(mapHelperKey("__map_remove", t), []vty{vInt, kt}, vVoid, func(a []Reg) {
 		m, key := a[0], a[1]
 		s := l.mapFind(m, key, t)
-		idx := l.field(m, mapIdxOff, vInt)
+		idx := l.field(m, mapIdxOff, vRawPtr)
 		e := l.wordAt(idx, s, vInt)
 		done := l.newLabel()
 		l.jumpNot(l.compare(OpGt, e, l.constant(0)), done)
@@ -347,8 +347,8 @@ func (l *lowerer) mapRemove(m, key Reg, t vty) {
 		l.emit(Instr{Op: OpStoreMem, A: m, B: last, Imm: mapLenOff})
 		l.jumpIf(l.compare(OpEq, j, last), done)
 
-		keys := l.field(m, mapKeysOff, vInt)
-		vals := l.field(m, mapValsOff, vInt)
+		keys := l.field(m, mapKeysOff, vRawPtr)
+		vals := l.field(m, mapValsOff, vRawPtr)
 		moved := l.wordAt(keys, last, kt)
 		l.setWordAt(keys, j, moved)
 		l.setWordAt(vals, j, l.wordAt(vals, last, vInt))
@@ -376,8 +376,8 @@ func (l *lowerer) mapSort(m Reg, t vty) {
 		l.jumpIf(l.compare(OpEq, l.field(m, mapDirtyOff, vInt), l.constant(0)), done)
 
 		n := l.field(m, mapLenOff, vInt)
-		keys := l.field(m, mapKeysOff, vInt)
-		vals := l.field(m, mapValsOff, vInt)
+		keys := l.field(m, mapKeysOff, vRawPtr)
+		vals := l.field(m, mapValsOff, vRawPtr)
 
 		// Heap sort: in place, O(n log n) whatever the input, and no
 		// second buffer. Keys are unique, so stability does not arise.

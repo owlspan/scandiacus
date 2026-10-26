@@ -403,7 +403,7 @@ func TestPackDisjointSpans(t *testing.T) {
 		{Op: OpStore, A: 2, Imm: 6},
 		{Op: OpLoad, Dst: 3, Imm: 6},
 	}, 4)
-	packSlots(fn)
+	packSlots(fn, false)
 
 	for _, i := range []int{1, 4} {
 		if got := fn.Code[i]; got.Imm != 0 {
@@ -426,7 +426,7 @@ func TestPackOverlappingKept(t *testing.T) {
 		{Op: OpLoad, Dst: 2, Imm: 5},
 		{Op: OpStore, A: 2, Imm: 6},
 	}, 3)
-	packSlots(fn)
+	packSlots(fn, false)
 
 	if got := fn.Code[1]; got.Imm != 0 {
 		t.Fatalf("first slot not numbered from zero: %+v", got)
@@ -450,7 +450,7 @@ func TestPackEscapedPrivate(t *testing.T) {
 		{Op: OpLoad, Dst: 1, Imm: 8},
 		{Op: OpSlotAddr, Dst: 2, Imm: 4},
 	}, 3)
-	packSlots(fn)
+	packSlots(fn, false)
 
 	// The escaped slot counts as live everywhere, so it is placed
 	// first and nothing else may join it.
@@ -475,7 +475,7 @@ func TestPackEnvKeepsZero(t *testing.T) {
 		{Op: OpLoad, Dst: 1, Imm: 0},
 	}, 2)
 	fn.Env = true
-	packSlots(fn)
+	packSlots(fn, false)
 
 	if got := fn.Code[2]; got.Imm != 0 {
 		t.Fatalf("the environment slot moved: %+v", got)
@@ -501,7 +501,7 @@ func TestPackRemapsAllSlotOps(t *testing.T) {
 		{Op: OpSlotAddr, Dst: 6, Imm: 2},
 		{Op: OpLoad, Dst: 7, Imm: 9},
 	}, 8)
-	packSlots(fn)
+	packSlots(fn, false)
 
 	// Slot 2's address escapes at instruction 5, which makes it live
 	// everywhere and so first in line; slot 9 takes the second index.
@@ -529,7 +529,7 @@ func TestPackBackedge(t *testing.T) {
 		{Op: OpStore, A: 2, Imm: 5},
 		{Op: OpJump, Imm: 0},
 	}, 3)
-	packSlots(fn)
+	packSlots(fn, false)
 
 	if got := fn.Code[5]; got.Imm == fn.Code[1].Imm {
 		t.Fatalf("a loop-carried slot shared an index: %+v", got)

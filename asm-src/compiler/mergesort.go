@@ -30,7 +30,7 @@ func (l *lowerer) mergeSortList(list Reg, lt vty, less func(a, b Reg) Reg) {
 	swapped := l.temp(vInt)
 	l.setSlot(swapped, l.constant(0))
 
-	data := func(slot int64) Reg { return l.field(l.load(slot, lt), listDataOff, vInt) }
+	data := func(slot int64) Reg { return l.field(l.load(slot, lt), listDataOff, vRawPtr) }
 	ld := func(slot int64) Reg { return l.load(slot, vInt) }
 	minN := func(v Reg) int64 {
 		s := l.temp(vInt)
@@ -100,7 +100,7 @@ func (l *lowerer) mergeSortList(list Reg, lt vty, less func(a, b Reg) Reg) {
 	// An odd number of passes left the result in the other list.
 	done := l.newLabel()
 	l.jumpIf(l.compare(OpEq, ld(swapped), l.constant(0)), done)
-	l.copyBytes(l.field(list, listDataOff, vInt), data(a), l.arith(OpMul, ld(n), l.constant(elemWidth(lt))))
+	l.copyBytes(l.field(list, listDataOff, vRawPtr), data(a), l.arith(OpMul, ld(n), l.constant(elemWidth(lt))))
 	l.mark(done)
 }
 
