@@ -55,7 +55,12 @@ func (l *lowerer) gcBlock(c *Call) Reg {
 	// and the collector follows the pointer words of every element.
 	l.ccall("memset", []Reg{obj, l.constant(0), l.load(bytesS, vInt)},
 		[]vty{vInt, vInt, vInt}, vInt, false, false)
-	return obj
+	// The hook is declared to return an int, and allocTagged now gives a
+	// raw pointer; the stack scan is conservative, so the int copy still
+	// keeps the block alive.
+	addr := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: obj, Dst: NoReg, Imm: addr})
+	return l.load(addr, vInt)
 }
 
 // traceStructs offers the pointer words of every element of an inline
