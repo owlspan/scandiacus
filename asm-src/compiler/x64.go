@@ -268,17 +268,28 @@ func (e *Emitter) layoutRegs(f *Func) {
 		}
 		return spans[i].r < spans[j].r
 	})
+	//
+	// In a program with threads a word that holds a pointer is never
+	// shared: a thread parked for another's collection is scanned by its
+	// stack alone, and a dead word can be the only thing keeping an
+	// object that a later instruction still reaches through a derived
+	// address. Words holding numbers share as before.
 	var busyUntil []int
+	var ptrWord []bool
 	for _, sp := range spans {
+		isPtr := e.mod.Threaded && int(sp.r) < len(f.RegTypes) && f.RegTypes[sp.r].holdsPointer()
 		word := -1
-		for w, u := range busyUntil {
-			if !e.mod.Threaded && u <= sp.def {
-				word = w
-				break
+		if !isPtr {
+			for w, u := range busyUntil {
+				if !ptrWord[w] && u <= sp.def {
+					word = w
+					break
+				}
 			}
 		}
 		if word < 0 {
 			busyUntil = append(busyUntil, 0)
+			ptrWord = append(ptrWord, isPtr)
 			word = len(busyUntil) - 1
 		}
 		busyUntil[word] = sp.last
