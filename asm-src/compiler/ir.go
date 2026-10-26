@@ -52,6 +52,13 @@ const (
 	// Raw binary. A pointer to a tagBytes block, with the length in the
 	// object header, so a zero byte inside it is just a byte.
 	kBytes
+
+	// An address the collector has to see: the result of an allocation,
+	// the data block of a list, or a pointer into one. The IR used to
+	// type these as int, which made them look like numbers to every
+	// pass that decides by type. Arithmetic on one gives a plain int
+	// as before; the value it came from keeps this kind.
+	kRawPtr
 )
 
 // A vty is a kind plus, for a list, the type of its elements, and for a
@@ -111,6 +118,8 @@ var (
 	vBool  = vty{k: kBool}
 	vStr   = vty{k: kStr}
 	vBytes = vty{k: kBytes}
+
+	vRawPtr = vty{k: kRawPtr}
 )
 
 func vListOf(e vty) vty          { return vty{k: kList, el: &e} }
@@ -208,7 +217,7 @@ func (t vty) holdsPointer() bool {
 		return true
 	}
 	switch t.k {
-	case kStr, kList, kMap, kStruct, kFunc, kBytes:
+	case kStr, kList, kMap, kStruct, kFunc, kBytes, kRawPtr:
 		return true
 	}
 	return false
@@ -238,6 +247,8 @@ func (t vty) String() string {
 		return "str"
 	case kBytes:
 		return "bytes"
+	case kRawPtr:
+		return "rawptr"
 	case kStruct:
 		return t.name
 	case kList:

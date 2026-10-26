@@ -55,3 +55,17 @@ func TestTagStructsIsDistinct(t *testing.T) {
 		}
 	}
 }
+
+// A raw pointer is something the collector must see, so every pass that
+// asks holdsPointer treats it like any other pointer-typed value.
+func TestRawPtrHoldsPointer(t *testing.T) {
+	if !vRawPtr.holdsPointer() {
+		t.Error("rawptr should hold a pointer")
+	}
+	if vInt.holdsPointer() {
+		t.Error("int should not hold a pointer")
+	}
+	if got := vRawPtr.String(); got != "rawptr" {
+		t.Errorf("String() = %q", got)
+	}
+}
