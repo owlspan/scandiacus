@@ -4221,6 +4221,8 @@ defer own unsafe
 | --- | --- |
 | `scandiacus get <name>` | install from the official registry |
 | `scandiacus get <user/repo>` | install from any GitHub repository |
+| `scandiacus get <user/repo>@<ref>` | the same, at a tag, branch or commit |
+| `scandiacus get` | install everything `scandiacus.deps` pins |
 | `scandiacus get <url>` | install from a url |
 | `scandiacus get officials` | install every official package |
 | `scandiacus get officials --nodlls` | the same, minus the ones carrying a native library |
@@ -4267,6 +4269,46 @@ The registry is
 [owlspan/scandiacus-packages](https://github.com/owlspan/scandiacus-packages), and
 its README covers writing your own. You do not have to be in the
 registry to publish one.
+
+#### Making your own package
+
+A package is a GitHub repository, or a directory in one, holding
+Scandiacus source. The simplest is one file named after the repository:
+a repository `you/scadgame` with `scadgame.scd` at the top is already a
+package, and `scandiacus get you/scadgame` installs it. More files, or a
+`.dll`, go in a `scandiacus.pkg` beside them, one path per line:
+
+```
+# scandiacus.pkg
+scadgame.scd
+sprites.scd
+physics.scd
+```
+
+`you/libs/vec` is the directory `vec` of the repository `you/libs`,
+with `vec.scd` or a `scandiacus.pkg` in it, so one repository can hold
+several packages.
+
+Tag a release (`git tag v1.0 && git push --tags`) and others can ask
+for exactly that version with `scandiacus get you/scadgame@v1.0`. A
+branch name or a commit works the same way.
+
+#### Pinned versions
+
+Whatever is asked for from GitHub is resolved to its full commit hash
+before anything is downloaded, and every file comes from that commit.
+The package and the hash are written to `scandiacus.deps` beside the
+program:
+
+```
+scadgame github.com/you/scadgame@4f2c9e1d0a5b6c7d8e9f00112233445566778899
+```
+
+Commit `scandiacus.deps` with your program. `scandiacus get` with no
+arguments then installs exactly the same code on any machine, even
+after the package has moved on. Run `scandiacus get you/scadgame` again
+to move to its latest commit. Packages from the official registry and
+from plain urls are not pinned.
 
 Anything after the `.scd` file goes to your program rather than to the
 compiler, so this reaches `args.flag("verbose")`:

@@ -69,42 +69,62 @@ var pkgClient = &http.Client{Timeout: 30 * time.Second}
 // resolveSpec turns what the user typed into a base URL and a package
 // name.
 func resolveSpec(spec string) (base, name string, err error) {
+	base, name, _, err = resolveSpecPin(spec)
+	return base, name, err
+}
+
+// resolveSpecPin is resolveSpec, and for a GitHub repository also the
+// spec pinned to the commit it resolved to, for scandiacus.deps; see
+// pkgpin.go.
+func resolveSpecPin(spec string) (base, name, pin string, err error) {
 	switch {
 	case strings.HasPrefix(spec, "http://"), strings.HasPrefix(spec, "https://"):
 		if strings.HasSuffix(spec, ".scd") {
 			// A direct file: its own base, named after the file.
 			name = strings.TrimSuffix(filepath.Base(spec), ".scd")
-			return spec, name, nil
+			return spec, name, "", nil
 		}
-		return strings.TrimSuffix(spec, "/") + "/", filepath.Base(strings.TrimSuffix(spec, "/")), nil
+		return strings.TrimSuffix(spec, "/") + "/", filepath.Base(strings.TrimSuffix(spec, "/")), "", nil
 
 	case strings.HasPrefix(spec, "github.com/"):
 		spec = strings.TrimPrefix(spec, "github.com/")
 		fallthrough
 
 	case strings.Count(spec, "/") >= 1:
+		// user/repo@v1.2, @a-branch or @a-commit; HEAD, the default
+		// branch, without one.
+		ref := "HEAD"
+		if at := strings.LastIndexByte(spec, '@'); at >= 0 {
+			spec, ref = spec[:at], spec[at+1:]
+			if ref == "" || strings.ContainsAny(ref, ` \:`) {
+				return "", "", "", fmt.Errorf("%q is not a tag, branch or commit", ref)
+			}
+		}
 		parts := strings.Split(strings.Trim(spec, "/"), "/")
 		if len(parts) < 2 {
-			return "", "", fmt.Errorf("expected user/repo, got %q", spec)
+			return "", "", "", fmt.Errorf("expected user/repo, got %q", spec)
 		}
 		user, repo := parts[0], parts[1]
-		// HEAD rather than main or master, so this works whatever the
-		// repository calls its default branch.
-		b := "https://raw.githubusercontent.com/" + user + "/" + repo + "/HEAD/"
+		sha, err := pinCommit(user, repo, ref)
+		if err != nil {
+			return "", "", "", err
+		}
+		b := "https://raw.githubusercontent.com/" + user + "/" + repo + "/" + sha + "/"
+		pin = "github.com/" + strings.Join(parts, "/") + "@" + sha
 		if len(parts) > 2 {
 			b += strings.Join(parts[2:], "/") + "/"
-			return b, parts[len(parts)-1], nil
+			return b, parts[len(parts)-1], pin, nil
 		}
-		return b, repo, nil
+		return b, repo, pin, nil
 
 	case spec == "":
-		return "", "", fmt.Errorf("nothing to get")
+		return "", "", "", fmt.Errorf("nothing to get")
 
 	default:
 		if strings.ContainsAny(spec, `\:`) {
-			return "", "", fmt.Errorf("%q does not look like a package name or a url", spec)
+			return "", "", "", fmt.Errorf("%q does not look like a package name or a url", spec)
 		}
-		return officialBase + spec + "/", spec, nil
+		return officialBase + spec + "/", spec, "", nil
 	}
 }
 
@@ -204,10 +224,18 @@ func hasNativeFile(base string) (bool, error) {
 }
 
 // pkgGet installs one package.
-func pkgGet(spec string) error {
-	base, name, err := resolveSpec(spec)
+func pkgGet(spec string) (err error) {
+	base, name, pin, err := resolveSpecPin(spec)
 	if err != nil {
 		return err
+	}
+	if pin != "" {
+		fmt.Printf("%s is %s\n", spec, pin)
+		defer func() {
+			if err == nil {
+				err = recordPin(name, pin)
+			}
+		}()
 	}
 
 	var files []string

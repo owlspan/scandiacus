@@ -73,6 +73,8 @@ usage:
 packages:
   scandiacus get <name>            install a package into ./scandiacus_modules
   scandiacus get <user/repo>       install from a GitHub repository
+  scandiacus get <user/repo>@<ref> the same, at a tag, branch or commit
+  scandiacus get                   install what scandiacus.deps pins
   scandiacus get <url>             install from a url
   scandiacus get officials         install every official package
   scandiacus get officials --nodlls   the same, minus the ones carrying a
@@ -167,7 +169,10 @@ func main() {
 	switch cmd {
 	case "get":
 		if len(args) < 2 {
-			fail("get needs a package name or a url")
+			if err := pkgGetDeps(); err != nil {
+				fail("%v", err)
+			}
+			return
 		}
 		var specs []string
 		noDLLs, all := false, false
