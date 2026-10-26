@@ -204,3 +204,82 @@ func TestRdataMerge(t *testing.T) {
 		t.Fatalf("the data did not land on its own page: %q", bs[rdata:rdata+6])
 	}
 }
+
+// TestExecutableLooksOrdinary checks the properties that scanners and
+// SmartScreen read before they look at any code: no section both
+// writable and executable, a checksum that matches the file, a version
+// resource, and a manifest that names the Windows versions the program
+// supports. An in-house PE writer has no linker to add these for it, so
+// each one is a field that can silently go missing.
+func TestExecutableLooksOrdinary(t *testing.T) {
+	scandiacus := asmBackend(t)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "hello.scd")
+	if err := os.WriteFile(src, []byte("print(\"hi\")\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if o, err := exec.Command(scandiacus, "build", "--windows", src).CombinedOutput(); err != nil {
+		t.Fatalf("could not build: %v\n%s", err, o)
+	}
+	out := filepath.Join(dir, "hello.exe")
+	bs, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := pe.Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	for _, s := range f.Sections {
+		const wx = scnWrite | scnExecute
+		if s.Characteristics&wx == wx {
+			t.Errorf("%s is writable and executable", s.Name)
+		}
+		if len(s.Name) == 0 || s.Name[0] != '.' {
+			t.Errorf("section name %q is not a conventional one", s.Name)
+		}
+	}
+
+	oh := f.OptionalHeader.(*pe.OptionalHeader64)
+	const aslr = 0x0040 | 0x0100 | 0x0020 // DYNAMIC_BASE, NX_COMPAT, HIGH_ENTROPY_VA
+	if oh.DllCharacteristics&aslr != aslr {
+		t.Errorf("DllCharacteristics %#x lacks ASLR or DEP", oh.DllCharacteristics)
+	}
+	peAt := int(binary.LittleEndian.Uint32(bs[0x3c:]))
+	field := peAt + 4 + 20 + 64
+	if want := peChecksum(bs, field); oh.CheckSum != want || want == 0 {
+		t.Errorf("checksum %#x, want %#x", oh.CheckSum, want)
+	}
+
+	rsrc := f.Section(".rsrc")
+	if rsrc == nil {
+		t.Fatal("no resources: no version info and no manifest")
+	}
+	data, err := rsrc.Data()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "supportedOS") {
+		t.Error("the manifest names no supported Windows versions")
+	}
+	if !strings.Contains(string(data), "requestedExecutionLevel") {
+		t.Error("the manifest does not state the execution level")
+	}
+	if !strings.Contains(string(utf16Text(data)), "FileDescription") {
+		t.Error("no version resource")
+	}
+}
+
+// utf16Text widens a buffer holding UTF-16 so a substring search finds
+// the version resource's keys, which are stored two bytes per letter.
+func utf16Text(b []byte) []byte {
+	var o []byte
+	for i := 0; i+1 < len(b); i += 2 {
+		if b[i+1] == 0 {
+			o = append(o, b[i])
+		}
+	}
+	return o
+}
