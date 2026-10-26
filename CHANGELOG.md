@@ -3,6 +3,23 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 1.101.0
+
+**Float literals in hot loops stay in registers.** Measured on Linux,
+best of 9, against C built with `zig cc -O2`:
+
+- In a loop with no call in it, each distinct float literal (and the
+  -1.0 a negation multiplies by) is now read once before the loop and
+  kept in an xmm register, instead of being read from the constant
+  pool on every trip. `SCANDIACUS_NOFCONST=1` turns it off.
+- A float negation and a float compare against a literal now take the
+  literal as a memory operand, one instruction less where the loop
+  pass does not apply.
+
+The `structs` benchmark went from 0.046s to 0.029s; C takes 0.038s.
+Its loop was load-bound, and the literal reads were most of the
+difference.
+
 ## 1.100.0
 
 **Tighter counted loops.** Two changes, measured on Linux, best of 9,
