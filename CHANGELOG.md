@@ -3,6 +3,23 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.5.0
+
+**Fixed-width types in the math library, for ranges and map keys.**
+`sqrt`, `pow`, `floor`, `clamp` and the rest of the math functions
+take `i8` to `u64` and `f32` as well as `int` and `float`, so
+`sqrt(n)` on an `i32` no longer needs `float(n)`. `min` and `max` give
+back the width they were given; every argument must be that width or a
+literal, and `u64` compares unsigned.
+
+`for i in u8(250)..=255` gives `i` the type `u8`, and so does any range
+whose ends are a fixed integer width, or one of them and a literal. A
+map can be keyed by an integer width below `u64`, as in
+`{u16: str}`, and a map literal's keys take that type.
+
+`u64` is left out of ranges and map keys, because its top half would
+compare as negative there. The `mem` functions still take `int`.
+
 ## 2.4.0
 
 **Packages from GitHub at a version, pinned.** `scandiacus get
