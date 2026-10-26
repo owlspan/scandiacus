@@ -44,6 +44,7 @@ func (e *Emitter) planConsts(f *Func) {
 	e.dropConst = map[Reg]bool{}
 	e.fconsts = map[Reg]int64{}
 	e.dropFC = map[Reg]bool{}
+	e.frameAt, e.dropAddr = foldableAddrs(f)
 	for _, in := range f.Code {
 		if in.Op == OpConst && in.Dst != NoReg {
 			e.consts[in.Dst] = in.Imm
@@ -148,8 +149,145 @@ func (e *Emitter) immB(in Instr) (int64, bool) {
 		if constDivisor(v) && v <= math.MaxInt32 {
 			return v, true
 		}
+	case OpIndexAddr:
+		// Folded into the address by memOperand. The bound leaves room
+		// for the frame offset it is added to there, so that call never
+		// has to refuse a constant that was already dropped.
+		if indexConstOK(v, indexScale(in)) {
+			return v, true
+		}
 	}
 	return 0, false
+}
+
+// indexConstOK is whether a constant index folds into a displacement.
+func indexConstOK(v, scale int64) bool {
+	return v > -1<<20 && v < 1<<20 && scale > 0 && scale <= 16 && v*scale > -1<<30 && v*scale < 1<<30
+}
+
+// foldableAddrs finds the registers that are an address inside the
+// frame's array area, known at compile time: what OpFrameAddr defines,
+// and what an OpIndexAddr with a constant index makes of one. at is the
+// offset of each in the area. drop is those whose every reader forms an
+// address from them - the base of a load or store, or of another
+// index - so that memOperand writes the address from rsp and the
+// register is never needed. A reader that takes the value itself (a
+// call argument, a store of the pointer, the stored operand of a poke)
+// keeps its register.
+//
+// The emitter and the register allocator both ask, and have to get the
+// same answer: a register dropped here has no home and is never written.
+func foldableAddrs(f *Func) (at map[Reg]int64, drop map[Reg]bool) {
+	at = map[Reg]int64{}
+	drop = map[Reg]bool{}
+	consts := map[Reg]int64{}
+	for _, in := range f.Code {
+		if in.Dst == NoReg {
+			continue
+		}
+		switch in.Op {
+		case OpConst:
+			consts[in.Dst] = in.Imm
+		case OpFrameAddr:
+			at[in.Dst] = in.Imm
+		}
+	}
+	if len(at) == 0 {
+		return at, drop
+	}
+	// A register is defined once, but not always before its reader in
+	// the code, so go round until nothing new turns up.
+	for changed := true; changed; {
+		changed = false
+		for _, in := range f.Code {
+			if in.Op != OpIndexAddr || in.Dst == NoReg {
+				continue
+			}
+			base, ok := at[in.A]
+			c, isC := consts[in.B]
+			if _, done := at[in.Dst]; done || !ok || !isC || !indexConstOK(c, indexScale(in)) {
+				continue
+			}
+			if off := base + c*indexScale(in); off >= 0 && off < 1<<30 {
+				at[in.Dst] = off
+				changed = true
+			}
+		}
+	}
+	keep := map[Reg]bool{}
+	use := func(r Reg, ok bool) {
+		if r != NoReg && !ok {
+			keep[r] = true
+		}
+	}
+	for _, in := range f.Code {
+		switch in.Op {
+		case OpPeek, OpPoke, OpLoadMem, OpStoreMem, OpIndexAddr:
+			use(in.A, true)
+		default:
+			use(in.A, false)
+		}
+		use(in.B, false)
+		for _, a := range in.Args {
+			use(a, false)
+		}
+	}
+	for r := range at {
+		if !keep[r] {
+			drop[r] = true
+		}
+	}
+	return at, drop
+}
+
+// memOperand is the bracketed address base + index*scale + disp, with a
+// frame array's base written from rsp and a constant index folded into
+// the displacement. idx may be NoReg. A base or index that is not in a
+// general register is moved to rax or rcx first, so a caller must not
+// hold anything in those two across the call. It always succeeds: the
+// callers have no other way to write an address from a dropped base.
+func (e *Emitter) memOperand(base, idx Reg, scale, disp int64) string {
+	b := ""
+	if off, ok := e.frameAt[base]; ok {
+		b = "rsp"
+		disp += int64(e.outgoing()) + off
+	}
+	ix := ""
+	if idx != NoReg {
+		// The same test immB applies, so a constant that was dropped is
+		// always folded here and one that was not still has its home.
+		if c, ok := e.consts[idx]; ok && indexConstOK(c, scale) {
+			disp += c * scale
+		} else {
+			ix = e.loc(idx)
+		}
+	}
+	if !fits32(disp) {
+		// Not reachable while frames stay under a gigabyte, and there
+		// is no way back: the base may be a register never written.
+		panic(fmt.Sprintf("memOperand: displacement %d", disp))
+	}
+	if b == "" {
+		b = e.loc(base)
+		if !isGPR(b) {
+			e.line("mov rax, %s", b)
+			b = "rax"
+		}
+	}
+	if ix != "" {
+		if !isGPR(ix) {
+			e.line("mov rcx, %s", ix)
+			ix = "rcx"
+		}
+		b += fmt.Sprintf("+%s*%d", ix, scale)
+	}
+	switch {
+	case disp > 0:
+		b += fmt.Sprintf("+%d", disp)
+	case disp < 0:
+		b += fmt.Sprintf("%d", disp)
+	}
+	return "[" + b + "]"
 }
 
 // srcB is the B operand as it should be written: an immediate, or where
@@ -168,6 +306,9 @@ func (e *Emitter) selInstr(in Instr) bool {
 		return false
 	}
 	switch in.Op {
+	case OpFrameAddr:
+		return e.dropAddr[in.Dst]
+
 	case OpConst:
 		if e.dropConst[in.Dst] {
 			return true
@@ -230,40 +371,26 @@ func (e *Emitter) selInstr(in Instr) bool {
 		return true
 
 	case OpIndexAddr:
-		a, b := e.loc(in.A), e.loc(in.B)
-		if !isGPR(a) {
-			e.line("mov rax, %s", a)
-			a = "rax"
-		}
-		if !isGPR(b) {
-			e.line("mov rcx, %s", b)
-			b = "rcx"
-		}
-		d := e.loc(in.Dst)
-		if isGPR(d) {
-			e.line("lea %s, [%s+%s*%d]", d, a, b, indexScale(in))
+		if e.dropAddr[in.Dst] {
 			return true
 		}
-		e.line("lea rax, [%s+%s*%d]", a, b, indexScale(in))
+		mem := e.memOperand(in.A, in.B, indexScale(in), 0)
+		if d := e.loc(in.Dst); isGPR(d) {
+			e.line("lea %s, %s", d, mem)
+			return true
+		}
+		e.line("lea rax, %s", mem)
 		e.put(in.Dst, "rax")
 		return true
 
 	case OpPeek:
-		base := e.loc(in.A)
-		if !isRegLoc(base) {
-			e.line("mov rax, %s", base)
-			base = "rax"
-		}
-		e.emitPeek(in, "["+base+"]")
+		mem := e.memOperand(in.A, NoReg, 1, 0)
+		e.emitPeek(in, mem)
 		return true
 
 	case OpPoke:
-		base := e.loc(in.A)
-		if !isRegLoc(base) {
-			e.line("mov rax, %s", base)
-			base = "rax"
-		}
-		e.emitPoke(in, "["+base+"]", "rcx")
+		mem := e.memOperand(in.A, NoReg, 1, 0)
+		e.emitPoke(in, mem, "rcx")
 		return true
 
 	case OpFConst:
@@ -340,12 +467,8 @@ func (e *Emitter) selInstr(in Instr) bool {
 		return true
 
 	case OpLoadMem:
-		base := e.loc(in.A)
-		if !isRegLoc(base) {
-			e.line("mov rax, %s", base)
-			base = "rax"
-		}
-		src := fmt.Sprintf("qword ptr [%s+%d]", base, in.Imm)
+		mem := e.memOperand(in.A, NoReg, 1, in.Imm)
+		src := "qword ptr " + mem
 		if d := e.loc(in.Dst); isXmm(d) {
 			// A float held in an xmm register: mov has no form for
 			// those, movsd moves the same eight bytes.
@@ -359,12 +482,8 @@ func (e *Emitter) selInstr(in Instr) bool {
 		return true
 
 	case OpStoreMem:
-		base := e.loc(in.A)
-		if !isRegLoc(base) {
-			e.line("mov rax, %s", base)
-			base = "rax"
-		}
-		dst := fmt.Sprintf("qword ptr [%s+%d]", base, in.Imm)
+		mem := e.memOperand(in.A, NoReg, 1, in.Imm)
+		dst := "qword ptr " + mem
 		if v, ok := e.immB(in); ok {
 			e.line("mov %s, %d", dst, v)
 			return true
@@ -524,33 +643,28 @@ func (e *Emitter) fuseIndex(ix, next Instr, uses map[Reg]int) bool {
 	if (next.Op == OpLoadMem || next.Op == OpStoreMem) && next.Imm != 0 {
 		return false // an offset, which indexed addressing here has no room for
 	}
-	base := e.loc(ix.A)
-	if !isRegLoc(base) {
-		e.line("mov rax, %s", base)
-		base = "rax"
+	var disp int64
+	if next.Op == OpVLoad || next.Op == OpVStore {
+		disp = vecOff(next.Imm)
 	}
-	idx := e.loc(ix.B)
-	if !isRegLoc(idx) {
-		e.line("mov rcx, %s", idx)
-		idx = "rcx"
-	}
+	mem := e.memOperand(ix.A, ix.B, indexScale(ix), disp)
 	if next.Op == OpPeek {
-		e.emitPeek(next, fmt.Sprintf("[%s+%s*%d]", base, idx, indexScale(ix)))
+		e.emitPeek(next, mem)
 		return true
 	}
 	if next.Op == OpVLoad {
-		e.line("%s %s, [%s+%s*%d%s]", vecMov(next.Imm), vecReg(next.Imm, next.Imm&15), base, idx, indexScale(ix), vecDisp(next.Imm))
+		e.line("%s %s, %s", vecMov(next.Imm), vecReg(next.Imm, next.Imm&15), mem)
 		return true
 	}
 	if next.Op == OpVStore {
-		e.line("%s [%s+%s*%d%s], %s", vecMov(next.Imm), base, idx, indexScale(ix), vecDisp(next.Imm), vecReg(next.Imm, next.Imm&15))
+		e.line("%s %s, %s", vecMov(next.Imm), mem, vecReg(next.Imm, next.Imm&15))
 		return true
 	}
 	if next.Op == OpPoke {
-		e.emitPoke(next, fmt.Sprintf("[%s+%s*%d]", base, idx, indexScale(ix)), "rdx")
+		e.emitPoke(next, mem, "rdx")
 		return true
 	}
-	addr := fmt.Sprintf("qword ptr [%s+%s*%d]", base, idx, indexScale(ix))
+	addr := "qword ptr " + mem
 	if next.Op == OpLoadMem {
 		if d := e.loc(next.Dst); isXmm(d) {
 			e.line("movsd %s, %s", d, addr)
@@ -744,7 +858,8 @@ func (e *Emitter) nextReal(f *Func, i int) int {
 		for j := len(f.Code) - 1; j >= 0; j-- {
 			e.next[j] = after
 			in := f.Code[j]
-			if !(in.Op == OpConst && e.dropConst[in.Dst] || in.Op == OpFConst && e.dropFC[in.Dst]) {
+			if !(in.Op == OpConst && e.dropConst[in.Dst] || in.Op == OpFConst && e.dropFC[in.Dst] ||
+				(in.Op == OpFrameAddr || in.Op == OpIndexAddr) && e.dropAddr[in.Dst]) {
 				after = j
 			}
 		}

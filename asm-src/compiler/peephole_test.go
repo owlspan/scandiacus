@@ -169,3 +169,32 @@ func TestPeepKeepsChainedLoads(t *testing.T) {
 		t.Fatalf("a repeated move was kept: %q", got)
 	}
 }
+
+// A reload of a word just stored becomes a register move, or goes when
+// it names the stored register, past a comment between the two. A load
+// into a 32-bit register or from another word is left alone.
+func TestPeepReloadAnyReg(t *testing.T) {
+	got := runPeep(t, "    mov qword ptr [rsp+32], rcx\n"+
+		"    # asm\n"+
+		"    mov rcx, qword ptr [rsp+32]\n"+
+		"    mov qword ptr [rsp+40], rax\n"+
+		"    mov r8, qword ptr [rsp+40]\n"+
+		"    mov qword ptr [rsp+48], rdx\n"+
+		"    mov r9, qword ptr [rsp+56]\n")
+	want := []string{
+		"    mov qword ptr [rsp+32], rcx",
+		"    # asm",
+		"    mov qword ptr [rsp+40], rax",
+		"    mov r8, rax",
+		"    mov qword ptr [rsp+48], rdx",
+		"    mov r9, qword ptr [rsp+56]",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %q", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("line %d: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}

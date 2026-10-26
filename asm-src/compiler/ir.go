@@ -1555,8 +1555,16 @@ func (l *lowerer) errorAt(n Node, format string, args ...any) {
 	if l.curFile != "" && l.curFile != "<prelude>" {
 		file = l.curFile
 	}
-	l.errs = append(l.errs, fmt.Sprintf("%s:%d:%d: %s", file, line, col,
-		fmt.Sprintf(format, args...)))
+	msg := fmt.Sprintf("%s:%d:%d: %s", file, line, col,
+		fmt.Sprintf(format, args...))
+	// An unrolled loop lowers its body once per trip, and a fault in it
+	// would otherwise be reported that many times.
+	for _, e := range l.errs {
+		if e == msg {
+			return
+		}
+	}
+	l.errs = append(l.errs, msg)
 }
 
 func (l *lowerer) newReg() Reg {
@@ -2109,6 +2117,11 @@ func (l *lowerer) forRange(st *ForStmt) {
 			return
 		}
 		step = n
+	}
+
+	if n, first, ok := l.unrollTrips(st, step); ok {
+		l.unrollFor(st, first, step, n)
+		return
 	}
 
 	l.pushScope()

@@ -62,6 +62,12 @@ func Optimize(m *Module) {
 		if !envOff("SCANDIACUS_NOFORWARD") {
 			forwardLoads(fn)
 			dropDeadStores(fn)
+			// Forwarding is what turns an unrolled loop's counter loads
+			// into constants, so the index arithmetic and the bounds
+			// checks only become foldable here.
+			if !envOff("SCANDIACUS_NOFOLD") {
+				fold(m, fn)
+			}
 			if !envOff("SCANDIACUS_NODCE") {
 				// Sweep once more: forwarding just turned loads into
 				// plain register mentions, which can leave the loaded
@@ -154,6 +160,15 @@ func fold(m *Module, fn *Func) {
 						in = Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: in.Imm}
 					} else {
 						continue // known false: never taken
+					}
+				}
+			case OpCheckIndex:
+				// An index that is out of range keeps its check: the
+				// program must still stop there with the same message.
+				if a, ok := iconst[in.A]; ok {
+					if b, ok := iconst[in.B]; ok && a >= 0 && a < b {
+						changed = true
+						continue // always in range: the check can go
 					}
 				}
 			}

@@ -1,12 +1,14 @@
 package main
 
-// The assembly peephole: three tiny rewrites over the text Emit
+// The assembly peephole: four tiny rewrites over the text Emit
 // produced, applied before either linking route sees it, so the byte
 // encoder and GNU as stay comparable references for each other.
 //
 //   - A store to a frame slot immediately followed by reloading that
 //     same slot into rax loses the reload. The store already left the
 //     value there.
+//   - More generally, a load of a word just stored from a register
+//     becomes a move from that register, or nothing; see reloadOf.
 //   - A line identical to the line before it loses its copy. Data
 //     movement only: two calls in a row are two calls, and a repeated
 //     compare would tempt rewrites that depend on flags.
@@ -125,6 +127,15 @@ func peephole(text string) string {
 			continue
 		}
 
+		if k := lastCode(out); k >= 0 {
+			if r, ok := reloadOf(out[k], ln); ok {
+				if r == "" {
+					continue
+				}
+				ln = r
+			}
+		}
+
 		out = append(out, ln)
 		if m, ok := peepStore(ln); ok {
 			stored = m
@@ -135,6 +146,40 @@ func peephole(text string) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// reloadOf matches a store of a general register to a word followed
+// by a load of that word into a general register, as an asm block's
+// words and a spilled value leave behind, and gives what the load
+// becomes: nothing when it reloads the register that was stored, a
+// register move otherwise. Waiting on the store to forward costs several
+// cycles each time, on a path that often has nothing else to do. The
+// store has changed no register, so the address means the same on both
+// lines.
+func reloadOf(prev, ln string) (string, bool) {
+	addr, src, ok := strings.Cut(strings.TrimPrefix(prev, "    mov qword ptr "), ", ")
+	if !ok || !strings.HasPrefix(prev, "    mov qword ptr [") || regFamily(src) != src || strings.HasPrefix(src, "xmm") {
+		return "", false
+	}
+	dst, from, ok := strings.Cut(strings.TrimPrefix(ln, "    mov "), ", qword ptr ")
+	if !ok || !strings.HasPrefix(ln, "    mov ") || from != addr || regFamily(dst) != dst || strings.HasPrefix(dst, "xmm") {
+		return "", false
+	}
+	if dst == src {
+		return "", true
+	}
+	return "    mov " + dst + ", " + src, true
+}
+
+// lastCode is the index of the last line of out that is an
+// instruction, past any comments, or -1.
+func lastCode(out []string) int {
+	for k := len(out) - 1; k >= 0; k-- {
+		if !strings.HasPrefix(out[k], "    #") {
+			return k
+		}
+	}
+	return -1
 }
 
 // dupableAsm reports whether running a line twice back to back does

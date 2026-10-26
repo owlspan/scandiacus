@@ -33,6 +33,13 @@ func TestEncoderWidths(t *testing.T) {
 		"movss dword ptr [rax], xmm0",
 		"movss xmm0, dword ptr [rax]",
 		"movss dword ptr [r10], xmm1",
+		// frame arrays written from rsp, and a displacement after an index
+		"movsd xmm0, qword ptr [rsp+1064]",
+		"movsd qword ptr [rsp+8], xmm3",
+		"mov rax, qword ptr [rax+rcx*8-16]",
+		"mov rax, qword ptr [rsp+rcx*8+40]",
+		"mov rax, qword ptr [rax-16]",
+		"lea rax, [rsp+40]",
 		// callback stubs
 		"movsxd rcx, ecx",
 		"movsxd r9, r9d",

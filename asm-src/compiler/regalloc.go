@@ -124,9 +124,10 @@ func allocateRegsIn(f *Func, pool []string) map[Reg]string {
 		// register will do; see crossesCalls.
 		saved bool
 	}
+	_, noHome := foldableAddrs(f) // written from rsp, never in a register
 	var cands []cand
 	for r := 0; r < f.NRegs; r++ {
-		if f.RegTypes[r].k == kFloat {
+		if f.RegTypes[r].k == kFloat || noHome[Reg(r)] {
 			continue
 		}
 		def := defOf[r]
@@ -242,8 +243,25 @@ func floatPoolable(op Op, def bool) bool {
 		return def
 	case OpStore, OpRet, OpStoreMem:
 		return !def
+	case OpPeek:
+		// Only the f32 and f64 kinds define a float (see poolKind), and
+		// emitPeek leaves those in xmm0 or the home itself.
+		return def
+	case OpPoke:
+		// The stored value: the float kinds read it with movsd, which
+		// takes an xmm register as well as a slot.
+		return !def
 	}
 	return false
+}
+
+// poolKind is false for a peek or poke at an integer width, whose
+// value goes through a general register and so cannot live in xmm.
+func poolKind(in *Instr) bool {
+	if in.Op != OpPeek && in.Op != OpPoke {
+		return true
+	}
+	return in.Imm == memF32 || in.Imm == memF64
 }
 
 // allocateFloatRegs is allocateRegs for float temporaries: same spans,
@@ -268,24 +286,24 @@ func allocateFloatRegsIn(f *Func, pool []string) map[Reg]string {
 		t := f.RegTypes[r]
 		usable[r] = t.k == kFloat && !t.null && !t.res
 	}
-	use := func(r Reg, pos int, op Op) {
+	use := func(r Reg, pos int, op Op, kindOK bool) {
 		if r < 0 || int(r) >= f.NRegs {
 			return
 		}
 		lastOf[r] = pos
-		if !floatPoolable(op, false) {
+		if !kindOK || !floatPoolable(op, false) {
 			usable[r] = false
 		}
 	}
 	for i := range f.Code {
 		in := &f.Code[i]
-		use(in.A, i, in.Op)
-		use(in.B, i, in.Op)
+		use(in.A, i, in.Op, poolKind(in))
+		use(in.B, i, in.Op, poolKind(in))
 		for _, a := range in.Args {
-			use(a, i, OpCall) // never poolable
+			use(a, i, OpCall, true) // never poolable
 		}
 		if d := in.Dst; d >= 0 && int(d) < f.NRegs && usable[d] && defOf[d] < 0 &&
-			floatPoolable(in.Op, true) && in.Op != OpRet && in.Op != OpStore {
+			floatPoolable(in.Op, true) && poolKind(in) && in.Op != OpRet && in.Op != OpStore {
 			defOf[d] = i
 			if lastOf[d] < i {
 				lastOf[d] = i

@@ -94,6 +94,12 @@ type Emitter struct {
 	fconsts   map[Reg]int64  // float constants, by pool index
 	dropFC    map[Reg]bool
 
+	// frameAt is the offset in the array area of every register an
+	// OpFrameAddr defines, so an element address can be written from
+	// rsp instead of from a register holding the base; see memOperand.
+	frameAt  map[Reg]int64
+	dropAddr map[Reg]bool // those no instruction needs in a register
+
 	// next is nextReal's answer for every instruction of nextFor, worked
 	// out in one pass, since scanning for it each time was quadratic
 	// over a long run of dropped constants (a long list literal).
@@ -243,7 +249,7 @@ func (e *Emitter) layoutRegs(f *Func) {
 	}
 	var spans []span
 	for r := 0; r < f.NRegs; r++ {
-		if _, pooled := e.homes[Reg(r)]; pooled || defOf[r] < 0 {
+		if _, pooled := e.homes[Reg(r)]; pooled || defOf[r] < 0 || e.dropAddr[Reg(r)] {
 			continue
 		}
 		d, l := defOf[r], lastOf[r]

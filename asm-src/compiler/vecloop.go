@@ -438,11 +438,14 @@ func (l *lowerer) vecLoop(p *vecPlan, iSlot, endSlot int64) {
 // text to follow a base in an address: the second pair of a trip is
 // 16 bytes on from the first, with no register for its index.
 func vecDisp(imm int64) string {
-	if d := (imm &^ vecWide) >> 4; d != 0 {
+	if d := vecOff(imm); d != 0 {
 		return fmt.Sprintf("+%d", d)
 	}
 	return ""
 }
+
+// vecOff is vecDisp as a number.
+func vecOff(imm int64) int64 { return (imm &^ vecWide) >> 4 }
 
 // vecMov and vecReg name the move and the register of a packed op.
 func vecMov(imm int64) string {

@@ -568,3 +568,102 @@ func TestPackSwitch(t *testing.T) {
 		t.Fatal("SCANDIACUS_NOOPT did not disable packing")
 	}
 }
+
+func TestFoldCheckIndex(t *testing.T) {
+	check := func(idx int64) []Instr {
+		return []Instr{
+			{Op: OpConst, Dst: 0, Imm: idx},
+			{Op: OpConst, Dst: 1, Imm: 4},
+			{Op: OpCheckIndex, A: 0, B: 1, Dst: NoReg},
+			{Op: OpStore, A: 0, Imm: 0},
+		}
+	}
+	count := func(fn *Func) int {
+		n := 0
+		for _, in := range fn.Code {
+			if in.Op == OpCheckIndex {
+				n++
+			}
+		}
+		return n
+	}
+
+	fn := mkfn(check(3), 2)
+	fold(&Module{}, fn)
+	if count(fn) != 0 {
+		t.Fatalf("in-range constant check kept: %+v", fn.Code)
+	}
+
+	for _, idx := range []int64{4, -1} {
+		fn = mkfn(check(idx), 2)
+		fold(&Module{}, fn)
+		if count(fn) != 1 {
+			t.Fatalf("out-of-range check on %d dropped: %+v", idx, fn.Code)
+		}
+	}
+
+	// The index is a loaded value, not a constant.
+	fn = mkfn([]Instr{
+		{Op: OpLoad, Dst: 0, Imm: 0},
+		{Op: OpConst, Dst: 1, Imm: 4},
+		{Op: OpCheckIndex, A: 0, B: 1, Dst: NoReg},
+		{Op: OpStore, A: 0, Imm: 1},
+	}, 2)
+	fold(&Module{}, fn)
+	if count(fn) != 1 {
+		t.Fatalf("non-constant check dropped: %+v", fn.Code)
+	}
+}
+
+// loopOps counts the loop-shaped instructions of the function named f.
+func loopOps(t *testing.T, src string) (labels, jumps, checks int) {
+	t.Helper()
+	m, errs := lowerForTest(t, src)
+	if len(errs) > 0 {
+		t.Fatalf("lowering: %v", errs)
+	}
+	Optimize(m)
+	for _, fn := range m.Funcs {
+		if fn.Name != "f" {
+			continue
+		}
+		for _, in := range fn.Code {
+			switch in.Op {
+			case OpLabel:
+				labels++
+			case OpJump:
+				jumps++
+			case OpCheckIndex:
+				checks++
+			}
+		}
+		return
+	}
+	t.Fatalf("no function f in the module")
+	return
+}
+
+func TestFullUnroll(t *testing.T) {
+	const src = `fn f(a: [8]int) -> int {
+    let s = 0
+    for i in 0..8 {
+        s += a[i]
+    }
+    return s
+}
+print(f([1, 2, 3, 4, 5, 6, 7, 8]))
+`
+	labels, jumps, checks := loopOps(t, src)
+	if labels != 0 || jumps != 0 || checks != 0 {
+		t.Fatalf("unrolled loop left %d labels, %d jumps, %d bounds checks",
+			labels, jumps, checks)
+	}
+
+	t.Setenv("SCANDIACUS_NOUNROLL", "1")
+	// A rotated loop closes with a conditional jump, so labels are the
+	// sign of a loop that is still there.
+	labels, _, _ = loopOps(t, src)
+	if labels == 0 {
+		t.Fatalf("with unrolling off the loop is gone")
+	}
+}
