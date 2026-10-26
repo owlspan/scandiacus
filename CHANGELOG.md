@@ -3,6 +3,24 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.2.0
+
+**Packed float loops use AVX when the CPU has it.** A loop like the
+inner loop of a matrix multiply now runs eight elements a trip in ymm
+registers when the CPU has AVX2 and the OS saves the ymm state, which
+the program checks once at startup with CPUID and XGETBV. On any other
+CPU, and in a DLL, the SSE2 loop from before runs. The results are the
+same to the bit either way. `SCANDIACUS_NOAVX=1` turns the wide loop
+off.
+
+Measured on Linux, best of seven or eleven, against C built with
+`zig cc -O2 -march=native`:
+
+- matmul: 0.027s to 0.017s (0.019s on a noisier run); C takes 0.018s
+  (0.020s on the same noisier run).
+- fib, loop, sieve, structs, structs3, structs5, structs16 and
+  structfill: unchanged.
+
 ## 2.1.0
 
 **Float loops no longer wait on the trip before.** A float copied from
