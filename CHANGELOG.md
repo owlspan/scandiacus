@@ -3,6 +3,23 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.9.0
+
+**Inline assembly.** `asm(rcx = x, rax -> n) { "popcnt rax, rcx" }`
+runs x86-64 instructions inside a function. `reg = value` puts a value
+in a register before the first line and `reg -> name` assigns the
+register to a variable after the last. Integers, bools and pointers use
+`rax` to `r15`, floats and `f32` use `xmm0` to `xmm15`, and an array
+goes in as its address so asm can work on its elements. Lines are Intel
+syntax, one instruction or label each; labels are local to their block.
+The compiler keeps nothing of its own in a register across a block and
+saves any callee-saved register the lines name. Instructions come from
+a fixed set - the integer instructions, `popcnt`, `lzcnt`, `bswap`,
+`crc32`, `rdtsc`, the fences, `lock xadd`, and SSE scalar and packed
+float and integer ops - checked the same way on every system, with
+`.byte` for anything else. `asm` is a keyword only before a block, so a
+function named `asm` still works.
+
 ## 2.8.0
 
 **Fixed-size arrays.** `[N]T` holds N C scalars (`i8` through `u64`,
