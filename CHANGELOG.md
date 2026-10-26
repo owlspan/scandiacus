@@ -3,6 +3,22 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.3.0
+
+**Cutting strings copies with memmove.** substring copied one byte at
+a time; it now calls memmove, which split, lines, substr and the rest
+go through. lines also no longer copies a piece a second time to drop
+a carriage return before the newline: the split leaves it out as it
+cuts.
+
+Measured on Linux, best of seven:
+
+- 20 calls of lines on 20000 CRLF lines of about 90 bytes: 0.098s to
+  0.025s.
+- split into 200000 short pieces, 20 times: 0.174s to 0.172s; the
+  pieces are a few bytes each and allocating them dominates.
+- The benchmark programs: unchanged.
+
 ## 2.2.0
 
 **Packed float loops use AVX when the CPU has it.** A loop like the
