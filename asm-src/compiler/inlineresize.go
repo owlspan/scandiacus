@@ -216,7 +216,7 @@ func (l *lowerer) loadElemRef(r elemRef) Reg {
 
 // movesElement reports whether a method call on ix needs self as a copy:
 // ix is an element of an inline list, and the method or the call's
-// arguments may grow a list.
+// arguments may grow a list or the method captures self.
 func (l *lowerer) movesElement(ix *Index, c *Call, method string) bool {
 	t, ok := l.staticTypeOf(ix.X)
 	if !ok || t.k != kList || inlineStrideOf(t.elemType()) == 0 {
@@ -225,10 +225,31 @@ func (l *lowerer) movesElement(ix *Index, c *Call, method string) bool {
 	if fd, ok := l.fnDecls[method]; ok && l.fnGrows(method, fd) {
 		return true
 	}
+	// A method that lets a closure capture self would leave an address
+	// into the block in a heap cell. Working on a copy keeps what the
+	// method does to self, and the write-back puts it in the list.
+	if fd, ok := l.fnDecls[method]; ok && len(fd.Params) > 0 && capturedIn(fd)[fd.Params[0].Name] {
+		return true
+	}
 	for _, a := range c.Args {
 		if l.growsLists(a) {
 			return true
 		}
 	}
 	return false
+}
+
+// elemSelfCaptured reports whether id is a loop variable bound to an
+// element of an inline list and the method lets a closure capture self.
+func (l *lowerer) elemSelfCaptured(id *Ident, method string) bool {
+	slot, ok := l.lookup(id.Name)
+	if !ok {
+		return false
+	}
+	_, ref := l.elemRefs[slot]
+	if !ref && !l.elemVars[slot] {
+		return false
+	}
+	fd, ok := l.fnDecls[method]
+	return ok && len(fd.Params) > 0 && capturedIn(fd)[fd.Params[0].Name]
 }

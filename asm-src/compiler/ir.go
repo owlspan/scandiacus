@@ -940,6 +940,9 @@ type lowerer struct {
 	// loop variables that name an inline element; see inlineresize.go.
 	grows    map[string]bool
 	elemRefs map[int64]elemRef
+	// elemVars are the loop variables bound to an element's address in
+	// an inline block, for callMethod.
+	elemVars map[int64]bool
 
 	mod      *Module
 	fn       *Func
@@ -1312,7 +1315,15 @@ func (l *lowerer) function(fd *FnDecl) {
 		if pa.Addressed {
 			l.keepInMemory(fd, pa.Name, slot)
 		}
-		l.storeLocal(slot, d)
+		if fd.Recv != "" && i == 0 {
+			// self is the caller's struct itself, not a copy: what the
+			// method does to it has to land there. A call whose self
+			// would be an address into a list block passes a copy
+			// instead and writes it back; see callMethod.
+			l.storeLocal(slot, d)
+		} else {
+			l.storeLocal(slot, l.ownedParam(slot, d))
+		}
 		if isArray(s.params[i]) {
 			l.arrayParam(slot, s.params[i])
 		}
@@ -1329,6 +1340,17 @@ func (l *lowerer) function(fd *FnDecl) {
 
 	l.endFunction(s.ret)
 	l.seal()
+}
+
+// ownedParam is the value a parameter's slot is given. A boxed struct
+// parameter can arrive as the address of an element of an inline list
+// (map and each hand those to the function they call), and the cell is
+// a heap object, which must not hold an interior address; see bindTrip.
+func (l *lowerer) ownedParam(slot int64, v Reg) Reg {
+	if !l.boxed[slot] {
+		return v
+	}
+	return l.freshCopy(v, l.slotTy[slot])
 }
 
 // seal records the types this function's virtual registers were given
@@ -1444,7 +1466,11 @@ func (l *lowerer) bindTrip(slot int64, v Reg, comment string) {
 	if l.boxed[slot] {
 		cell := l.newBox(l.slotTy[slot])
 		l.emit(Instr{Op: OpStore, A: cell, Dst: NoReg, Imm: slot, Comment: "box " + comment})
-		l.storeLocal(slot, v)
+		// A struct taken from an inline list is the address of its
+		// element. The cell is a heap object, and a heap word has to be
+		// an object's address exactly, so the closure that captured the
+		// variable gets a copy, as Go's per-iteration variable is one.
+		l.storeLocal(slot, l.freshCopy(v, l.slotTy[slot]))
 		return
 	}
 	l.emit(Instr{Op: OpStore, A: v, Dst: NoReg, Imm: slot, Comment: comment})

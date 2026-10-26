@@ -69,3 +69,40 @@ func TestRawPtrHoldsPointer(t *testing.T) {
 		t.Errorf("String() = %q", got)
 	}
 }
+
+// A struct with a str field is stored inline and its block header
+// carries the pointer count; one with a nested struct field is not,
+// because moving an element a word at a time would share the nested
+// object between copies.
+func TestNoteInlinePointerFields(t *testing.T) {
+	names := []string{"tiStr", "tiNested", "tiEnum", "tiHasEnum", "tiInner"}
+	defer func() {
+		for _, n := range names {
+			delete(inlineStride, n)
+			delete(inlineNPtr, n)
+			delete(dataEnums, n)
+		}
+	}()
+	dataEnums["tiEnum"] = &EnumDecl{}
+	lays := []*structLayout{
+		{name: "tiStr", bytes: 16, nptr: 1,
+			fields: []structField{{name: "s", t: vStr}, {name: "n", t: vInt, off: 8}}},
+		{name: "tiNested", bytes: 16, nptr: 1,
+			fields: []structField{{name: "in", t: vStructOf("tiInner")}, {name: "n", t: vInt, off: 8}}},
+		{name: "tiHasEnum", bytes: 16, nptr: 1,
+			fields: []structField{{name: "e", t: vStructOf("tiEnum")}, {name: "n", t: vInt, off: 8}}},
+	}
+	for _, lay := range lays {
+		noteInline(lay)
+	}
+	str := vStructOf("tiStr")
+	if inlineStrideOf(str) != 16 || inlineNPtrOf(str) != 1 {
+		t.Errorf("tiStr: stride %d, nptr %d", inlineStrideOf(str), inlineNPtrOf(str))
+	}
+	if inlineStrideOf(vStructOf("tiNested")) != 0 {
+		t.Error("a struct with a struct field should not be inline")
+	}
+	if inlineStrideOf(vStructOf("tiHasEnum")) != 16 {
+		t.Error("a data enum field should not keep a struct out of line")
+	}
+}

@@ -702,8 +702,9 @@ byName["origin"] = Point{}
 ```
 
 **How a list of structs is stored.** Since 2.0, a list of a struct
-whose fields are all numbers or bools (no `str`, list, map or struct
-field) keeps the fields of each element side by side in one block, as a
+whose fields are all numbers or bools, and since 2.11 one that also has
+`str`, list, map or function fields (but no struct field), keeps the
+fields of each element side by side in one block, as a
 C array of structs would, instead of one heap object per element.
 Building such a list is one allocation per growth rather than one per
 `push`. Nothing about what a program means changes: `for p in ps`
@@ -717,9 +718,11 @@ One case is worth knowing about. When a method called on an element,
 might - it works on a copy of the element, and the copy is written back
 to `ps[i]` when the method returns. Inside the method, reading `ps[i]`
 some other way (through a global list, say) sees the value from before
-the call. Structs with a `str`, list, map or struct field are still
-stored one object per element. `SCANDIACUS_INLINESTRUCTS=0` stores
-every struct list the old way.
+the call. A method whose closure captures `self` gets the same copy and
+write-back. Fields of type `str`, list, map or function are stored in
+the element like any other; a struct with a field that is itself a
+struct (other than a data enum) is still stored one object per element.
+`SCANDIACUS_INLINESTRUCTS=0` stores every struct list the old way.
 
 A struct cannot contain **itself** by value - the type would need
 infinite space. Through a list it is fine:

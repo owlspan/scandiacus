@@ -167,6 +167,8 @@ func (s *structLayout) inlineOK() bool {
 func (l *lowerer) collectStructs(p *Program) {
 	l.structs = map[string]*structLayout{}
 	inlineStride = map[string]int64{}
+	inlineNPtr = map[string]int64{}
+	var laid []*structLayout
 
 	for _, sd := range p.Structs {
 		if sd.Extern {
@@ -223,6 +225,12 @@ func (l *lowerer) collectStructs(p *Program) {
 		lay.bytes = off
 
 		l.structs[sd.Name] = lay
+		laid = append(laid, lay)
+	}
+
+	// Whether a field's struct is a data enum is only known once every
+	// declaration has been seen, so this waits for the loop to finish.
+	for _, lay := range laid {
 		noteInline(lay)
 	}
 }
@@ -712,6 +720,18 @@ func (l *lowerer) callMethod(c *Call, fld *Field, recv string) Reg {
 		args[0] = l.load(selfS, lt.elemType())
 		writeBack = func() {
 			l.listSet(l.load(listS, lt), l.load(idxS, vInt), l.load(selfS, lt.elemType()))
+		}
+	} else if id, ok := fld.X.(*Ident); ok && l.elemSelfCaptured(id, name) {
+		// A loop variable over an inline list is the element's address,
+		// and the method lets a closure capture self, which would put
+		// that address in a heap cell. self is a copy instead, written
+		// back to the element when the method returns.
+		t := l.regTy[l.expr(id)]
+		selfS := l.temp(t)
+		l.setSlot(selfS, l.freshCopy(l.expr(id), t))
+		args[0] = l.load(selfS, t)
+		writeBack = func() {
+			l.copyWords(l.expr(id), l.load(selfS, t), inlineStrideOf(t))
 		}
 	} else {
 		args[0] = l.expr(fld.X)

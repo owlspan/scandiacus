@@ -152,9 +152,11 @@ func (l *lowerer) listBuiltin(c *Call, name string) (Reg, bool) {
 	case "pop":
 		// Shortening the list is a store to its length. The element
 		// block keeps the value, which nothing can reach again and
-		// nothing frees.
+		// nothing frees; an inline struct's pointer words are cleared
+		// so the objects they name are not kept alive by the slot.
 		l.requireNonEmpty(list, "pop from an empty list")
 		v := l.freshCopy(l.lastOf(list, elem), elem)
+		l.clearPtrs(l.lastOf(list, elem), elem)
 		l.emit(Instr{Op: OpStoreMem, A: list,
 			B:   l.arith(OpSub, l.field(list, listLenOff, vInt), l.constant(1)),
 			Imm: listLenOff})
@@ -267,11 +269,25 @@ func (l *lowerer) listSort(c *Call, list Reg, t vty) Reg {
 // listSlice is xs[start:end] with the indexes clamped rather than fatal,
 // matching substr() and the Go backend's __slice.
 func (l *lowerer) listSlice(list Reg, t vty, from, to Reg) Reg {
-	out := l.newList(t, initialCap)
+	ls := l.temp(t)
+	l.setSlot(ls, list)
 	n := l.field(list, listLenOff, vInt)
 
 	start := l.clamp(from, l.constant(0), n)
-	end := l.clamp(to, l.constant(0), n)
+	end := l.clamp(l.clamp(to, l.constant(0), n), start, n)
+	startS, endS := l.scalarTemp(vInt), l.scalarTemp(vInt)
+	l.setSlot(startS, start)
+	l.setSlot(endS, end)
+
+	// Made at its final size and filled in place. Pushing one at a time
+	// grew the block a doubling at a time, and every doubling of a large
+	// list was an allocation big enough to start a collection that walked
+	// both lists. sort and sortBy begin with a whole-list slice.
+	out := l.newListLen(t, l.arith(OpSub, l.load(endS, vInt), l.load(startS, vInt)))
+	outS := l.temp(t)
+	l.setSlot(outS, out)
+	list = l.load(ls, t)
+	start, end = l.load(startS, vInt), l.load(endS, vInt)
 
 	iSlot := l.scalarTemp(vInt)
 	l.emit(Instr{Op: OpStore, A: start, Dst: NoReg, Imm: iSlot})
@@ -283,12 +299,14 @@ func (l *lowerer) listSlice(list Reg, t vty, from, to Reg) Reg {
 	i := l.load(iSlot, vInt)
 	more := l.compare(OpLt, i, end)
 	l.emit(Instr{Op: OpJumpNot, A: more, Dst: NoReg, Imm: done})
-	l.listPush(out, l.listGet(list, i, t.elemType()))
+	elem := t.elemType()
+	l.elemStore(l.field(l.load(outS, t), listDataOff, vRawPtr), l.arith(OpSub, i, l.load(startS, vInt)),
+		l.elemLoad(l.field(l.load(ls, t), listDataOff, vRawPtr), i, elem), elem)
 	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, i, l.constant(1)), Dst: NoReg, Imm: iSlot})
 	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
 
 	l.mark(done)
-	return out
+	return l.load(outS, t)
 }
 
 // listJoin renders every element and puts the separator between them.
@@ -403,6 +421,9 @@ func (l *lowerer) listRemoveAt(list Reg, t vty, at Reg) Reg {
 	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
 
 	l.mark(done)
+	// The last element was copied down a place; its old words would
+	// otherwise keep their objects alive.
+	l.clearPtrs(l.lastOf(list, elem), elem)
 	l.emit(Instr{Op: OpStoreMem, A: list, B: l.arith(OpSub, n, l.constant(1)),
 		Imm: listLenOff})
 	return gone

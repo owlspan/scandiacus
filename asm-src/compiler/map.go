@@ -325,6 +325,7 @@ func (l *lowerer) mapBuiltin(c *Call, name string) (Reg, bool) {
 			l.mapClear(m, t)
 			return l.void(), true
 		case kList:
+			l.clearUsed(m, t)
 			l.emit(Instr{Op: OpStoreMem, A: m, B: l.constant(0), Imm: listLenOff})
 			return l.void(), true
 		}

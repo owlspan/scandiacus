@@ -119,7 +119,10 @@ func (l *lowerer) newListLen(t vty, n Reg) Reg {
 	hs := l.temp(t)
 	l.setSlot(hs, hdr)
 	bytes := l.arith(OpMul, l.load(capacity, vInt), l.constant(elemWidth(t)))
-	blk := l.allocObj(bytes, elemTag(t))
+	blk := l.allocElems(t, bytes)
+	// Only a block of structs with pointers comes zeroed from
+	// allocElems; the others are cleared here. The second pass over the
+	// first kind is cheap next to the sort that follows.
 	l.ccall("memset", []Reg{blk, l.constant(0), l.arith(OpMul, l.load(capacity, vInt), l.constant(elemWidth(t)))},
 		[]vty{vInt, vInt, vInt}, vInt, false, false)
 	l.emit(Instr{Op: OpStoreMem, A: l.load(hs, t), B: blk, Imm: listDataOff})

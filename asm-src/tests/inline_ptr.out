@@ -1,0 +1,37 @@
+alpha/2/3/1.5 beta/0/1/2.5 gamma/1/2/0.5 
+ALPHA/3/30/3.25
+["t1"]
+z
+30
+31
+ALPHA/3/31/3.25 beta/1/2/2.5 ALPHA/3/32/3.25 
+3
+4
+14
+more
+2000
+2000
+1000
+more
+more/1/100/0.5
+reused/0/0/0
+beta/1/14/2.5
+ALPHA/3/1000/3.25 ALPHA/3/32/3.25 reused/0/0/0 
+ALPHA/3/1000/3.25 ins/1/5/5 ALPHA/3/32/3.25 reused/0/0/0 
+reused/0/0/0 ALPHA/3/32/3.25 ins/1/5/5 ALPHA/3/1000/3.25 
+0
+5
+ins/1/55/5 ALPHA/3/32/3.25 
+ALPHA/3/1000/3.25 ALPHA/3/32/3.25 ins/1/5/5 reused/0/0/0 
+ALPHA/3/1000/3.25 ALPHA/3/32/3.25 ins/1/5/5 reused/0/0/0 
+true
+false
+[Rec{name: "p", tags: ["q"], n: 1, w: 1}, Rec{name: "r", tags: [], n: 2, w: 2}]
+0
+d/0/2/2
+0
+4498500
+0
+2100
+1
+504

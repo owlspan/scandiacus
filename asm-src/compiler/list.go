@@ -87,15 +87,50 @@ const (
 
 // elemTag reports how the element block of a list must be treated.
 // One level deep is all the vty tracks, which is all this needs: a
-// list of strings holds pointers, a list of anything else does not.
+// list of strings holds pointers, a list of anything else does not. An
+// inline struct with pointer fields is a block of its own kind, and
+// allocObj cannot describe it: build those with allocElems.
 func elemTag(t vty) int64 {
 	if inlineStrideOf(t.elemType()) > 0 {
+		if inlineNPtrOf(t.elemType()) > 0 {
+			return tagStructs
+		}
 		return tagWords // fields stored in place, none of them a pointer
 	}
 	if t.elemType().holdsPointer() {
 		return tagPtrs
 	}
 	return tagWords
+}
+
+// allocElems allocates the element block of a list of type t, bytes
+// long, and returns a pointer to its payload. Every block goes through
+// here so that the header is worked out in one place.
+//
+// A block of structs with pointer fields needs the header that says how
+// to walk it (structsHeader, built at run time because bytes is a
+// register) and has to start zeroed: a slot taken from a free list holds
+// whatever its last object did, and the collector follows the pointer
+// words of every element up to the capacity, not just up to the length.
+// Any other block is allocated as it always was, without the memset,
+// which would cost every list. The size field is 32 bits wide; a single
+// list that needs more than 4 GB of elements is beyond what this
+// runtime is meant to hold.
+func (l *lowerer) allocElems(t vty, bytes Reg) Reg {
+	elem := t.elemType()
+	nptr := inlineNPtrOf(elem)
+	if nptr == 0 {
+		return l.allocObj(bytes, elemTag(t))
+	}
+	header := l.arith(OpAdd,
+		l.arith(OpShl, bytes, l.constant(structsSizeShift)),
+		l.constant(structsHeader(nptr, inlineStrideOf(elem)/wordSize, 0)))
+	bytesS := l.temp(vInt)
+	l.emit(Instr{Op: OpStore, A: bytes, Dst: NoReg, Imm: bytesS})
+	obj := l.allocTagged(l.load(bytesS, vInt), header)
+	l.ccall("memset", []Reg{obj, l.constant(0), l.load(bytesS, vInt)},
+		[]vty{vInt, vInt, vInt}, vInt, false, false)
+	return obj
 }
 
 // allocObj allocates a tagged object and returns a pointer to its
@@ -157,7 +192,7 @@ func (l *lowerer) newList(t vty, capacity int64) Reg {
 	hdr := l.allocObj(l.constant(listHeader), tagList)
 	l.regTy[hdr] = t
 
-	data := l.allocObj(l.constant(capacity*elemWidth(t)), elemTag(t))
+	data := l.allocElems(t, l.constant(capacity*elemWidth(t)))
 
 	l.emit(Instr{Op: OpStoreMem, A: hdr, B: l.constant(0), Imm: listLenOff})
 	l.emit(Instr{Op: OpStoreMem, A: hdr, B: l.constant(capacity), Imm: listCapOff})
@@ -237,9 +272,10 @@ func (l *lowerer) listPush(list, val Reg) {
 	l.mark(done)
 }
 
-// growBlock doubles a list's element block (to initialCap at least) and
-// copies the elements over with memcpy.
-func (l *lowerer) growBlock(lst Reg, tag, width int64) {
+// growBlock doubles the element block of the list lst, of type t (to
+// initialCap at least), and copies the elements over with memcpy.
+func (l *lowerer) growBlock(lst Reg, t vty) {
+	width := elemWidth(t)
 	capacity := l.field(lst, listCapOff, vInt)
 
 	// The new capacity goes through a slot because two branches
@@ -255,7 +291,7 @@ func (l *lowerer) growBlock(lst Reg, tag, width int64) {
 	l.mark(haveCap)
 	newCap := l.load(capSlot, vInt)
 
-	fresh := l.allocObj(l.arith(OpMul, newCap, l.constant(width)), tag)
+	fresh := l.allocElems(t, l.arith(OpMul, newCap, l.constant(width)))
 	old := l.field(lst, listDataOff, vRawPtr)
 	n := l.field(lst, listLenOff, vInt)
 	l.ccall("memcpy", []Reg{fresh, old, l.arith(OpMul, n, l.constant(width))},
@@ -285,11 +321,11 @@ func (l *lowerer) listPushSlow(t vty) (string, vty) {
 	case inlineStrideOf(t.elemType()) > 0:
 		// The value is a pointer to the struct being copied in, which
 		// has to stay reachable while the new block is allocated.
-		name, valTy, elem = fmt.Sprintf("__listpush_s%d", width), vStr, t.elemType()
+		name, valTy, elem = fmt.Sprintf("__listpush_s%d_p%d", width, inlineNPtrOf(t.elemType())), vStr, t.elemType()
 	}
 	sym := l.helperFunc(name, []vty{vInt, valTy}, vInt, func(a []Reg) {
 		lst, v := a[0], a[1]
-		l.growBlock(lst, tag, width)
+		l.growBlock(lst, t)
 		at := l.field(lst, listLenOff, vInt)
 		l.elemStore(l.field(lst, listDataOff, vRawPtr), at, v, elem)
 		l.emit(Instr{Op: OpStoreMem, A: lst, B: l.arith(OpAdd, at, l.constant(1)), Imm: listLenOff})
@@ -362,7 +398,7 @@ func (l *lowerer) pushLoop(st *ForStmt, start, end Reg) bool {
 // growing the element block once, to double its capacity or to what is
 // needed if that is more. One per element shape, as for listPushSlow.
 func (l *lowerer) listFillN(t vty) (string, vty) {
-	tag, width := elemTag(t), elemWidth(t)
+	width := elemWidth(t)
 	name, valTy := "__listfilln_w", vInt
 	switch {
 	case width == 1:
@@ -387,7 +423,7 @@ func (l *lowerer) listFillN(t vty) (string, vty) {
 		l.emit(Instr{Op: OpStore, A: need, Dst: NoReg, Imm: capSlot})
 		l.mark(enough)
 		newCap := l.load(capSlot, vInt)
-		fresh := l.allocObj(l.arith(OpMul, newCap, l.constant(width)), tag)
+		fresh := l.allocElems(t, l.arith(OpMul, newCap, l.constant(width)))
 		old := l.field(lst, listDataOff, vRawPtr)
 		l.ccall("memcpy", []Reg{fresh, old, l.arith(OpMul, l.field(lst, listLenOff, vInt), l.constant(width))},
 			[]vty{vInt, vInt, vInt}, vInt, false, false)
@@ -893,6 +929,12 @@ func (l *lowerer) forList(st *ForStmt) {
 		l.elemRefs[varSlot] = elemRef{list: listSlot, idx: iSlot, t: t}
 	} else {
 		l.bindTrip(varSlot, l.listGet(list, i, t.elemType()), varName)
+		if inlineStrideOf(t.elemType()) > 0 {
+			if l.elemVars == nil {
+				l.elemVars = map[int64]bool{}
+			}
+			l.elemVars[varSlot] = true
+		}
 	}
 
 	l.loops = append(l.loops, loopTarget{brk: done, cont: cont, defers: len(l.defers)})
@@ -900,6 +942,9 @@ func (l *lowerer) forList(st *ForStmt) {
 	l.loops = l.loops[:len(l.loops)-1]
 	if ref {
 		delete(l.elemRefs, varSlot)
+	}
+	if l.elemVars != nil {
+		delete(l.elemVars, varSlot)
 	}
 
 	// continue goes to the increment, not the test, or the index never

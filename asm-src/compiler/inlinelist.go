@@ -14,11 +14,14 @@ import (
 // pointer to its fields. Field reads and writes, method calls and
 // copyStruct therefore work on an element address unchanged.
 //
-// Only structs with no pointer-holding field are stored this way for
-// now. Their element block is an ordinary pointer-free block (tagWords)
-// the collector never looks inside; a struct with a str, list or
-// nested struct field would need a block that says which words of each
-// element to follow.
+// A struct with str, list, map, function or nullable fields is stored
+// this way too, as long as none of its fields is itself a struct (see
+// noteInline for why). Pointer fields come first in a struct's layout,
+// so the element block is a tagStructs block: its header gives the
+// stride and how many leading words of each element are pointers, and
+// the collector walks those words of every element. A struct with no
+// pointer field keeps the plain pointer-free block (tagWords) the
+// collector never looks inside.
 //
 // SCANDIACUS_INLINESTRUCTS=0 turns it off, which keeps one object per
 // element as before 2.0.
@@ -28,6 +31,11 @@ var inlineOn = os.Getenv("SCANDIACUS_INLINESTRUCTS") != "0"
 // inlineStride maps the name of a struct stored inline to its size in
 // bytes. Filled by collectStructs.
 var inlineStride = map[string]int64{}
+
+// inlineNPtr maps the same names to the number of leading pointer words
+// in each element, which the block header has to carry. Filled by
+// collectStructs.
+var inlineNPtr = map[string]int64{}
 
 // inlineStrideOf is the element size of a list of t, or 0 when the
 // elements of such a list are not stored inline.
@@ -39,10 +47,38 @@ func inlineStrideOf(t vty) int64 {
 }
 
 // noteInline records whether a laid-out struct is stored inline in lists.
+//
+// Elements are moved a word at a time: copyWords, the memcpy when a block
+// grows, freshCopy. For a str, list, map or function field that is
+// exactly what copyStruct does, because it only recurses into struct
+// fields, so the shallow copy keeps value semantics. A field that is
+// itself a struct would need a deep copy every time an element moves,
+// and the nested object would be shared between the copies until then,
+// so such a struct stays one object per element. A data enum is the
+// exception: it is immutable and shared freely, and copyStruct leaves it
+// alone too. Arrays in a struct are C scalars stored in the struct's own
+// bytes, never pointers, so they copy with the words and need no check.
 func noteInline(lay *structLayout) {
-	if inlineOn && !lay.view && lay.nptr == 0 && lay.bytes > 0 && dataEnums[lay.name] == nil {
-		inlineStride[lay.name] = lay.bytes
+	if !inlineOn || !lay.inlineOK() || lay.bytes == 0 || dataEnums[lay.name] != nil {
+		return
 	}
+	for _, f := range lay.fields {
+		// A nullable struct field is a struct too: copyStruct copies it.
+		if f.t.k == kStruct && dataEnums[f.t.name] == nil {
+			return
+		}
+	}
+	inlineStride[lay.name] = lay.bytes
+	inlineNPtr[lay.name] = lay.nptr
+}
+
+// inlineNPtrOf is the number of pointer words at the start of each
+// element of a list of t, 0 when the elements are not stored inline.
+func inlineNPtrOf(t vty) int64 {
+	if inlineStrideOf(t) == 0 {
+		return 0
+	}
+	return inlineNPtr[t.name]
 }
 
 // copyWords copies a struct's fields from the struct at src to dst,
@@ -80,10 +116,34 @@ func (l *lowerer) freshCopy(v Reg, t vty) Reg {
 	if stride == 0 {
 		return v
 	}
-	dup := l.allocTagged(l.constant(stride), l.constant(stride<<structSizeShift|tagStruct))
+	// The count of pointer words is part of the header; without it the
+	// collector would not follow the copy's str and list fields.
+	dup := l.allocTagged(l.constant(stride), l.constant(stride<<structSizeShift|
+		inlineNPtrOf(t)<<structNPtrShift|tagStruct))
 	l.regTy[dup] = t
 	l.copyWords(dup, v, stride)
 	return dup
+}
+
+// clearPtrs zeroes the pointer words of the element at addr. A list that
+// gets shorter leaves the old elements in the block, and the collector
+// walks the whole block, so a str or list left in a vacated slot would
+// stay alive for as long as the list does.
+func (l *lowerer) clearPtrs(addr Reg, t vty) {
+	for off := int64(0); off < inlineNPtrOf(t)*wordSize; off += wordSize {
+		l.emit(Instr{Op: OpStoreMem, A: addr, B: l.constant(0), Imm: off})
+	}
+}
+
+// clearUsed zeroes the used part of a list's element block, for clear.
+// Only a block with pointer words needs it.
+func (l *lowerer) clearUsed(list Reg, t vty) {
+	if inlineNPtrOf(t.elemType()) == 0 {
+		return
+	}
+	l.ccall("memset", []Reg{l.field(list, listDataOff, vRawPtr), l.constant(0),
+		l.arith(OpMul, l.field(list, listLenOff, vInt), l.constant(elemWidth(t)))},
+		[]vty{vInt, vInt, vInt}, vInt, false, false)
 }
 
 // structAddr reports whether a register that an IndexAddr defines holds
@@ -135,8 +195,8 @@ func (l *lowerer) pushLiteral(list Reg, lit *StructLit) bool {
 	room := l.newLabel()
 	l.emit(Instr{Op: OpJumpIf, A: l.compare(OpLt, length, capacity), Dst: NoReg, Imm: room,
 		Comment: "push: room?"})
-	sym := l.helperFunc(fmt.Sprintf("__listgrow_s%d", stride), []vty{vInt}, vInt, func(a []Reg) {
-		l.growBlock(a[0], tagWords, stride)
+	sym := l.helperFunc(fmt.Sprintf("__listgrow_s%d_p%d", stride, inlineNPtrOf(elem)), []vty{vInt}, vInt, func(a []Reg) {
+		l.growBlock(a[0], t)
 		l.emit(Instr{Op: OpRet, A: l.constant(0), Dst: NoReg})
 	})
 	l.callHelper(sym, []Reg{list}, []vty{vInt}, vInt)

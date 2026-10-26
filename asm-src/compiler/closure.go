@@ -214,7 +214,7 @@ func (l *lowerer) liftFunc(fd *FnDecl, t vty, captured []capture) string {
 		if pa.Addressed {
 			l.keepInMemory(fd, pa.Name, slot)
 		}
-		l.storeLocal(slot, d)
+		l.storeLocal(slot, l.ownedParam(slot, d))
 		if isArray(params[i]) {
 			l.arrayParam(slot, params[i])
 		}
