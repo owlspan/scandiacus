@@ -355,8 +355,11 @@ func (l *lowerer) vecLoop(p *vecPlan, iSlot, endSlot int64) {
 			l.emit(Instr{Op: OpVArith, Dst: NoReg, A: NoReg, B: NoReg, Imm: int64(n.op<<8 | a<<4 | b)})
 			return a
 		}
+		// A subtraction whose right side is itself an operation leaves
+		// its result in the other register, so the left leaf goes in
+		// whichever one the right side did not end in.
 		b := gen(n.r, reg)
-		a := gen(n.l, other)
+		a := gen(n.l, 1-b)
 		if n.op == vecSub {
 			l.emit(Instr{Op: OpVArith, Dst: NoReg, A: NoReg, B: NoReg, Imm: int64(n.op<<8 | a<<4 | b)})
 			return a
