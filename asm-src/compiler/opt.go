@@ -11,6 +11,7 @@ package main
 //	                 bounds checks within a block
 //	SCANDIACUS_NOLICM      header words and fields read once before a loop
 //	                 that cannot change them
+//	SCANDIACUS_NOFCONST    float literals read once before a call-free loop
 //	SCANDIACUS_NOROTATE    a loop's test copied to the bottom
 //	SCANDIACUS_NOINLINE    small functions copied into their callers
 //	SCANDIACUS_NOSLOTPACK  frame slot packing
@@ -78,6 +79,9 @@ func Optimize(m *Module) {
 			if !envOff("SCANDIACUS_NODCE") {
 				dce(fn) // the loads of locals the moved words were read through
 			}
+		}
+		if !envOff("SCANDIACUS_NOFCONST") {
+			hoistFloatConsts(m, fn)
 		}
 
 		if !envOff("SCANDIACUS_NOSLOTPACK") {
