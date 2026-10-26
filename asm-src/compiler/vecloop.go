@@ -39,6 +39,13 @@ import "fmt"
 // names.
 const vecHoistReg = 5
 
+// vecWide in a packed op's Imm makes it work on the whole ymm register,
+// four doubles, with AVX. The wide loop runs only when __vy_cpufeat,
+// called once at the start of main, found AVX2 and an OS that saves the
+// ymm registers; anywhere else, and in a DLL, which has no main, the
+// SSE2 loop below it does the work. SCANDIACUS_NOAVX leaves it out.
+const vecWide = 1 << 40
+
 const (
 	vecAdd = iota
 	vecSub
@@ -300,7 +307,7 @@ func vecCanon(n *vecNode) *vecNode {
 // vecHoistReg before a packed loop.
 func usesVecHoist(f *Func) bool {
 	for i := range f.Code {
-		if f.Code[i].Op == OpVSplat && f.Code[i].Imm == vecHoistReg {
+		if f.Code[i].Op == OpVSplat && f.Code[i].Imm&^vecWide == vecHoistReg {
 			return true
 		}
 	}
@@ -371,6 +378,40 @@ func (l *lowerer) vecLoop(p *vecPlan, iSlot, endSlot int64) {
 	}
 
 	hoisted := vecCanon(p.root)
+	pair := l.newLabel()
+
+	// When the CPU has AVX2: eight elements a trip, as two ymm steps,
+	// the second 32 bytes on, so that one step's loads overlap the
+	// other's arithmetic (matmul 0.021s with one step a trip, 0.017s
+	// with two). Then at most one more step of four. vzeroupper after
+	// it, because an SSE instruction that follows AVX with the upper
+	// halves dirty costs a stall on many CPUs. It leaves the low halves
+	// alone, so xmm5 still holds the hoisted scalar for the pair below.
+	if !envOff("SCANDIACUS_NOAVX") {
+		l.mod.needs("cpufeat")
+		sse := l.newLabel()
+		l.jumpNot(l.compare(OpEq, l.rtLoad(cpuSlot), l.constant(2)), sse)
+		if hoisted != nil {
+			l.emit(Instr{Op: OpVSplat, Dst: NoReg, A: l.load(scal[hoisted.scalar], vFloat), B: NoReg, Imm: vecHoistReg | vecWide})
+		}
+		wtop, wdone := l.newLabel(), l.newLabel()
+		l.mark(wtop)
+		l.jumpNot(l.compare(OpLt, l.arith(OpAdd, ld(iSlot), l.constant(7)), ld(endSlot)), wdone)
+		l.vecBody(p, bases, scal, hoisted, ld(iSlot), 0, vecWide)
+		l.vecBody(p, bases, scal, hoisted, ld(iSlot), 2, vecWide)
+		l.setSlot(iSlot, l.arith(OpAdd, ld(iSlot), l.constant(8)))
+		l.jump(wtop)
+		l.mark(wdone)
+		w4 := l.newLabel()
+		l.jumpNot(l.compare(OpLt, l.arith(OpAdd, ld(iSlot), l.constant(3)), ld(endSlot)), w4)
+		l.vecBody(p, bases, scal, hoisted, ld(iSlot), 0, vecWide)
+		l.setSlot(iSlot, l.arith(OpAdd, ld(iSlot), l.constant(4)))
+		l.mark(w4)
+		l.emit(Instr{Op: OpVZeroUpper, Dst: NoReg, A: NoReg, B: NoReg})
+		l.jump(pair)
+		l.mark(sse)
+	}
+
 	if hoisted != nil {
 		l.emit(Instr{Op: OpVSplat, Dst: NoReg, A: l.load(scal[hoisted.scalar], vFloat), B: NoReg, Imm: vecHoistReg})
 	}
@@ -379,17 +420,16 @@ func (l *lowerer) vecLoop(p *vecPlan, iSlot, endSlot int64) {
 	// left is two or three, so at most one more pair, and then the
 	// ordinary loop takes the one that may remain.
 	top := l.newLabel()
-	pair := l.newLabel()
 	l.mark(top)
 	j := ld(iSlot)
 	l.jumpNot(l.compare(OpLt, l.arith(OpAdd, j, l.constant(3)), ld(endSlot)), pair)
-	l.vecBody(p, bases, scal, hoisted, ld(iSlot), 0)
-	l.vecBody(p, bases, scal, hoisted, ld(iSlot), 1)
+	l.vecBody(p, bases, scal, hoisted, ld(iSlot), 0, 0)
+	l.vecBody(p, bases, scal, hoisted, ld(iSlot), 1, 0)
 	l.setSlot(iSlot, l.arith(OpAdd, ld(iSlot), l.constant(4)))
 	l.jump(top)
 	l.mark(pair)
 	l.jumpNot(l.compare(OpLt, l.arith(OpAdd, ld(iSlot), l.constant(1)), ld(endSlot)), skip)
-	l.vecBody(p, bases, scal, hoisted, ld(iSlot), 0)
+	l.vecBody(p, bases, scal, hoisted, ld(iSlot), 0, 0)
 	l.setSlot(iSlot, l.arith(OpAdd, ld(iSlot), l.constant(2)))
 	l.mark(skip)
 }
@@ -398,16 +438,32 @@ func (l *lowerer) vecLoop(p *vecPlan, iSlot, endSlot int64) {
 // text to follow a base in an address: the second pair of a trip is
 // 16 bytes on from the first, with no register for its index.
 func vecDisp(imm int64) string {
-	if d := imm >> 4; d != 0 {
+	if d := (imm &^ vecWide) >> 4; d != 0 {
 		return fmt.Sprintf("+%d", d)
 	}
 	return ""
 }
 
+// vecMov and vecReg name the move and the register of a packed op.
+func vecMov(imm int64) string {
+	if imm&vecWide != 0 {
+		return "vmovupd"
+	}
+	return "movupd"
+}
+
+func vecReg(imm, r int64) string {
+	if imm&vecWide != 0 {
+		return fmt.Sprintf("ymm%d", r)
+	}
+	return fmt.Sprintf("xmm%d", r)
+}
+
 // vecBody is one packed step: the two elements at j and j+1 of every
 // access, plus 2*pair for the second step of a trip, worked out in xmm0
-// and xmm1 and stored.
-func (l *lowerer) vecBody(p *vecPlan, bases []int64, scal []int64, hoisted *vecNode, j Reg, pair int64) {
+// and xmm1 and stored. With wide set to vecWide it is four elements, in
+// ymm0 and ymm1.
+func (l *lowerer) vecBody(p *vecPlan, bases []int64, scal []int64, hoisted *vecNode, j Reg, pair, wide int64) {
 	addr := func(i int) Reg {
 		a := l.newReg()
 		l.regTy[a] = vInt
@@ -421,9 +477,9 @@ func (l *lowerer) vecBody(p *vecPlan, bases []int64, scal []int64, hoisted *vecN
 		}
 		if n.leaf {
 			if n.isElem {
-				l.emit(Instr{Op: OpVLoad, Dst: NoReg, A: addr(n.access), B: NoReg, Imm: int64(reg) | pair*16<<4})
+				l.emit(Instr{Op: OpVLoad, Dst: NoReg, A: addr(n.access), B: NoReg, Imm: int64(reg) | pair*16<<4 | wide})
 			} else {
-				l.emit(Instr{Op: OpVSplat, Dst: NoReg, A: l.load(scal[n.scalar], vFloat), B: NoReg, Imm: int64(reg)})
+				l.emit(Instr{Op: OpVSplat, Dst: NoReg, A: l.load(scal[n.scalar], vFloat), B: NoReg, Imm: int64(reg) | wide})
 			}
 			return reg
 		}
@@ -433,7 +489,7 @@ func (l *lowerer) vecBody(p *vecPlan, bases []int64, scal []int64, hoisted *vecN
 			// right side goes in whichever one it did not use.
 			a := gen(n.l, reg)
 			b := gen(n.r, 1-a)
-			l.emit(Instr{Op: OpVArith, Dst: NoReg, A: NoReg, B: NoReg, Imm: int64(n.op<<8 | a<<4 | b)})
+			l.emit(Instr{Op: OpVArith, Dst: NoReg, A: NoReg, B: NoReg, Imm: int64(n.op<<8|a<<4|b) | wide})
 			return a
 		}
 		// A subtraction whose right side is itself an operation leaves
@@ -442,12 +498,12 @@ func (l *lowerer) vecBody(p *vecPlan, bases []int64, scal []int64, hoisted *vecN
 		b := gen(n.r, reg)
 		a := gen(n.l, 1-b)
 		if n.op == vecSub {
-			l.emit(Instr{Op: OpVArith, Dst: NoReg, A: NoReg, B: NoReg, Imm: int64(n.op<<8 | a<<4 | b)})
+			l.emit(Instr{Op: OpVArith, Dst: NoReg, A: NoReg, B: NoReg, Imm: int64(n.op<<8|a<<4|b) | wide})
 			return a
 		}
-		l.emit(Instr{Op: OpVArith, Dst: NoReg, A: NoReg, B: NoReg, Imm: int64(n.op<<8 | b<<4 | a)})
+		l.emit(Instr{Op: OpVArith, Dst: NoReg, A: NoReg, B: NoReg, Imm: int64(n.op<<8|b<<4|a) | wide})
 		return b
 	}
 	res := gen(p.root, 0)
-	l.emit(Instr{Op: OpVStore, Dst: NoReg, A: addr(p.target), B: NoReg, Imm: int64(res) | pair*16<<4})
+	l.emit(Instr{Op: OpVStore, Dst: NoReg, A: addr(p.target), B: NoReg, Imm: int64(res) | pair*16<<4 | wide})
 }

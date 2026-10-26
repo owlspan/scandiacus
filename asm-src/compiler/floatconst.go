@@ -103,7 +103,7 @@ func leafLoop(fn *Func, lp loopSpan) bool {
 		switch {
 		case in.Op == OpStore, in.Op == OpStoreMem, in.Op == OpPoke,
 			in.Op == OpStoreByte, in.Op == OpVStore,
-			in.Op == OpVLoad, in.Op == OpVSplat, in.Op == OpVArith,
+			in.Op == OpVLoad, in.Op == OpVSplat, in.Op == OpVArith, in.Op == OpVZeroUpper,
 			csePure(in.Op), in.Op == OpCheckIndex, in.Op == OpLoadMem,
 			in.Op == OpLoad, in.Op == OpConst, in.Op == OpFConst, in.Op == OpStr,
 			in.Op == OpLoadByte, in.Op == OpPeek, in.Op == OpSymAddr,

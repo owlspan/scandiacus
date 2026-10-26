@@ -591,6 +591,9 @@ const (
 	OpVStore // the two doubles in xmm[Imm&15] are written at address A + Imm>>4
 	OpVSplat // xmm[Imm] = the float A, twice
 	OpVArith // xmm[Imm>>4&15] op= xmm[Imm&15], op = Imm>>8: add, sub, mul
+	// vzeroupper, after the four-wide loop: see vecloop.go. With
+	// vecWide set in Imm the four ops above work on ymm, four doubles.
+	OpVZeroUpper
 )
 
 // The widths OpPeek and OpPoke move. A narrow store keeps the low bits,
@@ -622,7 +625,7 @@ var opNames = [...]string{
 	"gcpoll", "peek", "poke", "ext", "f32round", "inttof32", "u64tofloat",
 	"u64tof32", "floattou64", "divu", "modu", "shru", "ltu", "leu", "gtu",
 	"geu", "f32bits", "f32frombits", "checkindex", "vload", "vstore",
-	"vsplat", "varith",
+	"vsplat", "varith", "vzeroupper",
 }
 
 func (o Op) String() string {

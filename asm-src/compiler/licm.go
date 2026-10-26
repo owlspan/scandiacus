@@ -237,7 +237,7 @@ func hoistLoop(m *Module, fn *Func, lp loopSpan, escaped map[int64]bool, def map
 			stores = append(stores, store{classOf(m, fn, elem, in.A), in.Imm, true})
 		case in.Op == OpPoke, in.Op == OpStoreByte, in.Op == OpVStore:
 			stores = append(stores, store{classOf(m, fn, elem, in.A), 0, false})
-		case in.Op == OpVLoad, in.Op == OpVSplat, in.Op == OpVArith:
+		case in.Op == OpVLoad, in.Op == OpVSplat, in.Op == OpVArith, in.Op == OpVZeroUpper:
 			// Packed reads, and arithmetic in xmm0 and xmm1: no memory
 			// written. See vecloop.go.
 		case csePure(in.Op), in.Op == OpCheckIndex, in.Op == OpLoadMem,

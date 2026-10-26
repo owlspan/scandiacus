@@ -203,6 +203,11 @@ func parseOperand(s string) (operand, error) {
 	if n, ok := xmmNum(s); ok {
 		return operand{kind: opXmm, reg: n, size: 64}, nil
 	}
+	if strings.HasPrefix(s, "ymm") {
+		if n, ok := xmmNum("xmm" + s[3:]); ok {
+			return operand{kind: opXmm, reg: n, size: 256}, nil
+		}
+	}
 
 	if n, err := strconv.ParseInt(s, 0, 64); err == nil {
 		return operand{kind: opImm, disp: n}, nil
@@ -249,12 +254,27 @@ func parseMem(inner string, size int) (operand, error) {
 	if rest == "" {
 		return op, nil
 	}
-	// An index register, optionally scaled: [rax+rcx*8].
+	// An index register, optionally scaled, and then optionally a
+	// displacement: [rax+rcx*8], [rax+rcx*8+32]. The wide packed loops'
+	// second step is the last; see vecloop.go.
 	scale := int64(1)
 	idxName := rest
+	var after int64
 	if star := strings.IndexByte(rest, '*'); star >= 0 {
 		idxName = strings.TrimSpace(rest[:star])
-		n, err := strconv.ParseInt(strings.TrimSpace(rest[star+1:]), 0, 64)
+		sc := strings.TrimSpace(rest[star+1:])
+		if k := strings.IndexAny(sc, "+-"); k > 0 {
+			d, err := strconv.ParseInt(strings.TrimSpace(sc[k+1:]), 0, 64)
+			if err != nil {
+				return operand{}, fmt.Errorf("bad displacement in %q", rest)
+			}
+			if sc[k] == '-' {
+				d = -d
+			}
+			after = d
+			sc = strings.TrimSpace(sc[:k])
+		}
+		n, err := strconv.ParseInt(sc, 0, 64)
 		if err != nil || (n != 1 && n != 2 && n != 4 && n != 8) {
 			return operand{}, fmt.Errorf("bad scale in %q", rest)
 		}
@@ -266,6 +286,7 @@ func parseMem(inner string, size int) (operand, error) {
 		}
 		op.index = idx
 		op.scale = int(scale)
+		op.disp = after
 		return op, nil
 	}
 	v, err := strconv.ParseInt(rest, 0, 64)

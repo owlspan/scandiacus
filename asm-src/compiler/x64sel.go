@@ -539,11 +539,11 @@ func (e *Emitter) fuseIndex(ix, next Instr, uses map[Reg]int) bool {
 		return true
 	}
 	if next.Op == OpVLoad {
-		e.line("movupd xmm%d, [%s+%s*%d%s]", next.Imm&15, base, idx, indexScale(ix), vecDisp(next.Imm))
+		e.line("%s %s, [%s+%s*%d%s]", vecMov(next.Imm), vecReg(next.Imm, next.Imm&15), base, idx, indexScale(ix), vecDisp(next.Imm))
 		return true
 	}
 	if next.Op == OpVStore {
-		e.line("movupd [%s+%s*%d%s], xmm%d", base, idx, indexScale(ix), vecDisp(next.Imm), next.Imm&15)
+		e.line("%s [%s+%s*%d%s], %s", vecMov(next.Imm), base, idx, indexScale(ix), vecDisp(next.Imm), vecReg(next.Imm, next.Imm&15))
 		return true
 	}
 	if next.Op == OpPoke {

@@ -64,11 +64,16 @@ func (b *block) modrm(regField int, rm operand) {
 	case opMem:
 		base := rm.reg & 7
 		if rm.index >= 0 {
-			// [base + index*scale]: mod is 00 unless the base is rbp or
-			// r13, which the encoding steals for rip-relative.
+			// [base + index*scale + disp]: mod is 00 for no displacement
+			// unless the base is rbp or r13, whose 00 means no base, so
+			// those take a zero byte of displacement.
 			mod := byte(0)
-			if base == 5 {
+			switch {
+			case rm.disp == 0 && base != 5:
+			case rm.disp >= -128 && rm.disp <= 127:
 				mod = 0x40
+			default:
+				mod = 0x80
 			}
 			ss := byte(0)
 			switch rm.scale {
@@ -81,8 +86,11 @@ func (b *block) modrm(regField int, rm operand) {
 			}
 			b.put(mod | byte((regField&7)<<3) | 4) // rm 100 means SIB
 			b.put(ss<<6 | byte((rm.index&7)<<3) | byte(base))
-			if base == 5 {
-				b.put(0)
+			switch mod {
+			case 0x40:
+				b.put(byte(rm.disp))
+			case 0x80:
+				b.put32(int32(rm.disp))
 			}
 			return
 		}
@@ -396,6 +404,15 @@ func (b *block) encode(m string, ops []operand) error {
 	case "ret":
 		b.put(0xC3)
 		return nil
+	case "cpuid":
+		b.put(0x0F, 0xA2)
+		return nil
+	case "xgetbv":
+		b.put(0x0F, 0x01, 0xD0)
+		return nil
+	case "vzeroupper":
+		b.put(0xC5, 0xF8, 0x77)
+		return nil
 	case "cqo":
 		b.put(0x48, 0x99)
 		return nil
@@ -460,6 +477,12 @@ func (b *block) encode(m string, ops []operand) error {
 		return b.encodeMovupd(ops)
 	case "addpd", "subpd", "mulpd", "unpcklpd", "movapd":
 		return b.encodePacked(m, ops)
+	case "vmovupd":
+		return b.encodeVmovupd(ops)
+	case "vaddpd", "vsubpd", "vmulpd":
+		return b.encodeVPacked(m, ops)
+	case "vbroadcastsd":
+		return b.encodeVbroadcastsd(ops)
 	case "comisd", "ucomisd":
 		return b.encodeComisd(m, ops)
 	case "cvtsi2sd", "cvtsi2ss":
@@ -919,6 +942,82 @@ func (b *block) encodePacked(m string, ops []operand) error {
 	b.put(0x0F, code)
 	b.modrm(ops[0].reg, ops[1])
 	return nil
+}
+
+// vex writes the VEX prefix and the opcode for the ymm forms the wide
+// packed loops use: always 256 bits wide, always the 66 prefix (pp 01),
+// and map 1 for 0F or 2 for 0F 38. v is the extra source register, or 0
+// for none. The two-byte C5 form where it can say everything, as GNU as
+// does, so that the bytes match it; see encode_test.go.
+func (b *block) vex(mapSel byte, v, reg int, rm operand, opcode byte) {
+	x, bse := 0, 0
+	switch rm.kind {
+	case opReg, opXmm:
+		bse = rm.reg
+	case opMem:
+		bse = rm.reg
+		if rm.index >= 0 {
+			x = rm.index
+		}
+	}
+	last := byte(^v&15)<<3 | 0x04 | 0x01
+	if mapSel == 1 && x < 8 && bse < 8 {
+		r := byte(0x80)
+		if reg >= 8 {
+			r = 0
+		}
+		b.put(0xC5, r|last, opcode)
+		b.modrm(reg, rm)
+		return
+	}
+	b1 := mapSel
+	if reg < 8 {
+		b1 |= 0x80
+	}
+	if x < 8 {
+		b1 |= 0x40
+	}
+	if bse < 8 {
+		b1 |= 0x20
+	}
+	b.put(0xC4, b1, last, opcode)
+	b.modrm(reg, rm)
+}
+
+func (b *block) encodeVmovupd(ops []operand) error {
+	if len(ops) != 2 {
+		return fmt.Errorf("vmovupd wants two operands")
+	}
+	dst, src := ops[0], ops[1]
+	if dst.kind == opXmm && dst.size == 256 && src.kind == opMem {
+		b.vex(1, 0, dst.reg, src, 0x10)
+		return nil
+	}
+	if src.kind == opXmm && src.size == 256 && dst.kind == opMem {
+		b.vex(1, 0, src.reg, dst, 0x11)
+		return nil
+	}
+	return fmt.Errorf("vmovupd wants a ymm register and memory")
+}
+
+func (b *block) encodeVPacked(m string, ops []operand) error {
+	if len(ops) != 3 || ops[0].size != 256 || ops[1].size != 256 || ops[2].size != 256 {
+		return fmt.Errorf("%s wants three ymm registers", m)
+	}
+	code := map[string]byte{"vaddpd": 0x58, "vmulpd": 0x59, "vsubpd": 0x5C}[m]
+	b.vex(1, ops[1].reg, ops[0].reg, ops[2], code)
+	return nil
+}
+
+func (b *block) encodeVbroadcastsd(ops []operand) error {
+	if len(ops) != 2 || ops[0].kind != opXmm || ops[0].size != 256 {
+		return fmt.Errorf("vbroadcastsd wants a ymm destination")
+	}
+	if src := ops[1]; src.kind == opMem || src.kind == opXmm && src.size == 64 {
+		b.vex(2, 0, ops[0].reg, src, 0x19)
+		return nil
+	}
+	return fmt.Errorf("vbroadcastsd wants an xmm register or memory")
 }
 
 func (b *block) encodeSSE(code byte, ops []operand) error {

@@ -65,7 +65,8 @@ const (
 	heapTableSlot = heapPagesSlot + 3          // the hash table of page addresses
 	heapMaskSlot  = heapPagesSlot + 4          // its size minus one
 	heapCountSlot = heapPagesSlot + 5          // how many pages it holds
-	heapReserved  = heapPagesSlot + 6          // the first word after all of these
+	cpuSlot       = heapPagesSlot + 6          // 0 not asked yet, 1 SSE2 only, 2 AVX2; see vecloop.go
+	heapReserved  = heapPagesSlot + 7          // the first word after all of these
 )
 
 // heapAllocSmall is the fast path of __alloc for a block of total bytes,

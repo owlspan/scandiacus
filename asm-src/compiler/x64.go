@@ -833,6 +833,10 @@ func (e *Emitter) function(f *Func) {
 		e.line("mov edx, 32768")
 		e.line("call _setmode")
 	}
+	if f.Name == "main" && !e.mod.DLL && e.mod.Helpers["cpufeat"] {
+		e.comment("whether the packed loops can use AVX; see vecloop.go")
+		e.line("call __vy_cpufeat")
+	}
 
 	uses := regUses(f)
 	e.alias = map[Reg]string{}
@@ -1701,25 +1705,45 @@ func (e *Emitter) instr(in Instr) {
 			base = "rax"
 		}
 		if in.Op == OpVLoad {
-			e.line("movupd xmm%d, [%s%s]", in.Imm&15, base, vecDisp(in.Imm))
+			e.line("%s %s, [%s%s]", vecMov(in.Imm), vecReg(in.Imm, in.Imm&15), base, vecDisp(in.Imm))
 		} else {
-			e.line("movupd [%s%s], xmm%d", base, vecDisp(in.Imm), in.Imm&15)
+			e.line("%s [%s%s], %s", vecMov(in.Imm), base, vecDisp(in.Imm), vecReg(in.Imm, in.Imm&15))
 		}
 
 	case OpVSplat:
+		r := in.Imm &^ vecWide
+		src := e.loc(in.A)
+		if in.Imm&vecWide != 0 {
+			// vbroadcastsd takes a register only from AVX2 on, which
+			// the wide loop needs anyway; see vecloop.go.
+			if !isXmm(src) && !strings.HasPrefix(src, "qword ptr") {
+				src = "qword ptr " + src
+			}
+			e.line("vbroadcastsd ymm%d, %s", r, src)
+			break
+		}
 		// From a register, movapd: movsd between registers keeps the
 		// upper half of the destination, which made each trip wait on
 		// the result the last one left in it.
-		if src := e.loc(in.A); isXmm(src) {
-			e.line("movapd xmm%d, %s", in.Imm, src)
+		if isXmm(src) {
+			e.line("movapd xmm%d, %s", r, src)
 		} else {
-			e.line("movsd xmm%d, %s", in.Imm, src)
+			e.line("movsd xmm%d, %s", r, src)
 		}
-		e.line("unpcklpd xmm%d, xmm%d", in.Imm, in.Imm)
+		e.line("unpcklpd xmm%d, xmm%d", r, r)
 
 	case OpVArith:
-		m := [...]string{"addpd", "subpd", "mulpd"}[in.Imm>>8]
-		e.line("%s xmm%d, xmm%d", m, in.Imm>>4&15, in.Imm&15)
+		op, a, b := in.Imm&^vecWide>>8, in.Imm>>4&15, in.Imm&15
+		if in.Imm&vecWide != 0 {
+			m := [...]string{"vaddpd", "vsubpd", "vmulpd"}[op]
+			e.line("%s ymm%d, ymm%d, ymm%d", m, a, a, b)
+			break
+		}
+		m := [...]string{"addpd", "subpd", "mulpd"}[op]
+		e.line("%s xmm%d, xmm%d", m, a, b)
+
+	case OpVZeroUpper:
+		e.line("vzeroupper")
 
 	case OpBoundsFail:
 		e.boundsCall(in, e.loc(in.A), e.loc(in.B))
@@ -2221,6 +2245,43 @@ __vy_bounds:
     mov ecx, 1
     call exit
 `)
+	}
+
+	if e.mod.Helpers["cpufeat"] {
+		// 2 in the runtime's cpu word if the wide packed loops can run,
+		// 1 if not. AVX2 is CPUID leaf 7 EBX bit 5, but the ymm
+		// registers are usable only if the OS saves them on a thread
+		// switch: CPUID leaf 1 ECX bits 27 (OSXSAVE) and 28 (AVX), then
+		// XGETBV says it saves both the xmm and the ymm state. rbx is
+		// saved because cpuid writes it and both ABIs preserve it.
+		fmt.Fprintf(&e.b, `
+__vy_cpufeat:
+    push rbx
+    mov r8, 1
+    mov eax, 1
+    xor ecx, ecx
+    cpuid
+    mov eax, ecx
+    and eax, 402653184
+    cmp eax, 402653184
+    jne .Lcpufeat_done
+    xor ecx, ecx
+    xgetbv
+    and eax, 6
+    cmp eax, 6
+    jne .Lcpufeat_done
+    mov eax, 7
+    xor ecx, ecx
+    cpuid
+    and ebx, 32
+    je .Lcpufeat_done
+    mov r8, 2
+.Lcpufeat_done:
+    lea rcx, __globals[rip]
+    mov qword ptr [rcx+%d], r8
+    pop rbx
+    ret
+`, cpuSlot*wordSize)
 	}
 
 	if e.mod.Helpers["must"] || e.mod.Helpers["bounds"] {
