@@ -3,6 +3,18 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.6.0
+
+**extern union and bit fields.** `extern union Num { i: i32, f: f32 }`
+lays every field at offset 0, and can be a field of an extern struct
+like any other C layout. `mode: u8 bits 3` in an extern struct is a bit
+field of an integer or `bool` type: bit fields of types of one size
+share a unit from the low bit up while they fit, the way MSVC and
+MinGW lay them out on Windows. A struct mixing u8, i8, u16, u32, i32
+and bool bit fields comes out the same 12 bytes, holding the same
+bytes, as gcc for Windows makes it. A signed bit field reads back
+sign-extended, and writing one leaves the rest of its unit alone.
+
 ## 2.5.0
 
 **Fixed-width types in the math library, for ranges and map keys.**
