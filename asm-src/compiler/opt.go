@@ -430,7 +430,7 @@ func deadOK(op Op) bool {
 		OpExt, OpF32Round, OpIntToF32, OpU64ToFloat, OpU64ToF32, OpFloatToU64,
 		OpShrU, OpLtU, OpLeU, OpGtU, OpGeU,
 		OpIndexAddr, OpLoadByte, OpPeek,
-		OpStackPtr, OpGlobalAddr, OpSymAddr, OpSlotAddr:
+		OpStackPtr, OpGlobalAddr, OpSymAddr, OpSlotAddr, OpFrameAddr:
 		return true
 	}
 	return false

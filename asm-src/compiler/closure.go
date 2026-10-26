@@ -139,7 +139,8 @@ func (l *lowerer) boxOf(name string) Reg {
 // collector whether to follow the word inside.
 func (l *lowerer) newBox(t vty) Reg {
 	tag := int64(tagWords)
-	if t.holdsPointer() {
+	// An array's cell holds the address of a block of its own.
+	if t.holdsPointer() || isArray(t) {
 		tag = tagPtrs
 	}
 	return l.allocObj(l.constant(wordSize), tag)
@@ -214,6 +215,9 @@ func (l *lowerer) liftFunc(fd *FnDecl, t vty, captured []capture) string {
 			l.keepInMemory(fd, pa.Name, slot)
 		}
 		l.storeLocal(slot, d)
+		if isArray(params[i]) {
+			l.arrayParam(slot, params[i])
+		}
 	}
 
 	savedDefers := l.defers

@@ -399,6 +399,59 @@ print({"a": 1})                    // {"a": 1}
 print(["x", "y"])                  // ["x", "y"]
 ```
 
+### Fixed-size arrays
+
+`[N]T` is N numbers in a row, the way C stores them: a 4x4 matrix as
+`[16]f32`, a buffer as `[256]u8`. The length is part of the type and
+never changes.
+
+```scandiacus
+let m: [16]f32                     // sixteen zeros
+let k: [4]i32 = [1, 2, 3]          // the ones left out are zero
+m[5] = 1.5
+k[3] += 10
+print("{len(m)} {k}")              // 16 [1, 2, 3, 10]
+for i, v in k { ... }
+
+struct Particle {
+    name: str
+    pos: [3]f32                    // stored inside the struct
+}
+```
+
+An array is a value, like a struct: `let b = a` copies every element,
+and so do passing one to a function, returning one and assigning one.
+Changing `b` leaves `a` alone. `==` compares the elements.
+
+A local array lives in its function's stack frame and a field array
+inside its struct, so neither allocates; reading or writing an element
+is one load or store, with the same bounds check a list index has. An
+array bigger than 64 KB, a `var` array and one a closure captures go
+on the heap instead, since they outlive the frame or would not fit in
+it.
+
+Where native code or `mem` wants an address, an array is the address
+of its first element, as in C. An extern `ptr` or `*T` parameter takes
+one directly:
+
+```scandiacus
+extern fn glUniformMatrix4fv(loc: int, count: int, transpose: bool, m: *f32) from "opengl32"
+glUniformMatrix4fv(loc, 1, false, m)
+
+extern fn GetUserNameA(buf: ptr, size: *u32) -> bool from "advapi32"
+let name: [64]u8
+let size: u32 = 64
+GetUserNameA(name, &size)
+print(mem.str(name))
+```
+
+The element is a C scalar: `i8` to `u64`, `f32`, `f64`, `bool`, `ptr`,
+or `int` and `float` for their 64-bit forms. An array cannot be an
+element of a list or a map, or be nullable, yet; it can be a variable,
+a parameter, a result, a struct field or a field of an enum variant.
+`json.encode` writes one as a JSON array; `json.decode` cannot fill one
+yet.
+
 ### Nullable types
 
 A plain type can **never** be nil. `?T` is the type that can.
@@ -4500,6 +4553,10 @@ Honest list of what v2.7.0 does not do yet.
 
 **The language**
 
+- **An array holds C scalars only, and cannot sit in a list or a
+  map.** `[N]T` takes `i8` to `u64`, `f32`, `f64`, `bool` and `ptr`; an
+  array of structs or of arrays, and `[][N]T`, are not supported yet.
+  A list of structs that each hold an array field works.
 - **At most 64 closures can be callbacks at once.** A function
   declared with `fn` has no such limit.
 - **A native call through an address is untyped.** `mem.call` passes

@@ -213,6 +213,11 @@ func (l *lowerer) collectStructs(p *Program) {
 			if !lay.fields[i].t.holdsPointer() {
 				lay.fields[i].off = off
 				off += wordSize
+				if isArray(lay.fields[i].t) {
+					// Inline, so it takes its own size in words.
+					_, _, _, bytes := arrayShape(lay.fields[i].t)
+					off += bytes - wordSize
+				}
 			}
 		}
 		lay.bytes = off
@@ -299,6 +304,9 @@ func (l *lowerer) zeroOf(n Node, t vty, depth int) Reg {
 		}
 		return l.zeroStruct(n, lay, depth+1)
 	}
+	if isArray(t) {
+		return l.zeroArray(t)
+	}
 	d := l.constant(0)
 	l.regTy[d] = t
 	return d
@@ -307,7 +315,7 @@ func (l *lowerer) zeroOf(n Node, t vty, depth int) Reg {
 func (l *lowerer) zeroStruct(n Node, lay *structLayout, depth int) Reg {
 	obj := l.allocStruct(lay)
 	for _, f := range lay.fields {
-		l.emit(Instr{Op: OpStoreMem, A: obj, B: l.zeroOf(n, f.t, depth), Imm: f.off})
+		l.storeField(obj, f, l.zeroOf(n, f.t, depth))
 	}
 	return obj
 }
@@ -351,7 +359,7 @@ func (l *lowerer) structLit(x *StructLit) Reg {
 		} else {
 			v = l.zeroOf(x, f.t, 0)
 		}
-		l.emit(Instr{Op: OpStoreMem, A: obj, B: v, Imm: f.off})
+		l.storeField(obj, f, v)
 	}
 	return obj
 }
@@ -391,6 +399,9 @@ func (l *lowerer) fieldRead(x *Field) Reg {
 	if lay.view {
 		return l.viewRead(obj, f)
 	}
+	if isArray(f.t) {
+		return l.loadField(obj, f)
+	}
 
 	d := l.newReg()
 	l.regTy[d] = f.t
@@ -421,6 +432,10 @@ func (l *lowerer) fieldAssign(st *AssignStmt, target *Field) {
 	}
 	if lay.view {
 		l.viewAssign(st, obj, f)
+		return
+	}
+	if isArray(f.t) {
+		l.arrayFill(l.loadField(obj, f), st.Value, f.t)
 		return
 	}
 
@@ -465,6 +480,10 @@ func (l *lowerer) copyStruct(n Node, v Reg, t vty) Reg {
 	}
 	dup := l.allocStruct(lay)
 	for _, f := range lay.fields {
+		if isArray(f.t) {
+			l.storeField(dup, f, l.loadField(v, f))
+			continue
+		}
 		cur := l.newReg()
 		l.regTy[cur] = f.t
 		l.emit(Instr{Op: OpLoadMem, Dst: cur, A: v, B: NoReg, Imm: f.off})
@@ -527,12 +546,7 @@ func (l *lowerer) writeStruct(n Node, v Reg, t vty) {
 			l.writeLit(", ")
 		}
 		l.writeLit(f.name + ": ")
-
-		cur := l.newReg()
-		l.regTy[cur] = f.t
-		l.emit(Instr{Op: OpLoadMem, Dst: cur, A: v, B: NoReg, Imm: f.off})
-
-		l.writeValue(n, cur, f.t)
+		l.writeValue(n, l.loadField(v, f), f.t)
 	}
 	l.writeLit("}")
 }

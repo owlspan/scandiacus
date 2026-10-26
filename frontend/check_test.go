@@ -148,3 +148,32 @@ let enum = 1
 		}
 	}
 }
+
+func TestArrays(t *testing.T) {
+	ok := `
+struct P { pos: [3]f32 }
+fn first(a: [4]i32) -> i32 { return a[0] }
+let a: [4]i32 = [1, 2]
+let z: [8]u8
+z[7] = 255
+let p = P{pos: [1.5, 2.5, 3.5]}
+p.pos[1] = 2.0
+let _f = first(a)
+for x in z { let _y = x }
+`
+	if errs := checked(t, ok); len(errs) != 0 {
+		t.Errorf("valid arrays rejected: %v", errs)
+	}
+	for src, want := range map[string]string{
+		"let a: [2]int = [1, 2, 3]":    "holds 2 elements",
+		"let xs: [][2]int = []":        "cannot be inside a list",
+		"let a: [2]str":                "is not an array type",
+		"let a: [2]int\nlet b = [a]":   "cannot be inside a list",
+		"let a: [2]int\nlet b = a + 1": "needs numbers",
+	} {
+		errs := strings.Join(checked(t, src), "\n")
+		if !strings.Contains(errs, want) {
+			t.Errorf("%q: want an error containing %q, got %q", src, want, errs)
+		}
+	}
+}

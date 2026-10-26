@@ -85,6 +85,10 @@ func (l *lowerer) jsonWrite(n Node, v Reg, t vty, indent bool, depth int) {
 		return
 	}
 
+	if isArray(t) {
+		l.jsonArray(n, v, t, indent, depth)
+		return
+	}
 	switch t.k {
 	case kStr:
 		l.jsonString(v)

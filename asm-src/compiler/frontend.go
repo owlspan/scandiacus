@@ -153,6 +153,7 @@ const (
 	IMPORT    = front.IMPORT
 	IN        = front.IN
 	KAny      = front.KAny
+	KArray    = front.KArray
 	KBool     = front.KBool
 	KBytes    = front.KBytes
 	KErrLit   = front.KErrLit

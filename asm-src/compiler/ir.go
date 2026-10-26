@@ -324,6 +324,8 @@ func vtyOf(t *Type) (vty, bool) {
 		return vPtr(t.String()), true
 	case KFixed:
 		return vFixed(t.Name), true
+	case KArray:
+		return vty{k: kInt, name: t.String()}, true
 
 	case KBytes:
 		return vBytes, true
@@ -594,6 +596,11 @@ const (
 	// vzeroupper, after the four-wide loop: see vecloop.go. With
 	// vecWide set in Imm the four ops above work on ymm, four doubles.
 	OpVZeroUpper
+
+	// Dst = the address of byte Imm of the function's array area, the
+	// part of its frame that holds local fixed-size arrays; see
+	// arrays.go. Appended, not inserted.
+	OpFrameAddr
 )
 
 // The widths OpPeek and OpPoke move. A narrow store keeps the low bits,
@@ -625,7 +632,7 @@ var opNames = [...]string{
 	"gcpoll", "peek", "poke", "ext", "f32round", "inttof32", "u64tofloat",
 	"u64tof32", "floattou64", "divu", "modu", "shru", "ltu", "leu", "gtu",
 	"geu", "f32bits", "f32frombits", "checkindex", "vload", "vstore",
-	"vsplat", "varith", "vzeroupper",
+	"vsplat", "varith", "vzeroupper", "frameaddr",
 }
 
 func (o Op) String() string {
@@ -711,6 +718,10 @@ type Func struct {
 	// declared function has this false and ignores the register, which
 	// is what lets one be used as a function value with no wrapper.
 	Env bool
+
+	// ArrayBytes is the size of the array area, where the function's
+	// local fixed-size arrays live; see arrays.go.
+	ArrayBytes int64
 }
 
 // A Module is the whole program: its functions and its string pool.
@@ -1295,8 +1306,15 @@ func (l *lowerer) function(fd *FnDecl) {
 			l.keepInMemory(fd, pa.Name, slot)
 		}
 		l.storeLocal(slot, d)
+		if isArray(s.params[i]) {
+			l.arrayParam(slot, s.params[i])
+		}
 	}
-	l.tailStart(fd, s.params, s.ret)
+	// A tail call would rebind array parameters without their copies.
+	l.tail = nil
+	if !anyArray(s.params, s.ret) {
+		l.tailStart(fd, s.params, s.ret)
+	}
 
 	l.defers = nil
 	l.stmtList(fd.Body.Stmts)
@@ -1635,6 +1653,10 @@ func (l *lowerer) stmt(s Stmt) {
 
 	switch st := s.(type) {
 	case *LetStmt:
+		if t, ok := vtyOf(st.T); ok && isArray(t) {
+			l.letArray(st, t)
+			return
+		}
 		saved := l.hint
 		if st.Type != "" {
 			if want, ok := typeOfName(st.Type); ok {
@@ -1773,6 +1795,9 @@ func (l *lowerer) stmt(s Stmt) {
 		// checker inserted, and what the literal has to build is the
 		// list, not the result around it.
 		v := l.rvalueAs(st.Value, l.fn.Ret.inner())
+		if isArray(l.fn.Ret) {
+			v = l.arrayReturn(v, l.fn.Ret)
+		}
 
 		// Boxing a plain value into the T! a function promises is not
 		// decided here: the checker already marked the spot with a
@@ -1866,6 +1891,10 @@ func (l *lowerer) assign(st *AssignStmt) {
 			l.mapSet(coll, key, val, t)
 			return
 		}
+		if isArray(t) {
+			l.arrayIndexAssign(st, coll, idx.Idx)
+			return
+		}
 		if isPtr(t) {
 			l.ptrAssign(st, coll, idx.Idx)
 			return
@@ -1886,6 +1915,11 @@ func (l *lowerer) assign(st *AssignStmt) {
 	id, ok := st.Target.(*Ident)
 	if !ok {
 		l.errorAt(st, "the assembly backend can only assign to a plain name, a field or an index")
+		return
+	}
+	if t, ok := l.staticTypeOf(id); ok && isArray(t) {
+		// The name is its storage's address: the new value is copied in.
+		l.arrayFill(l.expr(id), st.Value, t)
 		return
 	}
 	if l.assignCaptured(st, id) {
@@ -2503,6 +2537,12 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 			l.emit(Instr{Op: OpPrintStr, A: l.strOfNull(c, a, t), Dst: NoReg, Comment: "print"})
 			return l.void()
 		}
+		if t := l.regTy[a]; isArray(t) {
+			l.mod.needs("write")
+			l.writeArray(c, a, t)
+			l.writeLit("\n")
+			return l.void()
+		}
 		switch l.regTy[a].k {
 		case kStruct:
 			l.mod.needs("write")
@@ -2576,6 +2616,10 @@ func (l *lowerer) builtin(c *Call, name string) Reg {
 		l.keepOwned = plain
 		a := l.expr(c.Args[0])
 		l.keepOwned = false
+		if isArray(l.regTy[a]) {
+			_, n, _, _ := arrayShape(l.regTy[a])
+			return l.constant(n)
+		}
 		switch l.regTy[a].k {
 		case kList:
 			return l.field(a, listLenOff, vInt)
@@ -2946,6 +2990,9 @@ func (l *lowerer) toStr(v Reg, at Node) Reg {
 	if isEnum(l.regTy[v]) {
 		return l.enumName(v)
 	}
+	if isArray(l.regTy[v]) {
+		return l.strOf(at, v, l.regTy[v])
+	}
 	switch l.regTy[v].k {
 	case kStr:
 		return v
@@ -3044,6 +3091,9 @@ func (l *lowerer) expr(e Expr) Reg {
 		return l.interp(x)
 
 	case *ListLit:
+		if t, ok := vtyOf(x.T); ok && isArray(t) {
+			return l.arrayTemp(x, t)
+		}
 		return l.listLit(x)
 
 	case *MapLit:
@@ -3071,6 +3121,9 @@ func (l *lowerer) expr(e Expr) Reg {
 				return l.junk()
 			}
 			return l.mapGet(x, coll, key, t)
+		}
+		if isArray(t) {
+			return l.arrayIndexRead(x, coll)
 		}
 		if isPtr(t) {
 			return l.ptrIndexRead(x, coll)
@@ -3130,7 +3183,15 @@ func (l *lowerer) expr(e Expr) Reg {
 		return l.funcLit(x)
 
 	case *Call:
-		return l.call(x)
+		r := l.call(x)
+		if t := l.regTy[r]; isArray(t) {
+			// A returned array is in a block the callee made; it moves
+			// into this frame before anything can collect it.
+			tmp := l.arrayStorage(t, false)
+			l.arrayCopy(tmp, r, t)
+			return tmp
+		}
+		return r
 
 	case *Unary:
 		switch x.Op {
@@ -3277,7 +3338,7 @@ func (l *lowerer) binary(x *Binary) Reg {
 	// form suggests. The comparison is generated from the type, so a
 	// nested one recurses in the lowerer and the depth is whatever the
 	// type says - there is no runtime walk and no type tag to read.
-	if at.k == kList || at.k == kMap || at.k == kStruct || at.k == kBytes {
+	if at.k == kList || at.k == kMap || at.k == kStruct || at.k == kBytes || isArray(at) {
 		if x.Op != EQ && x.Op != NEQ {
 			l.errorAt(x, "%s is not defined on %s", x.Op, at)
 			return l.junk()
@@ -3941,6 +4002,12 @@ func (l *lowerer) globalInit(g *LetStmt) {
 	defer func() { l.initGlobal = false }()
 
 	want := l.globalTy[slot]
+	if isArray(want) {
+		dst := l.arrayStorage(want, true)
+		l.arrayFill(dst, g.Value, want)
+		l.emit(Instr{Op: OpStoreMem, A: l.globalAddr(slot), B: dst, Imm: 0, Comment: "global " + g.Name})
+		return
+	}
 	val := l.rvalueAs(g.Value, want)
 	fitted, good := l.coerce(val, want)
 	if !good {

@@ -337,11 +337,20 @@ func (c *Checker) resolveAnnotation(text string, n Node) *Type {
 		return nil
 	}
 	t := ParseType(text)
+	if t == nil && isArraySpelling(text) {
+		c.ErrorAt(n, "%q is not an array type: the length is a whole number from 1 up, and the "+
+			"element i8 to u64, f32, f64, int, float, bool or ptr", text)
+		return Unknown
+	}
 	if t == nil {
 		c.ErrorAt(n, "unknown type %q", text)
 		return Unknown
 	}
 	t = c.enumTypes(t)
+	if inside := arrayInside(t); inside != "" {
+		c.ErrorAt(n, "an array cannot be inside %s yet - it can be a variable, a parameter, a result or a struct field", inside)
+		return Unknown
+	}
 	if bad := c.badMapKey(t); bad != nil {
 		c.ErrorAt(n, "a map key must be str, int, a fixed-width integer below u64, a plain enum or a struct of those, got %s", bad)
 		return Unknown
@@ -897,7 +906,7 @@ func (c *Checker) forEach(st *ForStmt) {
 	case collT.IsUnknown():
 		keyT, valT = Unknown, Unknown
 
-	case collT.Kind == KList:
+	case collT.Kind == KList, collT.Kind == KArray:
 		if st.Var2 != "" {
 			// Two names over a list means index and element.
 			keyT, valT = Int, collT.Elem
@@ -1060,6 +1069,9 @@ func (c *Checker) exprWant(e Expr, want *Type) *Type {
 	}
 	switch x := e.(type) {
 	case *ListLit:
+		if want.Kind == KArray {
+			return c.arrayLit(x, want)
+		}
 		if want.Kind != KList {
 			break
 		}
@@ -1545,6 +1557,11 @@ func (c *Checker) listLit(x *ListLit) *Type {
 	if elem.Kind == KInt && IsUntypedInt(x.Elems[0]) && c.anyFloat(x.Elems) {
 		elem = Float
 	}
+	if elem.Kind == KArray {
+		c.ErrorAt(x, "an array cannot be inside a list yet - it can be a variable, a parameter, a result or a struct field")
+		x.T = Unknown
+		return Unknown
+	}
 
 	for i := range x.Elems {
 		got := c.exprWant(x.Elems[i], elem)
@@ -1588,6 +1605,11 @@ func (c *Checker) mapLit(x *MapLit) *Type {
 		keyT = Unknown
 	}
 	valT := c.expr(x.Vals[0])
+	if valT.Kind == KArray {
+		c.ErrorAt(x, "an array cannot be inside a map yet - it can be a variable, a parameter, a result or a struct field")
+		x.T = Unknown
+		return Unknown
+	}
 
 	for i := range x.Keys {
 		if got := c.expr(x.Keys[i]); !keyT.Accepts(got) {
@@ -1638,6 +1660,12 @@ func (c *Checker) index(x *Index) *Type {
 			c.ErrorAt(x.Idx, "a pointer index must be int, got %s", idxT)
 		}
 		return collT.Pointee()
+
+	case collT.Kind == KArray:
+		if !idxT.IsUnknown() && !idxT.IsInteger() {
+			c.ErrorAt(x.Idx, "an array index must be int, got %s", idxT)
+		}
+		return collT.Elem
 
 	case collT.Kind == KStr:
 		c.ErrorAt(x, "cannot index a str - use charAt(s, i) or substr(s, a, b)")

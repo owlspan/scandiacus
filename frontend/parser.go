@@ -283,8 +283,7 @@ func (p *Parser) ParseProgram() *Program {
 			if p.match(COLON) {
 				g.Type = p.parseTypeRef()
 			}
-			p.expect(ASSIGN, "'='")
-			g.Value = p.parseExpr(0)
+			g.Value = p.letValue(g.Type)
 			p.endStmt()
 			prog.Globals = append(prog.Globals, g)
 		case p.check(CONST):
@@ -840,6 +839,13 @@ func (p *Parser) parseTypeRef() string {
 		base = "*" + p.parseTypeRef()
 
 	case p.match(LBRACKET):
+		if p.check(NUMBER) {
+			// [16]f32: a fixed-size array.
+			n := p.advance()
+			p.expect(RBRACKET, "']' - an array type is written [16]f32")
+			base = "[" + n.Lex + "]" + p.parseTypeRef()
+			break
+		}
 		p.expect(RBRACKET, "']' - a list type is written []int")
 		base = "[]" + p.parseTypeRef()
 
@@ -932,10 +938,19 @@ func (p *Parser) parseLet() Stmt {
 	if p.match(COLON) {
 		st.Type = p.parseTypeRef()
 	}
-	p.expect(ASSIGN, "'='")
-	st.Value = p.parseExpr(0)
+	st.Value = p.letValue(st.Type)
 	p.endStmt()
 	return st
+}
+
+// letValue reads the `= value` of a let. An array may leave it out to
+// start as all zeros, which is spelled as the empty literal it means.
+func (p *Parser) letValue(typ string) Expr {
+	if len(typ) > 1 && typ[0] == '[' && typ[1] >= '0' && typ[1] <= '9' && !p.check(ASSIGN) {
+		return &ListLit{Span: at(p.cur())}
+	}
+	p.expect(ASSIGN, "'='")
+	return p.parseExpr(0)
 }
 
 func (p *Parser) parseReturn() Stmt {

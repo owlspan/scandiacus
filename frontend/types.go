@@ -1,6 +1,9 @@
 package frontend
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // TypeKind is the category of a Scandiacus type.
 type TypeKind int
@@ -55,6 +58,12 @@ const (
 	// fits into a float.
 	KNilLit
 
+	// KArray is a fixed-size array, `[N]T`: N values of the C scalar
+	// named by Name, stored in a row the way C stores them. Len is N and
+	// Elem is what reading one element gives, as for a pointer. It is a
+	// value: assigning or passing one copies it. See frontend/array.go.
+	KArray
+
 	// Signature-only kinds. These never appear as the type of a real
 	// expression - they exist so a builtin can say "any number" or
 	// "anything at all" in its parameter list.
@@ -73,6 +82,9 @@ type Type struct {
 	// Params is a function type's parameter list. Elem carries its
 	// return type, or Void.
 	Params []*Type
+
+	// Len is an array's length.
+	Len int
 }
 
 // FuncOf builds a function type. A nil return means it produces nothing.
@@ -202,6 +214,8 @@ func (t *Type) String() string {
 		return "{" + t.Key.String() + ": " + t.Elem.String() + "}"
 	case KStruct, KEnum, KFixed:
 		return t.Name
+	case KArray:
+		return "[" + strconv.Itoa(t.Len) + "]" + arrayElemName(t.Name)
 	case KPtr:
 		if t.Elem != nil {
 			return "*" + t.Elem.String()
@@ -251,6 +265,8 @@ func (t *Type) Equal(u *Type) bool {
 		return t.Key.Equal(u.Key) && t.Elem.Equal(u.Elem)
 	case KStruct, KEnum, KFixed:
 		return t.Name == u.Name
+	case KArray:
+		return t.Name == u.Name && t.Len == u.Len
 	case KPtr:
 		if (t.Elem == nil) != (u.Elem == nil) {
 			return false
@@ -311,9 +327,14 @@ func (t *Type) Accepts(got *Type) bool {
 		// int does: mem.*, an extern's ptr, arithmetic of your own. The
 		// other way needs `as`, so an int never turns into a pointer by
 		// accident.
-		return got.Kind == KInt || got.Kind == KPtr
+		// An array is its first element's address in the same places,
+		// as in C.
+		return got.Kind == KInt || got.Kind == KPtr || got.Kind == KArray
 	case KPtr:
-		// nil is the null pointer.
+		// nil is the null pointer, and an array of T is a *T.
+		if got.Kind == KArray {
+			return t.Elem == nil && cName(t.Name) == got.Name
+		}
 		return got.Kind == KNilLit || t.Equal(got)
 	}
 	// A nullable never satisfies a plain type: unwrapping is what the
@@ -360,6 +381,8 @@ func (t *Type) Go() string {
 		return t.Name
 	case KPtr:
 		return "uintptr"
+	case KArray:
+		return "[" + strconv.Itoa(t.Len) + "]" + t.Elem.Go()
 	case KFunc:
 		parts := make([]string, len(t.Params))
 		for i, p := range t.Params {
@@ -409,6 +432,8 @@ func (t *Type) Zero() string {
 		return t.Go() + "{}"
 	case KStruct:
 		return t.Name + "{}"
+	case KArray:
+		return t.Go() + "{}"
 	case KNullable, KFunc:
 		return "nil"
 	case KResult:
@@ -526,6 +551,10 @@ func ParseType(s string) *Type {
 			return nil
 		}
 		return NullableOf(inner)
+	}
+
+	if strings.HasPrefix(s, "[") && !strings.HasPrefix(s, "[]") {
+		return parseArrayType(s)
 	}
 
 	if strings.HasPrefix(s, "[]") {

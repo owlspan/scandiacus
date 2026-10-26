@@ -342,7 +342,7 @@ func (e *Emitter) outgoing() int {
 
 func (e *Emitter) frameSize() int {
 	n := (int64(e.f.NSlots) + e.nvslots + 2*int64(len(e.saved)-e.pushedGP)) * 8
-	n += int64(e.outgoing())
+	n += int64(e.outgoing()) + e.f.ArrayBytes
 	// rsp is aligned after push rbp; the pushes and this together must
 	// keep it so. With no rbp pushed the return address alone leaves it
 	// eight off.
@@ -1186,6 +1186,13 @@ func (e *Emitter) instr(in Instr) {
 
 	case OpSymAddr:
 		e.line("lea rax, %s[rip]", in.Sym)
+		e.put(in.Dst, "rax")
+
+	case OpFrameAddr:
+		// The array area sits just above the outgoing arguments, and
+		// rsp stays put for the whole body, so it is rsp-relative with
+		// or without a frame pointer.
+		e.line("lea rax, [rsp+%d]", int64(e.outgoing())+in.Imm)
 		e.put(in.Dst, "rax")
 
 	case OpSlotAddr:

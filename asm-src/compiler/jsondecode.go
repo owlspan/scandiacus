@@ -227,6 +227,10 @@ func (l *lowerer) jsonToStruct(n Node, node Reg, t vty) (Reg, bool) {
 		// Every field is written, whether the document mentioned it or
 		// not: a struct that leaves one uninitialised is a struct with a
 		// wild pointer in it.
+		if isArray(f.t) {
+			l.errorAt(n, "field %q of %s is an array, which json.decode cannot fill yet", f.name, lay.name)
+			return NoReg, false
+		}
 		found := l.jsonMember(node, f.name)
 		v, good := l.fromJSON(n, found, f.t)
 		if !good {

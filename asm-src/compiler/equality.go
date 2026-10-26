@@ -22,6 +22,9 @@ func (l *lowerer) deepEqual(n Node, a, b Reg, t vty) (Reg, bool) {
 		return l.nullEqual(n, a, b, t)
 	}
 
+	if isArray(t) {
+		return l.arrayEqual(n, a, b, t), true
+	}
 	switch t.k {
 	case kInt, kBool:
 		return l.compare(OpEq, a, b), true
@@ -106,6 +109,10 @@ func (l *lowerer) nullEqual(n Node, a, b Reg, t vty) (Reg, bool) {
 
 // loadField reads one field out of a struct instance.
 func (l *lowerer) loadField(obj Reg, f structField) Reg {
+	if isArray(f.t) {
+		// An array field is its address inside the struct.
+		return l.retype(l.arith(OpAdd, obj, l.constant(f.off)), f.t)
+	}
 	d := l.newReg()
 	l.regTy[d] = f.t
 	l.emit(Instr{Op: OpLoadMem, Dst: d, A: obj, B: NoReg, Imm: f.off,

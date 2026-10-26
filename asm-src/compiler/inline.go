@@ -88,7 +88,7 @@ func inlinable(m *Module, f *Func) bool {
 		switch in.Op {
 		case OpLabel:
 			continue
-		case OpStackPtr, OpPeek, OpPoke, OpCallAddr, OpLoadByte, OpStoreByte:
+		case OpStackPtr, OpPeek, OpPoke, OpCallAddr, OpLoadByte, OpStoreByte, OpFrameAddr:
 			return false
 		case OpCall:
 			if in.Sym == f.Name || in.Extern {

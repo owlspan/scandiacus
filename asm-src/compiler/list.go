@@ -573,6 +573,10 @@ func (l *lowerer) writeValue(n Node, v Reg, t vty) {
 	if l.renderOutlined(n, v, t) {
 		return
 	}
+	if isArray(t) {
+		l.writeArray(n, v, t)
+		return
+	}
 	switch t.k {
 	case kStruct:
 		l.writeStruct(n, v, t)
@@ -818,6 +822,10 @@ func (l *lowerer) forList(st *ForStmt) {
 	t := l.regTy[coll]
 	if t.k == kMap {
 		l.forMap(st, coll, t)
+		return
+	}
+	if isArray(t) {
+		l.forArray(st, coll, t)
 		return
 	}
 	if t.k != kList {
