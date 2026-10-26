@@ -100,6 +100,11 @@ func TestEncoderWidths(t *testing.T) {
 		"vbroadcastsd ymm5, qword ptr [rbp-24]",
 		"vbroadcastsd ymm5, qword ptr [r13+8]",
 		"vzeroupper",
+		// SCANDIACUS_FMA; see fma.go
+		"vfmadd231sd xmm0, xmm1, xmm7",
+		"vfmadd231sd xmm0, xmm12, qword ptr [rbp-40]",
+		"vfnmadd231sd xmm0, xmm3, xmm9",
+		"vfmadd231sd xmm0, xmm2, qword ptr [r10+8]",
 		"cpuid",
 		"xgetbv",
 		"mov eax, ecx",

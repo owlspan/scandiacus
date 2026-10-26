@@ -960,6 +960,11 @@ func (e *Emitter) function(f *Func) {
 				}
 			}
 		}
+		if j >= 0 && in.Op == OpFMul && fmaOn() && uses[in.Dst] == 1 && fmaUser(f.Code[j], in.Dst) {
+			e.emitFMA(in, f.Code[j])
+			i = j
+			continue
+		}
 		if j >= 0 && e.fuseFloatBranch(in, f.Code[j], uses) {
 			i = j
 			continue

@@ -483,6 +483,13 @@ func (b *block) encode(m string, ops []operand) error {
 		return b.encodeVPacked(m, ops)
 	case "vbroadcastsd":
 		return b.encodeVbroadcastsd(ops)
+	case "vfmadd231sd", "vfnmadd231sd":
+		if len(ops) != 3 || ops[0].kind != opXmm || ops[1].kind != opXmm {
+			return fmt.Errorf("%s wants two xmm registers and an xmm or memory", m)
+		}
+		code := map[string]byte{"vfmadd231sd": 0xB9, "vfnmadd231sd": 0xBD}[m]
+		b.vexW(2, true, false, ops[1].reg, ops[0].reg, ops[2], code)
+		return nil
 	case "comisd", "ucomisd":
 		return b.encodeComisd(m, ops)
 	case "cvtsi2sd", "cvtsi2ss":
@@ -944,12 +951,16 @@ func (b *block) encodePacked(m string, ops []operand) error {
 	return nil
 }
 
-// vex writes the VEX prefix and the opcode for the ymm forms the wide
-// packed loops use: always 256 bits wide, always the 66 prefix (pp 01),
-// and map 1 for 0F or 2 for 0F 38. v is the extra source register, or 0
-// for none. The two-byte C5 form where it can say everything, as GNU as
+// vex writes the VEX prefix and the opcode for the forms the wide
+// packed loops and fused multiply-add use: always the 66 prefix (pp
+// 01), map 1 for 0F or 2 for 0F 38, wide for 256 bits, w for VEX.W1. v
+// is the extra source register, or 0 for none. The two-byte C5 form where it can say everything, as GNU as
 // does, so that the bytes match it; see encode_test.go.
 func (b *block) vex(mapSel byte, v, reg int, rm operand, opcode byte) {
+	b.vexW(mapSel, false, true, v, reg, rm, opcode)
+}
+
+func (b *block) vexW(mapSel byte, w, wide bool, v, reg int, rm operand, opcode byte) {
 	x, bse := 0, 0
 	switch rm.kind {
 	case opReg, opXmm:
@@ -960,8 +971,14 @@ func (b *block) vex(mapSel byte, v, reg int, rm operand, opcode byte) {
 			x = rm.index
 		}
 	}
-	last := byte(^v&15)<<3 | 0x04 | 0x01
-	if mapSel == 1 && x < 8 && bse < 8 {
+	last := byte(^v&15)<<3 | 0x01
+	if wide {
+		last |= 0x04
+	}
+	if w {
+		last |= 0x80
+	}
+	if mapSel == 1 && !w && x < 8 && bse < 8 {
 		r := byte(0x80)
 		if reg >= 8 {
 			r = 0

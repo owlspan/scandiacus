@@ -16,6 +16,9 @@ package main
 //	SCANDIACUS_NOINLINE    small functions copied into their callers
 //	SCANDIACUS_NOSLOTPACK  frame slot packing
 //
+// SCANDIACUS_FMA=1 is the other way round: it turns on fused
+// multiply-add, which changes rounding; see fma.go.
+//
 // SCANDIACUS_NOOPT=1 turns every pass off and leaves the output identical to
 // what the unoptimized compiler emits.
 
@@ -82,6 +85,9 @@ func Optimize(m *Module) {
 		}
 		if !envOff("SCANDIACUS_NOFCONST") {
 			hoistFloatConsts(m, fn)
+		}
+		if fmaOn() {
+			sinkFMul(fn) // see fma.go
 		}
 
 		if !envOff("SCANDIACUS_NOSLOTPACK") {

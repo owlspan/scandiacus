@@ -1569,6 +1569,17 @@ print("{floor(3.7)} {ceil(3.2)} {round(2.6)}")
 **Important:** `/` between two `int` values truncates, so `7 / 2` is `3`.
 Use `divf(7, 2)` for `3.5`, or make one side a float.
 
+Float arithmetic rounds after every operation, the same way on every
+platform, so a program prints the same digits wherever it runs.
+Building with `SCANDIACUS_FMA=1` set lets `a * b + c` and `c - a * b`
+become one fused multiply-add, which rounds once instead of twice. The
+result can differ in the last digit, and the program then needs a CPU
+with FMA (Intel since 2013, AMD since 2012). It is not always faster: a
+running total like `s = s + a[i] * b[i]` waits on each step, and on
+CPUs where a fused multiply-add takes longer than an add it gets
+slower: about 1.8 times on the Xeon this was measured on, where C
+built with `zig cc -O2 -march=native` slows down the same way.
+
 ### Randomness
 
 | Function            | Returns | Description                             |
