@@ -104,7 +104,7 @@ func allocateRegsIn(f *Func, pool []string) map[Reg]string {
 	}
 	for i := range f.Code {
 		in := &f.Code[i]
-		if raBarrier(in) {
+		if raBarrier(in) || in.Op == OpAsm {
 			barrier[i] = true
 		}
 		note(in.Dst, i)
@@ -355,6 +355,9 @@ func crossesCalls(f *Func, r Reg, def, last int, jumps map[int64][]int) bool {
 	}
 	for p := def + 1; p < last; p++ {
 		q := &f.Code[p]
+		if q.Op == OpAsm {
+			return false // it may write a callee-saved register too
+		}
 		if q.Op == OpLabel {
 			for _, from := range jumps[q.Imm] {
 				if from <= def || from >= p {
@@ -441,7 +444,7 @@ func jumpsTo(f *Func) map[int64][]int {
 func spanClear(f *Func, r Reg, def, last int, jumps map[int64][]int, labelAt map[int64]int) bool {
 	for p := def + 1; p < last; p++ {
 		in := &f.Code[p]
-		if raBarrier(in) && !noReturn(in) && !deadAfter(f, r, p, last, labelAt) {
+		if (raBarrier(in) || in.Op == OpAsm) && !noReturn(in) && !deadAfter(f, r, p, last, labelAt) {
 			return false
 		}
 		if in.Op == OpLabel {

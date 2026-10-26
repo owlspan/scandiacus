@@ -230,6 +230,9 @@ func (e *Emitter) savedRegs() []string {
 		return calleeSaved
 	}
 	in := map[string]bool{}
+	if hasAsm(e.f) {
+		in = asmClobbers(e.f) // see asm.go
+	}
 	for _, p := range e.promoted {
 		in[p] = true
 	}

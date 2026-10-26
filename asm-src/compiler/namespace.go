@@ -265,6 +265,15 @@ func (w *nsWalk) stmt(s Stmt) Stmt {
 		x.Value = w.expr(x.Value)
 	case *ExprStmt:
 		x.X = w.expr(x.X)
+	case *AsmStmt:
+		for i := range x.In {
+			x.In[i].X = w.expr(x.In[i].X)
+		}
+		for i := range x.Out {
+			if id, ok := w.expr(x.Out[i].X).(*Ident); ok {
+				x.Out[i].X = id
+			}
+		}
 	case *IfStmt:
 		x.Cond = w.expr(x.Cond)
 		w.block(x.Then)

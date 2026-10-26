@@ -88,7 +88,7 @@ func assembleObject(text string, static map[string]bool) (*object, error) {
 			continue
 		}
 
-		if strings.HasPrefix(line, ".") {
+		if strings.HasPrefix(line, ".") && !(cur == secText && strings.HasPrefix(line, ".byte ")) {
 			next, err := obj.directive(line, cur, extern)
 			if err != nil {
 				return nil, fmt.Errorf("line %d: %w", n+1, err)

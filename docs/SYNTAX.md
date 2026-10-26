@@ -3674,6 +3674,89 @@ A COM object of your own is a block whose first word is the address of
 a table of such addresses, `QueryInterface`, `AddRef` and `Release`
 first. The `ui` library is built this way.
 
+### Inline assembly: `asm`
+
+`asm` runs x86-64 instructions in the middle of a function. Values go
+in and come out through registers you name:
+
+```scandiacus
+fn popcount(x: int) -> int {
+    let n = 0
+    asm(rcx = x, rax -> n) {
+        "popcnt rax, rcx"
+    }
+    return n
+}
+```
+
+`reg = value` puts a value in a register before the first line, and
+`reg -> name` assigns the register's final value to a variable after
+the last. The same register can be both: `asm(rax = x, rax -> x)`.
+
+- An integer, `bool` or pointer goes in a 64-bit general register,
+  `rax` to `r15` except `rsp` and `rbp`. A narrower type arrives
+  extended to 64 bits, and an output is cut back to its type's width
+  (an `i8` output keeps the low byte); a `bool` output is true for any
+  nonzero value.
+- A `float` goes in an xmm register as a double, an `f32` as a single.
+- An array goes in as the address of its first element, so asm can
+  read and write its elements:
+
+```scandiacus
+let v: [4]f32 = [1.0, 2.0, 3.0, 4.0]
+let w: [4]f32 = [10.0, 20.0, 30.0, 40.0]
+asm(rcx = v, rdx = w) {
+    "movups xmm0, [rcx]"
+    "movups xmm1, [rdx]"
+    "addps xmm0, xmm1"
+    "movups [rcx], xmm0"
+}
+print(v)                      // [11, 22, 33, 44]
+```
+
+Each string is one instruction or one label, in Intel syntax, the way
+`scandiacus asm` prints code. A raw string can hold several lines.
+Labels belong to their block, so two blocks can both use `loop:`, and a
+jump can only go to a label of its own block:
+
+```scandiacus
+asm(rcx = n, rax -> total) {
+    `xor eax, eax
+    top:
+    add rax, rcx
+    dec rcx
+    jnz top`
+}
+```
+
+The rules:
+
+- Any register may be used. The compiler keeps nothing of its own in a
+  register across the block, and saves and restores any callee-saved
+  register the lines name.
+- `rsp`, `rbp` and the direction flag must be as they were when the
+  block ends. `push` and `pop` are fine in pairs.
+- No `ret`, no `call` to a name (`call rax` is allowed), no symbols,
+  and no directives except `.byte`.
+- Instructions come from a fixed set: the general integer
+  instructions, `popcnt`, `lzcnt`, `tzcnt`, `bswap`, `crc32`, `rdtsc`,
+  `pause`, the fences, `lock xadd` and `cmpxchg`, and the SSE scalar
+  and packed float and integer instructions. The Windows build encodes
+  them itself, so the same set is checked on every system; a line
+  outside it is an error naming it. Anything else can be written as its
+  bytes:
+
+```scandiacus
+asm(rax = x, rax -> x) {
+    ".byte 0x48, 0x0f, 0xc8"  // bswap rax
+}
+```
+
+A block runs from start to end with nothing else in between, so a long
+loop inside one holds up a collection another thread is waiting for.
+`asm` is a keyword only when a block follows it; a function named
+`asm` still works.
+
 ### Building a DLL
 
 `scandiacus build --dll mod.scd` writes `mod.dll`. `export fn` puts a function
@@ -4326,7 +4409,7 @@ struct impl self match nil import pub extern
 
 Keywords only in one place, and ordinary names everywhere else: `var`
 and `enum` at the top of a file, `export` before `fn`, `from` after an
-extern, and `at` in an extern struct field.
+extern, `at` in an extern struct field, and `asm` before a block.
 
 Reserved but not yet implemented - the lexer recognises them, so they
 cannot be used as names:
@@ -4557,6 +4640,9 @@ Honest list of what v2.8.0 does not do yet.
   map.** `[N]T` takes `i8` to `u64`, `f32`, `f64`, `bool` and `ptr`; an
   array of structs or of arrays, and `[][N]T`, are not supported yet.
   A list of structs that each hold an array field works.
+- **`asm` takes a fixed set of instructions, and no AVX.** What is not
+  in it is written with `.byte`. Values cross through memory, a load
+  and a store each, which matters only in the tightest loop.
 - **At most 64 closures can be callbacks at once.** A function
   declared with `fn` has no such limit.
 - **A native call through an address is untyped.** `mem.call` passes

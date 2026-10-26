@@ -100,6 +100,11 @@ func (w *capWalk) stmt(s Stmt) {
 	case *ExprStmt:
 		w.expr(x.X)
 
+	case *AsmStmt:
+		for _, op := range append(append([]AsmOperand{}, x.In...), x.Out...) {
+			w.expr(op.X)
+		}
+
 	case *IfStmt:
 		w.expr(x.Cond)
 		w.block(x.Then)
@@ -265,6 +270,10 @@ func captureStmt(s Stmt, out map[string]bool) {
 		captureExpr(x.Value, out)
 	case *ExprStmt:
 		captureExpr(x.X, out)
+	case *AsmStmt:
+		for _, op := range x.In {
+			captureExpr(op.X, out)
+		}
 	case *IfStmt:
 		captureExpr(x.Cond, out)
 		collectCaptured(x.Then, out)

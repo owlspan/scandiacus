@@ -10,6 +10,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -166,6 +167,19 @@ func (b *block) encodeLine(line string) error {
 			b.at = map[string]int{}
 		}
 		b.at[strings.TrimSuffix(line, ":")] = len(b.items)
+		return nil
+	}
+	if bs, ok := strings.CutPrefix(line, ".byte "); ok {
+		// An instruction written as its bytes, from an asm statement.
+		var code []byte
+		for _, part := range strings.Split(bs, ",") {
+			n, err := strconv.ParseUint(strings.TrimSpace(part), 0, 8)
+			if err != nil {
+				return fmt.Errorf("%s: %w", line, err)
+			}
+			code = append(code, byte(n))
+		}
+		b.items = append(b.items, item{bytes: code})
 		return nil
 	}
 	if strings.HasPrefix(line, ".") {
@@ -374,6 +388,7 @@ var arith = map[string]struct {
 	"adc": {0x11, 0x13, 2},
 	"or":  {0x09, 0x0B, 1},
 	"and": {0x21, 0x23, 4},
+	"sbb": {0x19, 0x1B, 3},
 	"sub": {0x29, 0x2B, 5},
 	"xor": {0x31, 0x33, 6},
 	"cmp": {0x39, 0x3B, 7},
@@ -421,12 +436,15 @@ func (b *block) encode(m string, ops []operand) error {
 		return nil
 	}
 
+	if done, err := b.encodeMore(m, ops); done {
+		return err
+	}
 	if op, ok := arith[m]; ok {
 		return b.encodeArith(op.rmReg, op.regRM, op.digit, ops)
 	}
 	if code, ok := setcc[m]; ok {
-		if len(ops) != 1 || ops[0].kind != opReg {
-			return fmt.Errorf("setcc wants one register")
+		if len(ops) != 1 || ops[0].kind != opReg && ops[0].kind != opMem {
+			return fmt.Errorf("setcc wants one register or byte of memory")
 		}
 		b.prefix(8, 0, ops[0])
 		b.put(0x0F, code)
@@ -457,7 +475,7 @@ func (b *block) encode(m string, ops []operand) error {
 		return b.encodeImul(ops)
 	case "idiv", "div", "mul", "neg", "not":
 		return b.encodeUnary(m, ops)
-	case "shl", "sar", "shr":
+	case "shl", "sar", "shr", "rol", "ror":
 		return b.encodeShift(m, ops)
 	case "movzx":
 		return b.encodeMovzx(ops)
@@ -501,6 +519,16 @@ func (b *block) encode(m string, ops []operand) error {
 	case "cmpxchg":
 		return b.encodeRMReg([]byte{0x0F, 0xB1}, ops)
 	case "xchg":
+		if len(ops) == 2 && ops[0].kind == opReg && ops[1].kind == opReg && (ops[0].reg == 0 || ops[1].reg == 0) {
+			// With rax, the one-byte 90+r form, which is what GNU as
+			// writes.
+			other := ops[0].reg + ops[1].reg
+			if v, need := rexByte(true, 0, 0, other); need {
+				b.put(v)
+			}
+			b.put(0x90 + byte(other&7))
+			return nil
+		}
 		return b.encodeRMReg([]byte{0x87}, ops)
 	}
 	return fmt.Errorf("no encoding for %q", m)
@@ -715,6 +743,22 @@ func (b *block) encodeCall(ops []operand) error {
 }
 
 func (b *block) encodeTest(ops []operand) error {
+	if len(ops) == 2 && ops[1].kind == opImm {
+		// F7 /0 with a 32-bit immediate, or A9 for rax and eax: test has
+		// no byte-immediate form.
+		if ops[0].kind == opReg && ops[0].reg == 0 {
+			if ops[0].size == 64 {
+				b.put(0x48)
+			}
+			b.put(0xA9)
+		} else {
+			b.prefix(ops[0].size, 0, ops[0])
+			b.put(0xF7)
+			b.modrm(0, ops[0])
+		}
+		b.put32(int32(ops[1].disp))
+		return nil
+	}
 	if len(ops) != 2 || ops[1].kind != opReg {
 		return fmt.Errorf("test wants two registers")
 	}
@@ -768,7 +812,7 @@ func (b *block) encodeUnary(m string, ops []operand) error {
 }
 
 func (b *block) encodeShift(m string, ops []operand) error {
-	digit := map[string]int{"shl": 4, "shr": 5, "sar": 7}[m]
+	digit := map[string]int{"rol": 0, "ror": 1, "shl": 4, "shr": 5, "sar": 7}[m]
 	if len(ops) != 2 {
 		return fmt.Errorf("%s wants two operands", m)
 	}

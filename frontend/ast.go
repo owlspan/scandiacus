@@ -662,6 +662,39 @@ type DeferStmt struct {
 
 func (*DeferStmt) stmtNode() {}
 
+// AsmStmt is inline assembly:
+//
+//	asm(rcx = n, rax -> count) {
+//	    "popcnt rax, rcx"
+//	}
+//
+// Each input's value is put in its register before the first line, and
+// each output's register is written to its variable after the last.
+// The lines are kept as written; the backend checks them.
+type AsmStmt struct {
+	Span
+	In    []AsmOperand
+	Out   []AsmOperand
+	Lines []AsmLine
+}
+
+func (*AsmStmt) stmtNode() {}
+
+// An AsmOperand binds a register to a value going in, or to the variable
+// (an *Ident) the register's final value goes to.
+type AsmOperand struct {
+	Span
+	Reg string
+	X   Expr
+	T   *Type // filled in by the checker
+}
+
+// An AsmLine is one instruction or label, with where it was written.
+type AsmLine struct {
+	Span
+	Text string
+}
+
 type BreakStmt struct{ Span }
 
 type ContinueStmt struct{ Span }

@@ -925,8 +925,108 @@ func (p *Parser) parseStmt() Stmt {
 		p.synchronize()
 		return nil
 	default:
+		if p.asmAhead() {
+			return p.parseAsm()
+		}
 		return p.parseSimpleStmt()
 	}
+}
+
+// asmAhead reports an asm statement starting here. asm is not reserved:
+// it is one only when followed by a block, directly or after its
+// operand list, which a call to a function named asm never is.
+func (p *Parser) asmAhead() bool {
+	if !p.check(IDENT) || p.cur().Lex != "asm" {
+		return false
+	}
+	switch p.peekKind(1) {
+	case LBRACE:
+		return true
+	case LPAREN:
+		depth := 0
+		for n := 1; ; n++ {
+			switch p.peekKind(n) {
+			case LPAREN:
+				depth++
+			case RPAREN:
+				depth--
+				if depth == 0 {
+					return p.peekKind(n+1) == LBRACE
+				}
+			case EOF:
+				return false
+			}
+		}
+	}
+	return false
+}
+
+// parseAsm reads asm(reg = value, reg -> name, ...) { "line" ... }. A
+// string may hold several lines, so a raw string can carry a whole
+// routine.
+func (p *Parser) parseAsm() Stmt {
+	kw := p.advance()
+	st := &AsmStmt{Span: at(kw)}
+	if open := p.cur(); p.match(LPAREN) {
+		p.skipNewlines()
+		for !p.check(RPAREN) && !p.check(EOF) {
+			reg := p.expect(IDENT, "a register name")
+			op := AsmOperand{Span: at(reg), Reg: reg.Lex}
+			switch {
+			case p.match(ASSIGN):
+				op.X = p.parseExpr(0)
+				st.In = append(st.In, op)
+			case p.match(ARROW):
+				name := p.expect(IDENT, "the variable the register goes to")
+				op.X = &Ident{Span: at(name), Name: name.Lex}
+				st.Out = append(st.Out, op)
+			default:
+				p.errorAt(p.cur(), "expected '=' for a value going in or '->' for a variable "+
+					"coming out, found %s", describe(p.cur()))
+				p.synchronize()
+				return nil
+			}
+			p.skipNewlines()
+			if !p.match(COMMA) {
+				break
+			}
+			p.skipNewlines()
+		}
+		p.expectClose(RPAREN, open, "')'", "asm operands")
+	}
+	open := p.expect(LBRACE, "'{'")
+	p.skipNewlines()
+	for p.check(STRING) || p.check(RAWSTRING) {
+		t := p.advance()
+		for i, text := range strings.Split(t.Lex, "\n") {
+			if strings.TrimSpace(text) == "" {
+				continue
+			}
+			st.Lines = append(st.Lines, AsmLine{Span: Span{Line: t.Line + i, Col: t.Col}, Text: text})
+		}
+		p.skipNewlines()
+	}
+	if !p.check(RBRACE) {
+		p.errorAt(p.cur(), "an asm block holds only strings, one instruction per line, found %s",
+			describe(p.cur()))
+		// Past the block, so its closing brace is not taken for the
+		// end of whatever holds it.
+		for depth := 0; !p.check(EOF); p.advance() {
+			if p.check(LBRACE) {
+				depth++
+			} else if p.check(RBRACE) {
+				if depth == 0 {
+					p.advance()
+					break
+				}
+				depth--
+			}
+		}
+		return nil
+	}
+	p.expectClose(RBRACE, open, "'}'", "asm block")
+	p.endStmt()
+	return st
 }
 
 func (p *Parser) parseLet() Stmt {

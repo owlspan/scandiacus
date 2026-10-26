@@ -150,7 +150,7 @@ func parseOperand(s string) (operand, error) {
 	for _, p := range []struct {
 		text string
 		bits int
-	}{{"qword ptr ", 64}, {"dword ptr ", 32}, {"word ptr ", 16}, {"byte ptr ", 8}} {
+	}{{"xmmword ptr ", 128}, {"qword ptr ", 64}, {"dword ptr ", 32}, {"word ptr ", 16}, {"byte ptr ", 8}} {
 		if strings.HasPrefix(s, p.text) {
 			size = p.bits
 			s = strings.TrimPrefix(s, p.text)

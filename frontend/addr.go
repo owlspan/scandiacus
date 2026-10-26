@@ -190,6 +190,10 @@ func (w *escWalk) stmt(s Stmt) {
 		w.escape(st, st.Value, "stored anywhere that outlives the function")
 	case *ExprStmt:
 		w.expr(st.X)
+	case *AsmStmt:
+		for _, op := range append(append([]AsmOperand{}, st.In...), st.Out...) {
+			w.expr(op.X)
+		}
 	case *ReturnStmt:
 		if st.Value != nil {
 			w.expr(st.Value)
@@ -396,6 +400,10 @@ func namesIn(b *Block) map[string]bool {
 			expr(st.Value)
 		case *ExprStmt:
 			expr(st.X)
+		case *AsmStmt:
+			for _, op := range append(append([]AsmOperand{}, st.In...), st.Out...) {
+				expr(op.X)
+			}
 		case *ReturnStmt:
 			expr(st.Value)
 		case *IfStmt:

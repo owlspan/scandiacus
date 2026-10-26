@@ -68,6 +68,7 @@ type Emitter struct {
 	saved    []string
 
 	polls int // numbers each OpGCPoll's local label
+	nAsm  int // numbers each asm statement written, for its labels
 
 	// cold is code placed after the function's epilogue: the stops of
 	// its bounds checks, which run at most once, kept out of the way of
@@ -703,7 +704,10 @@ func (e *Emitter) function(f *Func) {
 	if envOff("SCANDIACUS_NORA") || envOff("SCANDIACUS_NOOPT") {
 		e.homes = nil
 	} else {
-		if !envOff("SCANDIACUS_NOPROMOTE") {
+		// No slot lives in a register for the whole function when asm
+		// may write any register; pooled values stop at each asm
+		// statement, as at a call. See asm.go.
+		if !envOff("SCANDIACUS_NOPROMOTE") && !hasAsm(f) {
 			e.promoted = promoteSlots(f, e.mod.Threaded)
 			for s, r := range promoteFloatSlots(f) {
 				e.promoted[s] = r
@@ -1187,6 +1191,9 @@ func (e *Emitter) instr(in Instr) {
 	case OpSymAddr:
 		e.line("lea rax, %s[rip]", in.Sym)
 		e.put(in.Dst, "rax")
+
+	case OpAsm:
+		e.asm(e.f.Asm[in.Imm])
 
 	case OpFrameAddr:
 		// The array area sits just above the outgoing arguments, and

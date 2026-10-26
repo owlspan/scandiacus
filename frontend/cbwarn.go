@@ -96,6 +96,10 @@ func (w *cbWalk) stmt(s Stmt) {
 		w.value(st.Value)
 	case *ExprStmt:
 		w.value(st.X)
+	case *AsmStmt:
+		for _, op := range st.In {
+			w.value(op.X)
+		}
 	case *ReturnStmt:
 		if w.takesClosure(st.Value) {
 			w.expr(st.Value.(*Call).Args[0])

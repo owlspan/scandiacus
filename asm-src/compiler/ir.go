@@ -601,6 +601,10 @@ const (
 	// part of its frame that holds local fixed-size arrays; see
 	// arrays.go. Appended, not inserted.
 	OpFrameAddr
+
+	// Inline assembly: Func.Asm[Imm], whose values cross in the array
+	// area; see asm.go.
+	OpAsm
 )
 
 // The widths OpPeek and OpPoke move. A narrow store keeps the low bits,
@@ -632,7 +636,7 @@ var opNames = [...]string{
 	"gcpoll", "peek", "poke", "ext", "f32round", "inttof32", "u64tofloat",
 	"u64tof32", "floattou64", "divu", "modu", "shru", "ltu", "leu", "gtu",
 	"geu", "f32bits", "f32frombits", "checkindex", "vload", "vstore",
-	"vsplat", "varith", "vzeroupper", "frameaddr",
+	"vsplat", "varith", "vzeroupper", "frameaddr", "asm",
 }
 
 func (o Op) String() string {
@@ -722,6 +726,9 @@ type Func struct {
 	// ArrayBytes is the size of the array area, where the function's
 	// local fixed-size arrays live; see arrays.go.
 	ArrayBytes int64
+
+	// Asm is the function's asm statements, by OpAsm's Imm.
+	Asm []*asmBlock
 }
 
 // A Module is the whole program: its functions and its string pool.
@@ -1694,6 +1701,9 @@ func (l *lowerer) stmt(s Stmt) {
 
 	case *AssignStmt:
 		l.assign(st)
+
+	case *AsmStmt:
+		l.asmStmt(st)
 
 	case *ExprStmt:
 		// A bare `f(x)?` is a statement, not a dead expression: the `?`

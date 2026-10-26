@@ -25,6 +25,8 @@ type (
 	Checker      = front.Checker
 	ContinueStmt = front.ContinueStmt
 	DeferStmt    = front.DeferStmt
+	AsmStmt      = front.AsmStmt
+	AsmOperand   = front.AsmOperand
 	EmptyLibrary = front.EmptyLibrary
 	Expr         = front.Expr
 	ExprStmt     = front.ExprStmt

@@ -728,6 +728,9 @@ func (c *Checker) stmt(s Stmt) {
 	case *ExprStmt:
 		c.expr(st.X)
 
+	case *AsmStmt:
+		c.asm(st)
+
 	case *IfStmt:
 		c.condition(st.Cond, "an if")
 		whenTrue, whenFalse := c.nilChecks(st.Cond)
@@ -2764,6 +2767,12 @@ func assignsTo(list []Stmt, name string) bool {
 		case *AssignStmt:
 			if x.TargetName() == name {
 				return true
+			}
+		case *AsmStmt:
+			for _, op := range x.Out {
+				if op.X.(*Ident).Name == name {
+					return true
+				}
 			}
 		case *Block:
 			if assignsTo(x.Stmts, name) {

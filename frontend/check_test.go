@@ -177,3 +177,43 @@ for x in z { let _y = x }
 		}
 	}
 }
+
+func TestAsm(t *testing.T) {
+	ok := `
+let n = 5
+let out = 0
+let f: f32 = 1.5
+let a: [4]i32
+asm(rcx = n, rdx = a, xmm1 = f, rax -> out, xmm1 -> f) {
+    "lea rax, [rcx+rdx]"
+    ` + "`addss xmm1, xmm1\n    loop:\n    jmp loop`" + `
+}
+asm { "pause" }
+fn asm2(x: int) -> int { return x }
+let _y = asm2(out)
+`
+	if errs := checked(t, ok); len(errs) != 0 {
+		t.Errorf("valid asm rejected: %v", errs)
+	}
+	for src, want := range map[string]string{
+		"let x = 0\nasm(rbp = x) { \"nop\" }":            "holds the frame",
+		"let x = 0\nasm(eax = x) { \"nop\" }":            "not a register an operand can use",
+		"let x = 1.5\nasm(rax = x) { \"nop\" }":          "goes in an xmm register",
+		"let s = \"a\"\nasm(rax = s) { \"nop\" }":        "an asm input must be",
+		"const c = 1\nasm(rax -> c) { \"nop\" }":         "declared const",
+		"let a: [2]int\nasm(rax -> a) { \"nop\" }":       "an asm output must be",
+		"asm { \"nop; nop\" }":                           "one instruction",
+		"asm { \".quad 1\" }":                            "only directive",
+		"asm { \".byte 300\" }":                          "from 0 to 255",
+		"asm { \"ret\" }":                                "cannot return",
+		"asm { \"1x:\" }":                                "a label is a name",
+		"let x = 0\nasm(rax = x, rax = x) { \"nop\" }":   "two values going in",
+		"let x = 0\nasm(rax -> x, rcx -> x) { \"nop\" }": "written by two registers",
+		"asm { print(1) }":                               "holds only strings",
+	} {
+		errs := strings.Join(checked(t, src), "\n")
+		if !strings.Contains(errs, want) {
+			t.Errorf("%q: want an error containing %q, got %q", src, want, errs)
+		}
+	}
+}
