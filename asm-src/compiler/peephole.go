@@ -109,6 +109,18 @@ func peephole(text string) string {
 			}
 		}
 
+		// movsd between registers writes only the low half and keeps the
+		// rest of the destination, so it waits for whatever last wrote
+		// that register. In a loop that chains each trip to the one
+		// before: a float moved through the register the previous trip
+		// left its last result in. movapd copies the whole register and
+		// has no such input.
+		if m, ok := between(ln, "    movsd xmm", ""); ok {
+			if a, b, two := strings.Cut(m, ", xmm"); two && allDigits(a) && allDigits(b) {
+				ln = "    movapd xmm" + m
+			}
+		}
+
 		if len(out) > 0 && out[len(out)-1] == ln && dupableAsm(ln) {
 			continue
 		}

@@ -97,6 +97,24 @@ func TestPeepNarrowImm(t *testing.T) {
 	}
 }
 
+func TestPeepFloatRegMove(t *testing.T) {
+	cases := []struct {
+		in, out string
+	}{
+		{"    movsd xmm4, xmm2", "    movapd xmm4, xmm2"},
+		{"    movsd xmm10, xmm0", "    movapd xmm10, xmm0"},
+		{"    movsd xmm0, qword ptr [r10+8]", "    movsd xmm0, qword ptr [r10+8]"},
+		{"    movsd qword ptr [rsp+8], xmm1", "    movsd qword ptr [rsp+8], xmm1"},
+		{"    movsd xmm0, __flt3[rip]", "    movsd xmm0, __flt3[rip]"},
+	}
+	for _, c := range cases {
+		got := splitLines(peephole(c.in + "\n"))
+		if len(got) != 1 || got[0] != c.out {
+			t.Fatalf("%q became %q, want %q", c.in, got, c.out)
+		}
+	}
+}
+
 func TestPeepDuplicateLine(t *testing.T) {
 	got := runPeep(t, "    lea rax, __str1[rip]\n"+
 		"    lea rax, __str1[rip]\n"+
