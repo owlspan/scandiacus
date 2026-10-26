@@ -213,22 +213,9 @@ func (l *lowerer) substring(s, from, to Reg) Reg {
 	cntSlot := l.temp(vInt)
 	l.emit(Instr{Op: OpStore, A: count, Dst: NoReg, Imm: cntSlot})
 
-	iSlot := l.temp(vInt)
-	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: iSlot})
-
-	top := l.newLabel()
-	done := l.newLabel()
-	l.mark(top)
-	i := l.load(iSlot, vInt)
-	more := l.compare(OpLt, i, l.load(cntSlot, vInt))
-	l.emit(Instr{Op: OpJumpNot, A: more, Dst: NoReg, Imm: done})
-
-	at := l.arith(OpAdd, i, l.load(loSlot, vInt))
-	l.storeByte(l.load(dstSlot, vStr), i, l.loadByte(l.load(srcSlot, vStr), at))
-
-	l.emit(Instr{Op: OpStore, A: l.arith(OpAdd, i, l.constant(1)), Dst: NoReg, Imm: iSlot})
-	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: top})
-	l.mark(done)
+	// memmove rather than a loop of byte loads and stores: split and
+	// lines copy every piece through here.
+	l.copyBytes(l.load(dstSlot, vStr), l.arith(OpAdd, l.load(srcSlot, vStr), l.load(loSlot, vInt)), l.load(cntSlot, vInt))
 
 	l.storeByte(l.load(dstSlot, vStr), l.load(cntSlot, vInt), l.constant(0))
 	return l.load(dstSlot, vStr)

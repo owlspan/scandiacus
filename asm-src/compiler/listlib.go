@@ -482,7 +482,7 @@ func (l *lowerer) splitStr(s, sep Reg) Reg {
 	l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: joinPoint})
 
 	l.mark(general)
-	got := l.splitBy(s, sep)
+	got := l.splitBy(s, sep, false)
 	l.emit(Instr{Op: OpStore, A: got, Dst: NoReg, Imm: outSlot})
 
 	l.mark(joinPoint)
@@ -494,8 +494,16 @@ func (l *lowerer) splitStr(s, sep Reg) Reg {
 // occurs - it looks at many bytes at a time, where comparing the
 // separator at every position looked at one - and memcmp checks the
 // rest of it there.
-func (l *lowerer) splitBy(s, sep Reg) Reg {
-	sym := l.helperFunc("__split", []vty{vStr, vStr}, vListOf(vStr), func(a []Reg) {
+//
+// With dropCR, a carriage return at the end of a piece is left out of
+// it: lines, which would otherwise copy each such piece a second time to
+// remove it.
+func (l *lowerer) splitBy(s, sep Reg, dropCR bool) Reg {
+	name := "__split"
+	if dropCR {
+		name = "__splitcr"
+	}
+	sym := l.helperFunc(name, []vty{vStr, vStr}, vListOf(vStr), func(a []Reg) {
 		ss, sp := l.temp(vStr), l.temp(vStr)
 		l.setSlot(ss, a[0])
 		l.setSlot(sp, a[1])
@@ -530,8 +538,21 @@ func (l *lowerer) splitBy(s, sep Reg) Reg {
 			l.arith(OpAdd, l.load(sp, vStr), l.constant(1)), l.arith(OpSub, l.load(m, vInt), l.constant(1))},
 			[]vty{vInt, vInt, vInt}, vInt, true, false)
 		l.jumpNot(l.compare(OpEq, same, l.constant(0)), miss)
+		push := func(end Reg) {
+			e := l.temp(vInt)
+			l.setSlot(e, end)
+			if dropCR {
+				keep := l.newLabel()
+				l.jumpNot(l.compare(OpGt, l.load(e, vInt), l.load(start, vInt)), keep)
+				last := l.arith(OpSub, l.load(e, vInt), l.constant(1))
+				l.jumpNot(l.compare(OpEq, l.loadByte(l.load(ss, vStr), last), l.constant(13)), keep)
+				l.setSlot(e, l.arith(OpSub, l.load(e, vInt), l.constant(1)))
+				l.mark(keep)
+			}
+			l.listPush(l.load(out, vListOf(vStr)), l.substring(l.load(ss, vStr), l.load(start, vInt), l.load(e, vInt)))
+		}
 		l.mark(whole)
-		l.listPush(l.load(out, vListOf(vStr)), l.substring(l.load(ss, vStr), l.load(start, vInt), l.load(i, vInt)))
+		push(l.load(i, vInt))
 		l.setSlot(start, l.arith(OpAdd, l.load(i, vInt), l.load(m, vInt)))
 		l.setSlot(i, l.load(start, vInt))
 		l.jump(top)
@@ -543,7 +564,7 @@ func (l *lowerer) splitBy(s, sep Reg) Reg {
 		// is pushed even when it is empty: "a,b," splits into three, the
 		// last one empty, which is what strings.Split gives.
 		l.mark(tail)
-		l.listPush(l.load(out, vListOf(vStr)), l.substring(l.load(ss, vStr), l.load(start, vInt), l.load(n, vInt)))
+		push(l.load(n, vInt))
 		l.ret(l.load(out, vListOf(vStr)))
 	})
 	return l.callHelper(sym, []Reg{s, sep}, []vty{vStr, vStr}, vListOf(vStr))
@@ -587,21 +608,10 @@ func (l *lowerer) strListBuiltin(c *Call, name string) (Reg, bool) {
 			return l.junk(), true
 		}
 		// The Go backend rewrites CRLF to LF and splits on LF, keeping
-		// a trailing empty piece. Dropping the carriage return from the
+		// a trailing empty piece. Leaving the carriage return out of the
 		// end of each piece is the same result without a second copy of
 		// the text.
-		pieces := l.splitStr(l.expr(c.Args[0]), l.strLit("\n"))
-		l.eachElement(pieces, vListOf(vStr), func(i, v Reg) {
-			keep := l.newLabel()
-			n := l.strLen(v)
-			any := l.compare(OpGt, n, l.constant(0))
-			l.emit(Instr{Op: OpJumpNot, A: any, Dst: NoReg, Imm: keep})
-			last := l.arith(OpSub, n, l.constant(1))
-			isCR := l.compare(OpEq, l.loadByte(v, last), l.constant(13))
-			l.emit(Instr{Op: OpJumpNot, A: isCR, Dst: NoReg, Imm: keep})
-			l.listSet(pieces, i, l.substring(v, l.constant(0), last))
-			l.mark(keep)
-		})
+		pieces := l.splitBy(l.expr(c.Args[0]), l.strLit("\n"), true)
 		return pieces, true
 	}
 	return NoReg, false
