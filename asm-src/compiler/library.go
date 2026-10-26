@@ -509,6 +509,7 @@ var sigs = map[string]front.Signature{
 	"mem.collections": {Ret: Int},
 	"mem.goroutines":  {Ret: Int},
 	"mem.collect":     {Ret: Void},
+	"mem.gcblock":     {Params: []*Type{Int, Int, Int}, Ret: Int},
 
 	"thread.spawn":     {Params: []*Type{FuncOf(nil, Void)}, Ret: Int},
 	"thread.join":      {Params: []*Type{Int}, Ret: Void},

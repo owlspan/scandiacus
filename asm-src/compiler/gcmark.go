@@ -441,6 +441,16 @@ func (l *lowerer) traceOne(obj, table, mask, work, workLen Reg) {
 
 	done := l.newLabel()
 
+	if l.gcInline {
+		notInline := l.newLabel()
+		l.emit(Instr{Op: OpJumpNot,
+			A:   l.compare(OpEq, l.load(tagSlot, vInt), l.constant(tagStructs)),
+			Dst: NoReg, Imm: notInline})
+		l.traceStructs(obj, hdrSlot, table, mask, work, workLen)
+		l.emit(Instr{Op: OpJump, A: NoReg, Dst: NoReg, Imm: done})
+		l.mark(notInline)
+	}
+
 	// A block of pointers, and a struct's leading pointers, are the same
 	// loop over a count that the header supplies differently.
 	words := l.temp(vInt)
@@ -593,5 +603,11 @@ func (l *lowerer) jsonObjectSize(header Reg) Reg {
 	asStruct := l.arith(OpShr, l.load(hdrSlot, vInt), l.constant(structSizeShift))
 	isStruct := l.compare(OpEq,
 		l.arith(OpBAnd, l.load(hdrSlot, vInt), l.constant(0xFF)), l.constant(tagStruct))
-	return l.pick(isStruct, asStruct, plain, vInt)
+	size := l.pick(isStruct, asStruct, plain, vInt)
+	if l.gcInline {
+		isInline := l.compare(OpEq,
+			l.arith(OpBAnd, l.load(hdrSlot, vInt), l.constant(0xFF)), l.constant(tagStructs))
+		size = l.pick(isInline, l.structsSize(l.load(hdrSlot, vInt)), size, vInt)
+	}
+	return size
 }

@@ -184,6 +184,8 @@ func (l *lowerer) memBuiltin(c *Call, name string) (Reg, bool) {
 		return l.arith(OpAdd, l.rtLoad(gcTasksSlot), l.constant(1)), true
 	case "delete":
 		return l.deleteValue(c), true
+	case "mem.gcblock":
+		return l.gcBlock(c), true
 	case "mem.collect":
 		if l.gcOff {
 			l.errorAt(c, "this program says gc off, so nothing is collected - free a value with delete")

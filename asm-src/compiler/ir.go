@@ -992,6 +992,10 @@ type lowerer struct {
 	gcOff    bool
 	eqInline string
 
+	// gcInline adds the collector's support for data blocks that hold
+	// structs inline, and interior pointers from the stack; see gcinline.go.
+	gcInline bool
+
 	// autoGC is automatic collection: on, except in a DLL, whose
 	// functions the host may call on threads of its own, and when
 	// SCANDIACUS_GC=off asks for the old behaviour.
@@ -1061,6 +1065,7 @@ func Lower(p *Program, file string) (*Module, []string) {
 		gcStress:  os.Getenv("SCANDIACUS_GC_STRESS") != "" && p.GC != "off",
 		autoGC:    os.Getenv("SCANDIACUS_GC") != "off" && p.GC != "off",
 		gcOff:     p.GC == "off",
+		gcInline:  gcInlineWanted() && p.GC != "off",
 	}
 
 	// Struct layouts before signatures, because a parameter or a return
