@@ -3,6 +3,28 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.4.0
+
+**Packages from GitHub at a version, pinned.** `scandiacus get
+you/scadgame@v1.0` installs a tag, and a branch or a commit works the
+same way. Whatever is asked for is resolved to its full commit hash
+first, every file comes from that commit, and the package and hash go
+into `scandiacus.deps` beside the program. `scandiacus get` with no
+arguments installs exactly what that file lists, so committing it with
+a program makes the build repeatable. docs/SYNTAX.md now explains how
+to make a package of your own: a repository with one `.scd` named after
+it, or a `scandiacus.pkg` listing its files.
+
+**Optional fused multiply-add.** Building with `SCANDIACUS_FMA=1` turns
+`a * b + c` and `c - a * b` into one `vfmadd` instruction. It is off by
+default because it rounds once instead of twice, so results can differ
+in the last digit, and the program needs a CPU with FMA. It is not
+always faster: structs5 goes from 0.033s to 0.031s, but a running total
+like `s = s + a[i] * b[i]` gets slower (0.065s to 0.117s on the Xeon
+measured), as it does in C.
+
+**Scandiac** is now the short name, as the README says.
+
 ## 2.3.0
 
 **Cutting strings copies with memmove.** substring copied one byte at
