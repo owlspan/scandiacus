@@ -35,7 +35,7 @@ func gcInlineWanted() bool {
 // other word. The collector tests need a block with a descriptor before
 // the lowering that builds real ones exists.
 func (l *lowerer) gcBlock(c *Call) Reg {
-	if !l.gcInline {
+	if !l.gcInline || os.Getenv("SCANDIACUS_TESTHOOKS") == "" {
 		l.errorAt(c, "mem.gcblock is a hook for the compiler's own tests; set SCANDIACUS_TESTHOOKS=1")
 		return l.junk()
 	}

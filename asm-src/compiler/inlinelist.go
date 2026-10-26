@@ -20,9 +20,10 @@ import (
 // nested struct field would need a block that says which words of each
 // element to follow.
 //
-// SCANDIACUS_INLINESTRUCTS=1 turns it on while it is being built.
+// SCANDIACUS_INLINESTRUCTS=0 turns it off, which keeps one object per
+// element as before 2.0.
 
-var inlineOn = os.Getenv("SCANDIACUS_INLINESTRUCTS") == "1"
+var inlineOn = os.Getenv("SCANDIACUS_INLINESTRUCTS") != "0"
 
 // inlineStride maps the name of a struct stored inline to its size in
 // bytes. Filled by collectStructs.
