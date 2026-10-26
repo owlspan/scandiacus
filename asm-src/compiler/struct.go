@@ -106,15 +106,50 @@ func (s *structLayout) stride() int64 {
 	return s.bytes
 }
 
-// inlineNPtrMax is the largest pointer count the tagStructs header can
-// record: it has eight bits for it, the same as tagStruct.
-const inlineNPtrMax = 0xFF
+// The data block of a list that stores structs inline. It holds a run of
+// equal elements and no pointer to anything but what the elements point
+// at, so the header describes one element and the collector repeats it:
+//
+//	bits  0-7   tagStructs
+//	bits  8-15  nptr, the leading pointer words of each element
+//	bits 16-31  stride, in words
+//	bits 32-63  payload size in bytes
+//
+// The size sits at bit 32 rather than 16 because the stride took the
+// room. That caps one block at 4 GB, which an allocation of that kind
+// has to check for. A reader switches on the tag before reading any of
+// the three, as it already does for tagStruct.
+const (
+	tagStructs = 8
+
+	structsNPtrShift   = 8
+	structsStrideShift = 16
+	structsSizeShift   = 32
+
+	inlineNPtrMax   = 0xFF
+	inlineStrideMax = 0xFFFF
+)
+
+// structsHeader builds the header word of an inline block of the given
+// payload size.
+func structsHeader(nptr, strideWords, bytes int64) int64 {
+	return bytes<<structsSizeShift | strideWords<<structsStrideShift |
+		nptr<<structsNPtrShift | tagStructs
+}
+
+// decodeStructsHeader is the inverse, for the compiler's own tests and
+// for any constant folding that needs a block's shape.
+func decodeStructsHeader(h int64) (nptr, strideWords, bytes int64) {
+	return h >> structsNPtrShift & 0xFF, h >> structsStrideShift & 0xFFFF,
+		int64(uint64(h) >> structsSizeShift)
+}
 
 // inlineOK reports whether a list of this struct can keep its elements
 // inside the data block. An extern struct is a view onto C memory with
-// its own layout and is never copied, so it stays out.
+// its own layout and is never copied, so it stays out. The other limits
+// are the fields of the block header.
 func (s *structLayout) inlineOK() bool {
-	return !s.view && s.nptr <= inlineNPtrMax
+	return !s.view && s.nptr <= inlineNPtrMax && s.stride()/wordSize <= inlineStrideMax
 }
 
 // collectStructs resolves every declared struct into a layout.
