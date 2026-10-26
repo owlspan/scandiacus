@@ -385,6 +385,12 @@ type StructField struct {
 	Len    int
 	At     int
 	Offset int
+
+	// Bits is the width of a bit field, `flags: u32 bits 3`, or 0 for
+	// an ordinary field. BitPos is where the checker put it within the
+	// unit of its type that starts at Offset, counted from the low bit.
+	Bits   int
+	BitPos int
 }
 
 // StructDecl is `struct User { ... }`.
@@ -403,6 +409,8 @@ type StructDecl struct {
 	Extern bool
 	Size   int
 	Align  int
+	// Union marks `extern union`: every field starts at offset 0.
+	Union bool
 
 	// TypeParams and Toks make a generic struct a template, as they do
 	// a function; see FnDecl.

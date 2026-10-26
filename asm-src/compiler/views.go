@@ -23,13 +23,27 @@ var cKinds = map[string]int64{
 	"f32": memF32, "f64": memF64, "ptr": memI64, "bool": memU8,
 }
 
+// unsignedKind is the unsigned width of the same size, for the unit a
+// bit field lives in.
+var unsignedKind = map[int64]int64{
+	memI8: memU8, memU8: memU8, memI16: memU16, memU16: memU16,
+	memI32: memU32, memU32: memU32, memI64: memI64,
+}
+
 // viewLayout turns a checked extern struct declaration into the layout
 // the rest of the lowerer uses. A nested extern struct has kind 0: its
 // field reads as a view at the field's address.
 func viewLayout(sd *StructDecl) *structLayout {
 	lay := &structLayout{name: sd.Name, view: true, bytes: int64(sd.Size)}
 	for _, f := range sd.Fields {
-		sf := structField{name: f.Name, off: int64(f.Offset), kind: cKinds[f.Type], array: f.Len > 0}
+		sf := structField{name: f.Name, off: int64(f.Offset), kind: cKinds[f.Type], array: f.Len > 0,
+			bits: int64(f.Bits), pos: int64(f.BitPos)}
+		if sf.bits > 0 {
+			// The unit is read and written whole and unsigned; the
+			// field's sign is put back when it is read.
+			sf.signed = f.Type[0] == 'i'
+			sf.kind = unsignedKind[sf.kind]
+		}
 		if strings.HasPrefix(f.Type, "*") {
 			sf.kind = memI64
 		}
@@ -93,6 +107,9 @@ func (l *lowerer) viewRead(base Reg, f structField) Reg {
 		return d
 	}
 	v := l.loadWidth(at, f.kind)
+	if f.bits > 0 {
+		v = l.bitsOf(v, f)
+	}
 	if f.t.k == kBool {
 		return l.compare(OpNe, v, l.constant(0))
 	}
@@ -119,7 +136,38 @@ func (l *lowerer) viewWrite(n Node, base Reg, f structField, v Reg) {
 	if f.t.k == kFloat && l.regTy[v].k == kInt {
 		v = l.toFloat(v)
 	}
+	if f.bits > 0 {
+		// Read, clear the field's bits, put the low bits of the value
+		// there, write back: the other fields in the unit keep theirs.
+		vs := l.scalarTemp(vInt)
+		l.setSlot(vs, v)
+		mask := int64(1)<<f.bits - 1
+		if f.bits == 64 {
+			mask = -1
+		}
+		unit := l.loadWidth(at, f.kind)
+		kept := l.arith(OpBAnd, unit, l.constant(^(mask << f.pos)))
+		put := l.arith(OpShl, l.arith(OpBAnd, l.load(vs, vInt), l.constant(mask)), l.constant(f.pos))
+		l.storeWidth(l.fieldAddr(base, f), l.arith(OpBOr, kept, put), f.kind)
+		return
+	}
 	l.storeWidth(at, v, f.kind)
+}
+
+// bitsOf takes a bit field out of the unit it was read in: shifted down
+// and masked, then sign-extended from its top bit if its type is
+// signed.
+func (l *lowerer) bitsOf(unit Reg, f structField) Reg {
+	if f.signed {
+		// Up so its top bit is the word's, then an arithmetic shift down.
+		up := l.arith(OpShl, unit, l.constant(64-f.pos-f.bits))
+		return l.arith(OpShr, up, l.constant(64-f.bits))
+	}
+	v := l.arith(OpShrU, unit, l.constant(f.pos))
+	if f.bits == 64 {
+		return v
+	}
+	return l.arith(OpBAnd, v, l.constant(int64(1)<<f.bits-1))
 }
 
 // viewAssign lowers `p.hp = 100` and `p.hp -= 10` on a view.

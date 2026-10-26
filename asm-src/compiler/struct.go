@@ -63,6 +63,11 @@ type structField struct {
 	// which reads as its own address. See views.go.
 	kind  int64
 	array bool
+
+	// A bit field: its width and lowest bit within the unit of kind at
+	// off, and whether it is signed. bits is 0 for any other field.
+	bits, pos int64
+	signed    bool
 }
 
 // A structLayout is one declared struct. fields stays in declaration

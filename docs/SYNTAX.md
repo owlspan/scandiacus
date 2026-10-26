@@ -3264,6 +3264,38 @@ GetSystemTime(now)
 print(now.year)
 ```
 
+`extern union` is the same with every field starting at offset 0, so
+each reads the same bytes as its own type. A union is a type like an
+extern struct, and can be a field of one:
+
+```scandiacus
+extern union Num { i: i32, f: f32, bytes: [4]u8 }
+let n = Num{}
+n.f = 1.0
+print(n.i)                  // 1065353216, the bits of 1.0
+```
+
+`bits N` makes a bit field of an integer or `bool` field. Bit fields
+whose types are the same size share one unit of that size, from its
+low bit up, until the next one does not fit; a field of another size
+starts a new unit. That is how MSVC lays them out, and MinGW on
+Windows; GCC and clang on Linux pack more tightly across sizes, so a
+header with mixed sizes there needs `at` and a field per unit instead.
+A signed bit field reads back sign-extended, and writing one changes
+only its own bits:
+
+```scandiacus
+extern struct Flags {
+    ready: u8 bits 1
+    mode: u8 bits 3
+    level: i8 bits 4        // the same byte as the two above
+    count: u16 bits 10
+}
+let f = Flags{}
+f.level = -3
+print(f.level)              // -3
+```
+
 Assigning a view copies the address, never the bytes: two names for
 the same memory, which is the point. `==` compares addresses.
 `mem.addr(v)` gives the address as an `int`. Methods work on extern

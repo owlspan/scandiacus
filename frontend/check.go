@@ -2290,7 +2290,10 @@ func (c *Checker) layout(d *StructDecl, visiting map[string]bool) {
 	visiting[d.Name] = true
 	defer delete(visiting, d.Name)
 
-	at, align := 0, 1
+	at, align, end := 0, 1, 0
+	// The bit field unit being filled: where it starts, its type, and
+	// how many of its bits are taken.
+	unitOff, unitSize, unitUsed := -1, 0, 0
 	for i := range d.Fields {
 		f := &d.Fields[i]
 		size, fAlign := 0, 1
@@ -2329,6 +2332,55 @@ func (c *Checker) layout(d *StructDecl, visiting map[string]bool) {
 				f.T = PtrToC(f.Type)
 			}
 		}
+		if fAlign > align {
+			align = fAlign
+		}
+		if f.Bits > 0 {
+			ct, isC := cTypes[f.Type]
+			switch {
+			case !isC || f.Type == "f32" || f.Type == "f64" || f.Type == "ptr":
+				c.ErrorAt(f, "a bit field is an integer type or bool, not %s", f.Type)
+				continue
+			case f.Len > 0 || f.At >= 0:
+				c.ErrorAt(f, "a bit field cannot be an array or have an offset of its own")
+				continue
+			case f.Bits > ct.size*8:
+				c.ErrorAt(f, "%s holds %d bits, so a bit field of it cannot be %d wide", f.Type, ct.size*8, f.Bits)
+				continue
+			}
+		}
+		if d.Union {
+			// Every member starts at the beginning, a bit field at its
+			// low bit.
+			f.Offset = 0
+			if f.At >= 0 {
+				f.Offset = f.At
+			}
+			if f.Offset+size > end {
+				end = f.Offset + size
+			}
+			continue
+		}
+		if f.Bits > 0 {
+			// Bit fields of types of one size share a unit of that size
+			// while they fit, from the low bit up; a field of another
+			// size, or one that does not fit, starts a new unit. That is
+			// MSVC's rule, which MinGW follows on Windows; GCC and clang
+			// elsewhere pack more tightly across sizes.
+			if unitOff >= 0 && unitSize == size && unitUsed+f.Bits <= size*8 {
+				f.Offset, f.BitPos = unitOff, unitUsed
+				unitUsed += f.Bits
+				continue
+			}
+			if at%fAlign != 0 {
+				at += fAlign - at%fAlign
+			}
+			f.Offset, f.BitPos = at, 0
+			unitOff, unitSize, unitUsed = at, size, f.Bits
+			at += size
+			continue
+		}
+		unitOff = -1
 		if f.At >= 0 {
 			at = f.At
 		} else if at%fAlign != 0 {
@@ -2336,9 +2388,9 @@ func (c *Checker) layout(d *StructDecl, visiting map[string]bool) {
 		}
 		f.Offset = at
 		at += size
-		if fAlign > align {
-			align = fAlign
-		}
+	}
+	if d.Union {
+		at = end
 	}
 	if at%align != 0 {
 		at += align - at%align

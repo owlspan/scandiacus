@@ -211,7 +211,8 @@ func (p *Parser) ParseProgram() *Program {
 				f.File = p.file
 				prog.Funcs = append(prog.Funcs, f)
 			}
-		case p.check(EXTERN) && p.peekKind(1) == STRUCT:
+		case p.check(EXTERN) && (p.peekKind(1) == STRUCT ||
+			p.peekKind(1) == IDENT && p.i+1 < len(p.toks) && p.toks[p.i+1].Lex == "union"):
 			p.advance() // 'extern'
 			if d := p.parseExternStruct(); d != nil {
 				d.Pub = pub
@@ -396,9 +397,9 @@ func (p *Parser) parseStruct() *StructDecl {
 // written [N]T. `at` pins a field to an offset; fields after it carry on
 // from there.
 func (p *Parser) parseExternStruct() *StructDecl {
-	kw := p.advance() // 'struct'
+	kw := p.advance() // 'struct' or 'union'
 	name := p.expect(IDENT, "a struct name")
-	d := &StructDecl{Span: at(kw), Name: name.Lex, Extern: true}
+	d := &StructDecl{Span: at(kw), Name: name.Lex, Extern: true, Union: kw.Lex == "union"}
 
 	open := p.expect(LBRACE, "'{'")
 	p.skipNewlines()
@@ -426,6 +427,15 @@ func (p *Parser) parseExternStruct() *StructDecl {
 			f.Type = stars + t.Lex
 		} else {
 			p.errorAt(fn, "field %q needs a type, like %s: i32", fn.Lex, fn.Lex)
+		}
+		if p.check(IDENT) && p.cur().Lex == "bits" {
+			p.advance()
+			n := p.expect(NUMBER, "a width in bits, as in bits 3")
+			if v, err := strconv.ParseInt(strings.ReplaceAll(n.Lex, "_", ""), 0, 64); err == nil && v > 0 {
+				f.Bits = int(v)
+			} else if n.Kind == NUMBER {
+				p.errorAt(n, "a bit field is at least one bit wide")
+			}
 		}
 		if p.check(IDENT) && p.cur().Lex == "at" {
 			p.advance()
