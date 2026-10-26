@@ -427,10 +427,12 @@ func (l *lowerer) vecBody(p *vecPlan, bases []int64, scal []int64, hoisted *vecN
 			}
 			return reg
 		}
-		other := 1 - reg
 		if vecNeed(n.l) >= vecNeed(n.r) {
+			// The left side can end in either register (a subtraction
+			// below it may leave its result in the other one), so the
+			// right side goes in whichever one it did not use.
 			a := gen(n.l, reg)
-			b := gen(n.r, other)
+			b := gen(n.r, 1-a)
 			l.emit(Instr{Op: OpVArith, Dst: NoReg, A: NoReg, B: NoReg, Imm: int64(n.op<<8 | a<<4 | b)})
 			return a
 		}

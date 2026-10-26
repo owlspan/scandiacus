@@ -18,3 +18,11 @@ for j in 0..n {
     c[j] = a[j] - (b[j] - (a[j] - c[j]))
 }
 print(c)
+// The same subtraction as the left operand of an outer operation: the
+// outer right operand must go in the register the subtraction did not
+// end in.
+let x = 3.25
+for j in 0..n {
+    c[j] = (a[j] - b[j] * 3.5) * x
+}
+print(c)
