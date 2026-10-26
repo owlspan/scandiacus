@@ -677,7 +677,26 @@ func (l *lowerer) callMethod(c *Call, fld *Field, recv string) Reg {
 	// is what every other struct argument gets - would make a mutating
 	// method silently work on a temporary.
 	args := make([]Reg, len(s.params))
-	args[0] = l.expr(fld.X)
+	writeBack := func() {}
+	if ix, ok := fld.X.(*Index); ok && l.movesElement(ix, c, name) {
+		// The method or its arguments may move the element's block:
+		// self is a copy, written back when the method returns. See
+		// inlineresize.go.
+		list := l.expr(ix.X)
+		lt := l.regTy[list]
+		listS, idxS := l.temp(lt), l.scalarTemp(vInt)
+		l.setSlot(listS, list)
+		l.setSlot(idxS, l.expr(ix.Idx))
+		self := l.freshCopy(l.listGet(l.load(listS, lt), l.load(idxS, vInt), lt.elemType()), lt.elemType())
+		selfS := l.temp(lt.elemType())
+		l.setSlot(selfS, self)
+		args[0] = l.load(selfS, lt.elemType())
+		writeBack = func() {
+			l.listSet(l.load(listS, lt), l.load(idxS, vInt), l.load(selfS, lt.elemType()))
+		}
+	} else {
+		args[0] = l.expr(fld.X)
+	}
 	for i, a := range c.Args {
 		v := l.rvalueAs(a, s.params[i+1])
 		if s.params[i+1].k == kFloat && l.regTy[v].k == kInt {
@@ -693,6 +712,7 @@ func (l *lowerer) callMethod(c *Call, fld *Field, recv string) Reg {
 	l.regTy[d] = s.ret
 	l.emit(Instr{Op: OpCall, Dst: d, A: NoReg, B: NoReg, Args: args,
 		ArgTypes: s.params, RetType: s.ret, Sym: name, Comment: name + "()"})
+	writeBack()
 	return d
 }
 

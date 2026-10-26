@@ -875,11 +875,24 @@ func (l *lowerer) forList(st *ForStmt) {
 	if idxSlot >= 0 {
 		l.bindTrip(idxSlot, i, st.Var)
 	}
-	l.bindTrip(varSlot, l.listGet(list, i, t.elemType()), varName)
+	ref := inlineStrideOf(t.elemType()) > 0 && l.growsLists(st.Body) && !rebindsName(st.Body, varName)
+	if ref {
+		// The body may move the block, so the variable is ps[i] at each
+		// mention rather than an address taken now; see inlineresize.go.
+		if l.elemRefs == nil {
+			l.elemRefs = map[int64]elemRef{}
+		}
+		l.elemRefs[varSlot] = elemRef{list: listSlot, idx: iSlot, t: t}
+	} else {
+		l.bindTrip(varSlot, l.listGet(list, i, t.elemType()), varName)
+	}
 
 	l.loops = append(l.loops, loopTarget{brk: done, cont: cont, defers: len(l.defers)})
 	l.stmt(st.Body)
 	l.loops = l.loops[:len(l.loops)-1]
+	if ref {
+		delete(l.elemRefs, varSlot)
+	}
 
 	// continue goes to the increment, not the test, or the index never
 	// advances and the loop never ends.

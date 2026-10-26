@@ -915,6 +915,10 @@ type lowerer struct {
 	// readOnly the parameters found to be only read; see copyelide.go.
 	fnDecls  map[string]*FnDecl
 	readOnly map[string][]bool
+	// grows the functions found to maybe grow a list, and elemRefs the
+	// loop variables that name an inline element; see inlineresize.go.
+	grows    map[string]bool
+	elemRefs map[int64]elemRef
 
 	mod      *Module
 	fn       *Func
@@ -3062,6 +3066,9 @@ func (l *lowerer) expr(e Expr) Reg {
 			}
 			l.undefined(x, x.Name)
 			return l.junk()
+		}
+		if r, ok := l.elemRefs[slot]; ok {
+			return l.loadElemRef(r)
 		}
 		d := l.loadLocal(slot)
 		if l.ownable(x.Name, slot) && !l.keepOwned {
