@@ -51,6 +51,9 @@ func Optimize(m *Module) {
 		if !envOff("SCANDIACUS_NOROTATE") {
 			sinkLoopExits(fn)
 			rotateLoops(fn)
+			if !envOff("SCANDIACUS_NOUNROLL") {
+				unrollLoops(fn)
+			}
 		}
 		if !envOff("SCANDIACUS_NOFORWARD") {
 			forwardLoads(fn)
