@@ -131,7 +131,9 @@ func cse(m *Module, fn *Func) {
 		case OpSlotAddr:
 			escaped[in.Imm] = true
 		case OpIndexAddr:
-			elem[in.Dst] = true
+			if !structAddr(fn, in.Dst) {
+				elem[in.Dst] = true
+			}
 		}
 	}
 

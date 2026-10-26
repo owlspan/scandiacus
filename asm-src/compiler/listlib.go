@@ -143,18 +143,18 @@ func (l *lowerer) listBuiltin(c *Call, name string) (Reg, bool) {
 	switch name {
 	case "first":
 		l.requireNonEmpty(list, "first() on an empty list")
-		return l.listGet(list, l.constant(0), elem), true
+		return l.freshCopy(l.listGet(list, l.constant(0), elem), elem), true
 
 	case "last":
 		l.requireNonEmpty(list, "last() on an empty list")
-		return l.lastOf(list, elem), true
+		return l.freshCopy(l.lastOf(list, elem), elem), true
 
 	case "pop":
 		// Shortening the list is a store to its length. The element
 		// block keeps the value, which nothing can reach again and
 		// nothing frees.
 		l.requireNonEmpty(list, "pop from an empty list")
-		v := l.lastOf(list, elem)
+		v := l.freshCopy(l.lastOf(list, elem), elem)
 		l.emit(Instr{Op: OpStoreMem, A: list,
 			B:   l.arith(OpSub, l.field(list, listLenOff, vInt), l.constant(1)),
 			Imm: listLenOff})
@@ -385,7 +385,7 @@ func (l *lowerer) listRemoveAt(list Reg, t vty, at Reg) Reg {
 
 	// listGet bounds-checks, so an index off the end is the same failure
 	// indexing gives rather than a silent write past the block.
-	gone := l.listGet(list, at, elem)
+	gone := l.freshCopy(l.listGet(list, at, elem), elem)
 
 	iSlot := l.scalarTemp(vInt)
 	l.emit(Instr{Op: OpStore, A: at, Dst: NoReg, Imm: iSlot})

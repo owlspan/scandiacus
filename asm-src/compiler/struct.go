@@ -161,6 +161,7 @@ func (s *structLayout) inlineOK() bool {
 // out to contain.
 func (l *lowerer) collectStructs(p *Program) {
 	l.structs = map[string]*structLayout{}
+	inlineStride = map[string]int64{}
 
 	for _, sd := range p.Structs {
 		if sd.Extern {
@@ -212,6 +213,7 @@ func (l *lowerer) collectStructs(p *Program) {
 		lay.bytes = off
 
 		l.structs[sd.Name] = lay
+		noteInline(lay)
 	}
 }
 

@@ -139,7 +139,11 @@ func defsOf(fn *Func) (map[Reg]int, map[Reg]bool) {
 				defAt[in.Dst] = i
 			}
 		}
-		if in.Op == OpIndexAddr {
+		// An address inside an inline struct element is a struct
+		// pointer like any other, and takes its type's class, so that a
+		// store through it and a load through the loop variable or self
+		// are known to meet.
+		if in.Op == OpIndexAddr && !structAddr(fn, in.Dst) {
 			elem[in.Dst] = true
 		}
 	}

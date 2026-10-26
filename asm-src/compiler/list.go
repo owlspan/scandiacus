@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 // Lists, built out of the raw memory ops rather than hand-written
 // assembly.
 //
@@ -87,6 +89,9 @@ const (
 // One level deep is all the vty tracks, which is all this needs: a
 // list of strings holds pointers, a list of anything else does not.
 func elemTag(t vty) int64 {
+	if inlineStrideOf(t.elemType()) > 0 {
+		return tagWords // fields stored in place, none of them a pointer
+	}
 	if t.elemType().holdsPointer() {
 		return tagPtrs
 	}
@@ -247,6 +252,10 @@ func (l *lowerer) listPushSlow(t vty) (string, vty) {
 		name, valTy, elem = "__listpush_b", vBool, vBool
 	case tag == tagPtrs:
 		name, valTy = "__listpush_p", vStr
+	case inlineStrideOf(t.elemType()) > 0:
+		// The value is a pointer to the struct being copied in, which
+		// has to stay reachable while the new block is allocated.
+		name, valTy, elem = fmt.Sprintf("__listpush_s%d", width), vStr, t.elemType()
 	}
 	sym := l.helperFunc(name, []vty{vInt, valTy}, vInt, func(a []Reg) {
 		lst, v := a[0], a[1]
@@ -275,6 +284,7 @@ func (l *lowerer) listPushSlow(t vty) (string, vty) {
 		if l.gcOff {
 			l.freeObject(old) // no collector will; see gcoff.go
 		}
+
 		at := l.field(lst, listLenOff, vInt)
 		l.elemStore(l.field(lst, listDataOff, vRawPtr), at, v, elem)
 		l.emit(Instr{Op: OpStoreMem, A: lst, B: l.arith(OpAdd, at, l.constant(1)), Imm: listLenOff})
@@ -416,6 +426,10 @@ func (l *lowerer) listFill(list Reg, vals []Reg) {
 	data := l.field(list, listDataOff, vRawPtr)
 	elem := l.regTy[list].elemType()
 	for i, v := range vals {
+		if stride := inlineStrideOf(elem); stride > 0 {
+			l.elemStore(data, l.constant(int64(i)), v, elem)
+			continue
+		}
 		if elemWidth(l.regTy[list]) == 1 {
 			l.elemStore(data, l.constant(int64(i)), v, elem)
 			continue
@@ -447,6 +461,9 @@ func (l *lowerer) listSet(list, idx, val Reg) {
 // lets a sieve over fifty million of them fit the cache far better;
 // everything else takes a word.
 func elemWidth(t vty) int64 {
+	if s := inlineStrideOf(t.elemType()); s > 0 {
+		return s
+	}
 	if t.elemType().eq(vBool) {
 		return 1
 	}
@@ -456,6 +473,9 @@ func elemWidth(t vty) int64 {
 // elemLoad and elemStore read and write element idx of an element
 // block, a word or, for a bool, a byte.
 func (l *lowerer) elemLoad(data, idx Reg, elem vty) Reg {
+	if stride := inlineStrideOf(elem); stride > 0 {
+		return l.inlineAddr(data, idx, stride, elem) // the element itself, in place
+	}
 	addr := l.newReg()
 	l.regTy[addr] = vInt
 	d := l.newReg()
@@ -471,6 +491,10 @@ func (l *lowerer) elemLoad(data, idx Reg, elem vty) Reg {
 }
 
 func (l *lowerer) elemStore(data, idx, v Reg, elem vty) {
+	if stride := inlineStrideOf(elem); stride > 0 {
+		l.copyWords(l.inlineAddr(data, idx, stride, elem), v, stride)
+		return
+	}
 	addr := l.newReg()
 	l.regTy[addr] = vInt
 	if elem.eq(vBool) {
