@@ -1496,13 +1496,22 @@ func (l *lowerer) lookup(name string) (int64, bool) {
 
 // temp makes an anonymous slot, for values that two branches write.
 func (l *lowerer) temp(t vty) int64 {
-	slot := int64(l.fn.NSlots)
-	l.fn.NSlots++
-	l.slotTy[slot] = t
+	slot := l.scalarTemp(t)
 	if l.fn.Temps == nil {
 		l.fn.Temps = map[int64]bool{}
 	}
 	l.fn.Temps[slot] = true
+	return slot
+}
+
+// scalarTemp is temp for a slot that only ever holds a number: a loop
+// index or limit, a count. The slot is not marked in Temps, so a program
+// with threads may keep it in a register. Use it only where the value
+// cannot be an address; temp is the safe default.
+func (l *lowerer) scalarTemp(t vty) int64 {
+	slot := int64(l.fn.NSlots)
+	l.fn.NSlots++
+	l.slotTy[slot] = t
 	return slot
 }
 
@@ -2060,14 +2069,14 @@ func (l *lowerer) forRange(st *ForStmt) {
 	// bottom, so an assignment to the variable still moves the loop.
 	ctr := iSlot
 	if l.boxed[iSlot] {
-		ctr = l.temp(vInt)
+		ctr = l.scalarTemp(vInt)
 	}
 	initAt := len(l.fn.Code)
 	l.emit(Instr{Op: OpStore, A: start, Dst: NoReg, Imm: ctr,
 		Comment: "for " + st.Var})
 
 	end := l.expr(st.End)
-	endSlot := l.temp(vInt)
+	endSlot := l.scalarTemp(vInt)
 	endAt := len(l.fn.Code)
 	l.emit(Instr{Op: OpStore, A: end, Dst: NoReg, Imm: endSlot, Comment: "limit"})
 

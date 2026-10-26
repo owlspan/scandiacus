@@ -84,7 +84,7 @@ func (l *lowerer) lessValues(n Node, a, b Reg, t vty, what string) (Reg, bool) {
 // eachElement walks a list, calling body with the index and the element.
 // Almost everything below is this loop with a different body.
 func (l *lowerer) eachElement(list Reg, t vty, body func(i, v Reg)) {
-	iSlot := l.temp(vInt)
+	iSlot := l.scalarTemp(vInt)
 	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: iSlot})
 
 	top := l.newLabel()
@@ -273,7 +273,7 @@ func (l *lowerer) listSlice(list Reg, t vty, from, to Reg) Reg {
 	start := l.clamp(from, l.constant(0), n)
 	end := l.clamp(to, l.constant(0), n)
 
-	iSlot := l.temp(vInt)
+	iSlot := l.scalarTemp(vInt)
 	l.emit(Instr{Op: OpStore, A: start, Dst: NoReg, Imm: iSlot})
 
 	top := l.newLabel()
@@ -387,7 +387,7 @@ func (l *lowerer) listRemoveAt(list Reg, t vty, at Reg) Reg {
 	// indexing gives rather than a silent write past the block.
 	gone := l.listGet(list, at, elem)
 
-	iSlot := l.temp(vInt)
+	iSlot := l.scalarTemp(vInt)
 	l.emit(Instr{Op: OpStore, A: at, Dst: NoReg, Imm: iSlot})
 
 	top := l.newLabel()
@@ -418,7 +418,7 @@ func (l *lowerer) listSearch(c *Call, list Reg, t vty, name string) Reg {
 	found := l.temp(vInt)
 	l.emit(Instr{Op: OpStore, A: l.constant(-1), Dst: NoReg, Imm: found})
 
-	iSlot := l.temp(vInt)
+	iSlot := l.scalarTemp(vInt)
 	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: iSlot})
 
 	top := l.newLabel()
@@ -551,7 +551,7 @@ func (l *lowerer) splitBy(s, sep Reg) Reg {
 
 // eachByte walks the bytes of a string by index.
 func (l *lowerer) eachByte(s, n Reg, body func(i Reg)) {
-	iSlot := l.temp(vInt)
+	iSlot := l.scalarTemp(vInt)
 	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: iSlot})
 
 	top := l.newLabel()

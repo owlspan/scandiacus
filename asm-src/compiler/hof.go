@@ -84,7 +84,7 @@ type listLoop struct {
 }
 
 func (l *lowerer) beginLoop(xs Reg) listLoop {
-	lp := listLoop{i: l.temp(vInt), top: l.newLabel(), done: l.newLabel()}
+	lp := listLoop{i: l.scalarTemp(vInt), top: l.newLabel(), done: l.newLabel()}
 	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: lp.i})
 	l.mark(lp.top)
 	// The length is read each time round rather than once, because a

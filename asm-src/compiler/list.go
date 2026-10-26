@@ -804,10 +804,10 @@ func (l *lowerer) forList(st *ForStmt) {
 	l.regTy[held] = t
 	l.emit(Instr{Op: OpLoad, Dst: held, A: NoReg, B: NoReg, Imm: listSlot})
 	length := l.field(held, listLenOff, vInt)
-	lenSlot := l.temp(vInt)
+	lenSlot := l.scalarTemp(vInt)
 	l.emit(Instr{Op: OpStore, A: length, Dst: NoReg, Imm: lenSlot})
 
-	iSlot := l.temp(vInt)
+	iSlot := l.scalarTemp(vInt)
 	l.emit(Instr{Op: OpStore, A: l.constant(0), Dst: NoReg, Imm: iSlot})
 
 	// `for i, v in xs` puts the index in the first name and the element
