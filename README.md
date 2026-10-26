@@ -621,20 +621,20 @@ peephole and the register allocator from step 10. On top of those:
 
 `SCANDIACUS_NOOPT=1` turns all of it off. Against C built by
 `zig cc -O2` (clang, for the machine's own CPU, so it may use AVX2) on
-the same programs, best of five on one machine, 1.89.0:
+the same programs, best of seven on one Linux machine, 2.0.0:
 
 | | Scandiacus | C |
 | --- | ---: | ---: |
-| fib(37), recursive calls | 198 ms | 143 ms |
-| 400M iterations of `s += (i * i) % 7 + (i >> 3)` | 645 ms | 499 ms |
-| sieve of Eratosthenes to 50M, a `[]bool` | 639 ms | 439 ms |
-| 400x400 float matrix multiply | 93 ms | 43 ms |
-| 1000 structs moved 20000 times | 68 ms | 60 ms |
+| fib(37), recursive calls | 73 ms | 84 ms |
+| 400M iterations of `s += (i * i) % 7 + (i >> 3)` | 430 ms | 413 ms |
+| sieve of Eratosthenes to 50M, a `[]bool` | 335 ms | 316 ms |
+| 400x400 float matrix multiply | 27 ms | 17 ms |
+| 1000 structs moved 20000 times | 29 ms | 40 ms |
 
 Clang vectorises the matrix multiply with AVX2, four doubles at a time;
-Scandiacus has no vectoriser. The Scandiacus lists are bounds-checked on
-every access, and the C arrays are not. The programs are in
-`asm-src/bench`.
+Scandiacus uses SSE2, two at a time. The Scandiacus lists are
+bounds-checked on every access, and the C arrays are not. The programs
+are in `asm-src/bench`.
 
 ## What comes next
 
