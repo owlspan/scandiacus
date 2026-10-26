@@ -274,10 +274,24 @@ func (l *lowerer) rawMemBuiltin(c *Call, name string) (Reg, bool) {
 		// arrives in. For a table of function pointers built by hand -
 		// a COM object, a window procedure - where no extern
 		// declaration names the callback's type.
+		// A closure keeps its slot until mem.freeCallback.
 		if !arity(1) {
 			return l.junk(), true
 		}
+		if l.isClosureCallback(c.Args[0]) {
+			d, _ := l.closureCallback(c.Args[0], vInt, nil, true)
+			return d, true
+		}
 		return l.callbackArg(c.Args[0], vInt, nil, true), true
+
+	case "mem.freeCallback":
+		// Frees what mem.callback(closure) took. Native code calling the
+		// address afterwards gets 0 back.
+		if !arity(1) {
+			return l.junk(), true
+		}
+		l.freeCallback(l.intArg(c, 0))
+		return l.junk(), true
 
 	case "mem.addr":
 		// Where a bytes, a str or an extern struct lives. A bytes or a

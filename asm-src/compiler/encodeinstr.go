@@ -681,6 +681,13 @@ func (b *block) encodePushPop(m string, ops []operand) error {
 // displacement always, never the short form: the target is not known
 // yet, and a fixed width means the offsets never move.
 func (b *block) encodeJump(esc, code byte, ops []operand) error {
+	if len(ops) == 1 && ops[0].kind == opReg && code == 0xE9 {
+		// jmp reg, FF /4: the closure callback stubs end in one.
+		b.prefix(32, 4, ops[0])
+		b.put(0xFF)
+		b.modrm(4, ops[0])
+		return nil
+	}
 	if len(ops) != 1 || (ops[0].kind != opSym && ops[0].kind != opRipSym) {
 		return fmt.Errorf("jump wants a label")
 	}

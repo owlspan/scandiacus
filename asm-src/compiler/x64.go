@@ -2252,6 +2252,10 @@ __vy_bounds:
 `)
 	}
 
+	if e.mod.Helpers["ccb"] {
+		e.b.WriteString(ccbRoutines())
+	}
+
 	if e.mod.Helpers["cpufeat"] {
 		// 2 in the runtime's cpu word if the wide packed loops can run,
 		// 1 if not. AVX2 is CPUID leaf 7 EBX bit 5, but the ymm

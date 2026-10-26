@@ -79,3 +79,52 @@ w.scd:22:9: warning: this can never run - it comes after a break
 		t.Errorf("an error passed scandiacus check:\n%s", out)
 	}
 }
+
+// TestCallbackWarnings checks the warning for a closure callback taken
+// with mem.callback and never freed, and the softer one for one that
+// leaves its function.
+func TestCallbackWarnings(t *testing.T) {
+	scandiacus := asmBackend(t)
+	dir := t.TempDir()
+	src := `fn named(a: int) -> int { return a }
+
+fn leak(n: int) {
+    let cb = mem.callback(fn(a: int) -> int { return a + n })
+    print(mem.call(cb, 1))
+}
+
+fn freed(n: int) {
+    let cb = mem.callback(fn(a: int) -> int { return a + n })
+    print(mem.call(cb, 1))
+    mem.freeCallback(cb)
+}
+
+fn give(n: int) -> int {
+    let cb = mem.callback(fn(a: int) -> int { return a + n })
+    return cb
+}
+
+let p = mem.alloc(8)
+mem.write64(p, mem.callback(fn(a: int) -> int { return a }))
+print(mem.call(mem.callback(named), 2))
+leak(1)
+freed(1)
+mem.freeCallback(give(1))
+`
+	p := filepath.Join(dir, "w.scd")
+	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(scandiacus, "check", p).CombinedOutput()
+	if err != nil {
+		t.Fatalf("warnings alone must not fail scandiacus check: %v\n%s", err, out)
+	}
+	got := strings.ReplaceAll(strings.ReplaceAll(string(out), p, "w.scd"), "\r\n", "\n")
+	want := `w.scd:4:5: warning: cb holds a closure callback that is never freed - call mem.freeCallback(cb) once native code is done with it, or it keeps its slot until the program ends
+w.scd:15:5: warning: cb holds a closure callback and leaves this function - make sure mem.freeCallback runs on it once native code is done with it
+w.scd:20:28: warning: this closure callback is never freed, since its address is not kept - put it in a variable and call mem.freeCallback on that once native code is done with it
+`
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}

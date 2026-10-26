@@ -489,6 +489,7 @@ func (c *Checker) Check(p *Program) {
 	c.stmts(p.Main)
 	c.pop()
 	c.escapes(nil, p.Main)
+	c.callbackLeaks(nil, p.Main)
 
 	// Last, the generic instances all that asked for, in the scope of
 	// the globals alone.
@@ -576,6 +577,7 @@ func (c *Checker) checkFn(f *FnDecl) {
 	}
 	c.stmts(f.Body.Stmts)
 	c.pop()
+	c.callbackLeaks(f.Params, f.Body.Stmts)
 	c.curFn = prev
 	c.escapes(f.Params, f.Body.Stmts)
 }
@@ -1451,6 +1453,7 @@ func (c *Checker) funcLit(x *FuncLit) *Type {
 	}
 	c.stmts(f.Body.Stmts)
 	c.pop()
+	c.callbackLeaks(f.Params, f.Body.Stmts)
 	c.curFn = prev
 	c.escapes(f.Params, f.Body.Stmts)
 

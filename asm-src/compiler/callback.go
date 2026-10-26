@@ -26,8 +26,9 @@ package main
 // `bool` are the C types, `ptr` is a full 64-bit value, so a handle, a
 // pointer or an LPARAM is declared `ptr`. A float is a double.
 //
-// Only a function declared with fn can be a callback. A closure carries
-// its environment in a register native code knows nothing about.
+// This file handles a function declared with fn. A closure carries its
+// environment in a register native code knows nothing about, so it goes
+// through closurecb.go instead.
 
 import (
 	"fmt"
@@ -152,8 +153,8 @@ func (l *lowerer) callbackArg(e Expr, want vty, widen []widenArg, adapt bool) Re
 		}
 	}
 	if !ok {
-		l.errorAt(e, "a callback has to be a function declared with fn, named directly - "+
-			"a closure or a variable holding a function cannot be called from native code")
+		// Callers send everything else to closureCallback.
+		l.errorAt(e, "a callback has to be a function")
 		return l.junk()
 	}
 	if _, isFn := l.sigs[id.Name]; !isFn {

@@ -3542,9 +3542,55 @@ passed as singles and whose narrow results are read at their width,
 and for `export fn`. A callback or an export returning `f32` can take
 at most four arguments.
 
-Only a function declared with `fn`, named directly, can be a callback.
-A closure carries its captured variables somewhere native code does
-not know about. A callback may allocate and may run the collector.
+A callback may allocate and may run the collector.
+
+#### Closures as callbacks
+
+A closure can be a callback too, captured variables and all:
+
+```scandiacus
+fn sortBy(buf: int, n: int, sign: int) {
+    qsort(buf, n, 8, fn(a: int, b: int) -> int {
+        return sign * (mem.readI64(a) - mem.readI64(b))
+    })
+}
+```
+
+Native code calls a plain address, with nowhere to put the captured
+variables, so a closure is given one of 64 slots, each with a stub
+address native code can call. A closure passed straight to an extern
+function holds its slot for that call only and frees it as the call
+returns. That is right for anything that calls back before returning:
+`qsort`, `bsearch`, `EnumWindows`. It is wrong for native code that
+keeps the pointer and calls it later - a window procedure, a timer,
+a hook. For those, take the slot yourself with `mem.callback` and free
+it when native code is done with it:
+
+```scandiacus
+let onTick = mem.callback(fn(h: int, msg: int, id: int, t: int) -> int {
+    ticks += 1
+    return 0
+})
+let timer = SetTimer(0, 0, 100, onTick)
+...
+KillTimer(0, timer)
+mem.freeCallback(onTick)
+```
+
+While a slot is held the closure and everything it captured stay
+alive, whatever the collector does. Once freed, the address returns 0
+to anything that still calls it rather than jumping into a closure
+that may be gone. Taking a 65th slot while 64 are held stops the
+program with an error saying so.
+
+`scandiacus build` and `scandiacus check` warn about a
+`mem.callback(closure)` whose address is never passed to
+`mem.freeCallback` in the function that took it. If the address leaves
+the function - returned, stored, captured by another closure, passed
+to something that may keep it - the warning becomes a reminder to free
+it wherever it ends up. A warning never stops the build. A function
+declared with `fn` needs no slot, so `mem.callback(f)` of one is never
+warned about and never needs freeing.
 
 Callbacks work the same on Linux and macOS. Native code there calls
 with the System V convention, which places arguments differently -
@@ -4454,8 +4500,8 @@ Honest list of what v2.6.0 does not do yet.
 
 **The language**
 
-- **A callback cannot be a closure.** Native code can call a function
-  declared with `fn`, but not one that captured variables.
+- **At most 64 closures can be callbacks at once.** A function
+  declared with `fn` has no such limit.
 - **A native call through an address is untyped.** `mem.call` passes
   words and takes back `rax`; an `extern fn` is still the way to give
   a native function a checked signature.

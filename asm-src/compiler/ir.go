@@ -2383,9 +2383,16 @@ func (l *lowerer) callExtern(c *Call, name string, es externSig) Reg {
 	}
 	args := make([]Reg, n)
 	argTypes := make([]vty, n)
+	var held []int64
 	for i := 0; i < n; i++ {
 		var v Reg
-		if i < len(es.params) && es.params[i].k == kFunc {
+		if i < len(es.params) && es.params[i].k == kFunc && l.isClosureCallback(c.Args[i]) {
+			var k int64
+			v, k = l.closureCallback(c.Args[i], es.params[i], es.widen[i], !linuxProvided(name))
+			if k >= 0 {
+				held = append(held, k)
+			}
+		} else if i < len(es.params) && es.params[i].k == kFunc {
 			v = l.callbackArg(c.Args[i], es.params[i], es.widen[i], !linuxProvided(name))
 		} else if i < len(es.params) {
 			v = l.rvalueAs(c.Args[i], es.params[i])
@@ -2411,6 +2418,10 @@ func (l *lowerer) callExtern(c *Call, name string, es externSig) Reg {
 		overrideImport(name, es.dll)
 	}
 	d := l.ccall(name, args, argTypes, es.ret, es.ret32, es.variadic)
+	// A closure passed straight in is the callee's only for this call.
+	for _, k := range held {
+		l.releaseCallback(l.load(k, vInt))
+	}
 	if es.ret.k == kStr && d != NoReg {
 		d = l.dupStr(d)
 	}
