@@ -3,6 +3,22 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.7.0
+
+**Closures as callbacks.** A closure can now go anywhere native code
+expects a function pointer, captured variables and all. Passed straight
+to an extern function, it holds one of 64 callback slots for that call
+and frees it when the call returns, which fits qsort, bsearch,
+EnumWindows and anything else that calls back before returning. For
+native code that keeps the pointer, `mem.callback(closure)` holds the
+slot until `mem.freeCallback(address)`; the closure stays alive through
+any collection meanwhile, and a freed address returns 0 instead of
+jumping into a closure that may be gone. `scandiacus build` and
+`scandiacus check` warn about a `mem.callback(closure)` never freed in
+the function that took it, and remind you to free one that leaves the
+function. Warnings never stop the build. No code is written into
+executable memory at run time.
+
 ## 2.6.0
 
 **extern union and bit fields.** `extern union Num { i: i32, f: f32 }`
