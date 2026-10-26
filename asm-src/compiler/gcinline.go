@@ -20,10 +20,12 @@ import "os"
 // either an object's address exactly or not a pointer, and the precise
 // half of the collector keeps relying on that.
 
-// gcInlineWanted reports whether this build emits the support. Nothing
-// but the test hook asks for it yet.
+// gcInlineWanted reports whether this build emits the support: inline
+// struct lists need it, because the loop variable of `for p in ps` and
+// a method's self point into an element block, and the test hook asks
+// for it on its own.
 func gcInlineWanted() bool {
-	return os.Getenv("SCANDIACUS_TESTHOOKS") != ""
+	return inlineOn || os.Getenv("SCANDIACUS_TESTHOOKS") != ""
 }
 
 // gcBlock lowers mem.gcblock(nptr, stride, count): a zeroed data block of

@@ -143,7 +143,7 @@ func (l *lowerer) pushLiteral(list Reg, lit *StructLit) bool {
 	l.mark(room)
 
 	at := l.field(list, listLenOff, vInt)
-	slot := l.inlineAddr(l.field(list, listDataOff, vInt), at, stride, elem)
+	slot := l.inlineAddr(l.field(list, listDataOff, vRawPtr), at, stride, elem)
 	for i, f := range lay.fields {
 		l.emit(Instr{Op: OpStoreMem, A: slot, B: vals[i], Imm: f.off})
 	}
