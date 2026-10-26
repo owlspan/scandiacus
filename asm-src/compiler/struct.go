@@ -92,6 +92,31 @@ func (s *structLayout) header() int64 {
 	return s.bytes<<structSizeShift | s.nptr<<structNPtrShift | tagStruct
 }
 
+// words is the payload size in eight-byte words.
+func (s *structLayout) words() int64 { return s.bytes / wordSize }
+
+// stride is the distance between two elements of a list that stores
+// this struct inline. A struct with no fields still takes a word, so
+// that indexing stays a plain multiply and every element has an address
+// of its own.
+func (s *structLayout) stride() int64 {
+	if s.bytes == 0 {
+		return wordSize
+	}
+	return s.bytes
+}
+
+// inlineNPtrMax is the largest pointer count the tagStructs header can
+// record: it has eight bits for it, the same as tagStruct.
+const inlineNPtrMax = 0xFF
+
+// inlineOK reports whether a list of this struct can keep its elements
+// inside the data block. An extern struct is a view onto C memory with
+// its own layout and is never copied, so it stays out.
+func (s *structLayout) inlineOK() bool {
+	return !s.view && s.nptr <= inlineNPtrMax
+}
+
 // collectStructs resolves every declared struct into a layout.
 //
 // It runs before signatures are collected, because a function can take
