@@ -3,6 +3,18 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.13.0
+
+**AVX, AVX2 and FMA in `asm`.** An `asm` block now takes the VEX
+instructions on xmm and ymm registers: AVX float arithmetic, shuffles,
+blends, compares, conversions and broadcasts, the AVX2 integer set and
+the FMA family. A block that names a ymm register ends with
+`vzeroupper`. `cpu.avx2()` and `cpu.fma()` tell whether the machine can
+run them. A memory operand may be written `[base+index+disp]` without
+a scale. Fixed: a function whose first parameter was captured by a
+closure, or was an array over 16 words, could read the parameters
+after it as garbage or crash.
+
 ## 2.12.0
 
 **Arrays in lists, maps and nullables.** `[N]T` can now be an element
