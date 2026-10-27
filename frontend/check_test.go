@@ -160,15 +160,28 @@ let p = P{pos: [1.5, 2.5, 3.5]}
 p.pos[1] = 2.0
 let _f = first(a)
 for x in z { let _y = x }
+let xs: [][2]int = [[1, 2], [3, 4]]
+let b: [2]int = [7, 8]
+let ys = [b]
+let m: {int: [2]int} = {1: b}
+let n: ?[2]int = nil
+n = b
+let ms = {"k": b}
+let r: [2]int! = b
+let r2: [2]int! = [1, 2]
+let n2: ?[2]int = [3, 4]
+let xs2: [][2]int = [[1, 2], [3, 4]]
+let nested: {str: [][2]int} = {}
+let ln: []?[2]int = [nil, b]
+for q in xs { let _q: [2]int = q }
 `
 	if errs := checked(t, ok); len(errs) != 0 {
 		t.Errorf("valid arrays rejected: %v", errs)
 	}
 	for src, want := range map[string]string{
 		"let a: [2]int = [1, 2, 3]":    "holds 2 elements",
-		"let xs: [][2]int = []":        "cannot be inside a list",
+		"let m: {[2]int: int} = {}":    "a map key must be",
 		"let a: [2]str":                "is not an array type",
-		"let a: [2]int\nlet b = [a]":   "cannot be inside a list",
 		"let a: [2]int\nlet b = a + 1": "needs numbers",
 	} {
 		errs := strings.Join(checked(t, src), "\n")

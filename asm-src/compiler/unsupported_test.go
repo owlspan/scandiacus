@@ -70,3 +70,38 @@ func TestUnsupportedIsAnError(t *testing.T) {
 		})
 	}
 }
+
+// TestArrayListRefusals checks what a list of arrays still cannot do. An
+// array is an address in the backend, so sort, contains and indexOf
+// would have compared addresses and answered wrongly without a word;
+// each has to say so instead.
+func TestArrayListRefusals(t *testing.T) {
+	scandiacus := asmBackend(t)
+	dir := t.TempDir()
+	head := "let xs: [][2]int = [[1, 2], [3, 4]]\nlet a: [2]int = [1, 2]\n"
+	cases := map[string][2]string{
+		"sort":      {"print(sort(xs))\n", "sort needs a list of numbers or strings"},
+		"contains":  {"print(contains(xs, a))\n", "contains needs a list of numbers, strings or bools"},
+		"indexOf":   {"print(indexOf(xs, a))\n", "indexOf needs a list of numbers, strings or bools"},
+		"sum":       {"print(sum(xs))\n", "sum needs a list of numbers"},
+		"map key":   {"let m: {[2]int: int} = {}\nprint(len(m))\n", "a map key must be"},
+		"key value": {"let m = {a: 1}\nprint(len(m))\n", "a map key must be"},
+	}
+	for name, c := range cases {
+		name, c := name, c
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			p := filepath.Join(dir, strings.ReplaceAll(name, " ", "_")+".scd")
+			if err := os.WriteFile(p, []byte(head+c[0]), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out, err := exec.Command(scandiacus, "run", p).CombinedOutput()
+			if err == nil {
+				t.Fatalf("expected a compile error, but it compiled and printed:\n%s", out)
+			}
+			if !strings.Contains(string(out), c[1]) {
+				t.Fatalf("want an error containing %q, got:\n%s", c[1], out)
+			}
+		})
+	}
+}

@@ -91,6 +91,9 @@ const (
 // inline struct with pointer fields is a block of its own kind, and
 // allocObj cannot describe it: build those with allocElems.
 func elemTag(t vty) int64 {
+	if isArray(t.elemType()) {
+		return tagWords // C scalars in place, never a collector pointer
+	}
 	if inlineStrideOf(t.elemType()) > 0 {
 		if inlineNPtrOf(t.elemType()) > 0 {
 			return tagStructs
@@ -316,6 +319,9 @@ func (l *lowerer) listPushSlow(t vty) (string, vty) {
 	switch {
 	case width == 1:
 		name, valTy, elem = "__listpush_b", vBool, vBool
+	case isArray(t.elemType()):
+		// The value is the address of the array being copied in.
+		name, elem = fmt.Sprintf("__listpush_a%d", width), t.elemType()
 	case tag == tagPtrs:
 		name, valTy = "__listpush_p", vStr
 	case inlineStrideOf(t.elemType()) > 0:
@@ -373,7 +379,7 @@ func (l *lowerer) pushLoop(st *ForStmt, start, end Reg) bool {
 	}
 	list := l.expr(c.Args[0])
 	t := l.regTy[list]
-	if t.k != kList || elemTag(t) == tagPtrs {
+	if t.k != kList || elemTag(t) == tagPtrs || isArray(t.elemType()) {
 		return false
 	}
 	v := l.rvalueAs(c.Args[1], t.elemType())
@@ -471,7 +477,7 @@ func (l *lowerer) listFill(list Reg, vals []Reg) {
 			l.elemStore(data, l.constant(int64(i)), v, elem)
 			continue
 		}
-		if elemWidth(l.regTy[list]) == 1 {
+		if elemWidth(l.regTy[list]) == 1 || isArray(elem) {
 			l.elemStore(data, l.constant(int64(i)), v, elem)
 			continue
 		}
@@ -500,8 +506,13 @@ func (l *lowerer) listSet(list, idx, val Reg) {
 // elemWidth is the bytes one element takes in a list's element block.
 // A bool takes one, which makes a []bool an eighth of the memory and
 // lets a sieve over fifty million of them fit the cache far better;
-// everything else takes a word.
+// everything else takes a word. An array takes its own bytes, in place,
+// as a struct without pointer fields does.
 func elemWidth(t vty) int64 {
+	if isArray(t.elemType()) {
+		_, _, _, bytes := arrayShape(t.elemType())
+		return bytes
+	}
 	if s := inlineStrideOf(t.elemType()); s > 0 {
 		return s
 	}
@@ -512,8 +523,14 @@ func elemWidth(t vty) int64 {
 }
 
 // elemLoad and elemStore read and write element idx of an element
-// block, a word or, for a bool, a byte.
+// block, a word or, for a bool, a byte. An array element is read as its
+// address and written by copying its bytes in, which is how every other
+// place that holds an array treats one.
 func (l *lowerer) elemLoad(data, idx Reg, elem vty) Reg {
+	if isArray(elem) {
+		_, _, _, bytes := arrayShape(elem)
+		return l.inlineAddr(data, idx, bytes, elem) // the array itself, in place
+	}
 	if stride := inlineStrideOf(elem); stride > 0 {
 		return l.inlineAddr(data, idx, stride, elem) // the element itself, in place
 	}
@@ -532,6 +549,11 @@ func (l *lowerer) elemLoad(data, idx Reg, elem vty) Reg {
 }
 
 func (l *lowerer) elemStore(data, idx, v Reg, elem vty) {
+	if isArray(elem) {
+		_, _, _, bytes := arrayShape(elem)
+		l.arrayCopy(l.inlineAddr(data, idx, bytes, elem), v, elem)
+		return
+	}
 	if stride := inlineStrideOf(elem); stride > 0 {
 		l.copyWords(l.inlineAddr(data, idx, stride, elem), v, stride)
 		return
@@ -927,6 +949,8 @@ func (l *lowerer) forList(st *ForStmt) {
 			l.elemRefs = map[int64]elemRef{}
 		}
 		l.elemRefs[varSlot] = elemRef{list: listSlot, idx: iSlot, t: t}
+	} else if isArray(t.elemType()) {
+		l.bindElemTrip(varSlot, l.listGet(list, i, t.elemType()), t.elemType(), varName)
 	} else {
 		l.bindTrip(varSlot, l.listGet(list, i, t.elemType()), varName)
 		if inlineStrideOf(t.elemType()) > 0 {

@@ -269,6 +269,11 @@ func (l *lowerer) mapGrow(m Reg, t vty) {
 // mapSetBody inserts or overwrites.
 func (l *lowerer) mapSetBody(m, key, val Reg, t vty) {
 	kt := keyVty(t)
+	if isArray(t.elemType()) {
+		// The slot holds the address of a block the map owns, a copy of
+		// the array stored: the caller's goes on being written to.
+		val = l.arrayReturn(val, t.elemType())
+	}
 	slot := l.temp(vInt)
 	l.setSlot(slot, l.mapFind(m, key, t))
 	e := l.wordAt(l.field(m, mapIdxOff, vRawPtr), l.load(slot, vInt), vInt)

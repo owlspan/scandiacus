@@ -16,6 +16,9 @@ package main
 //
 // Two things follow from that shape, and both are the reason for it.
 //
+// The value word of a T! where T is an array holds the address of a
+// block of its own, made by resOk.
+//
 // The layout does not depend on T. So `?` can propagate a failure out
 // of a str! and into an int! by handing back the very object it was
 // given, rather than unpacking and rebuilding one. A failure crosses
@@ -48,7 +51,8 @@ const (
 
 // resTag picks the tag for a result carrying t.
 func resTag(t vty) int64 {
-	if t.inner().holdsPointer() {
+	// An array's word is the address of a block of its own.
+	if t.inner().holdsPointer() || isArray(t.inner()) {
 		return tagResPtr
 	}
 	return tagRes
@@ -70,6 +74,13 @@ func (l *lowerer) resBox(err, val Reg, t vty) Reg {
 
 // resOk wraps a plain value as the successful T!.
 func (l *lowerer) resOk(val Reg, t vty) Reg {
+	if isArray(t.inner()) {
+		// The result owns a copy: the array passed in is the caller's
+		// to go on writing to.
+		own := l.arrayStorage(t.inner(), true)
+		l.arrayCopy(own, val, t.inner())
+		val = own
+	}
 	return l.resBox(l.constant(0), val, t)
 }
 

@@ -43,6 +43,11 @@ func (l *lowerer) requireNonEmpty(list Reg, msg string) {
 // A list of structs or of containers has no equality here, the same as
 // on the Go backend, where slices.Index needs a comparable element.
 func (l *lowerer) equalValues(n Node, a, b Reg, t vty, what string) (Reg, bool) {
+	if isArray(t) {
+		// An array is an address here, which would compare as a number.
+		l.errorAt(n, "%s needs a list of numbers, strings or bools, not %s", what, t)
+		return NoReg, false
+	}
 	switch t.k {
 	case kStr:
 		return l.strEq(a, b), true
@@ -59,6 +64,9 @@ func (l *lowerer) equalValues(n Node, a, b Reg, t vty, what string) (Reg, bool) 
 // separate from lessValues because asking the question must not emit
 // any code.
 func orderable(t vty) bool {
+	if isArray(t) {
+		return false
+	}
 	switch t.k {
 	case kInt, kFloat, kStr:
 		return true
@@ -196,7 +204,16 @@ func (l *lowerer) listBuiltin(c *Call, name string) (Reg, bool) {
 			l.errorAt(c, "insert takes 3 arguments, got %d", len(c.Args))
 			return l.junk(), true
 		}
-		l.listInsert(list, t, l.expr(c.Args[1]), l.rvalueAs(c.Args[2], elem))
+		at := l.expr(c.Args[1])
+		v := l.rvalueAs(c.Args[2], elem)
+		if isArray(elem) {
+			// The value may be an element of this very list, which the
+			// shift below would overwrite before it was stored.
+			own := l.arrayStorage(elem, false)
+			l.arrayCopy(own, v, elem)
+			v = own
+		}
+		l.listInsert(list, t, at, v)
 		return l.void(), true
 
 	case "removeAt":
@@ -220,7 +237,7 @@ func (l *lowerer) lastOf(list Reg, elem vty) Reg {
 
 func (l *lowerer) listSum(c *Call, list Reg, t vty) Reg {
 	elem := t.elemType()
-	if elem.k != kInt && elem.k != kFloat {
+	if (elem.k != kInt && elem.k != kFloat) || isArray(elem) {
 		l.errorAt(c, "sum needs a list of numbers, not %s", t)
 		return l.junk()
 	}
@@ -434,6 +451,11 @@ func (l *lowerer) listRemoveAt(list Reg, t vty, at Reg) Reg {
 // same as slices.Index.
 func (l *lowerer) listSearch(c *Call, list Reg, t vty, name string) Reg {
 	elem := t.elemType()
+	if isArray(elem) {
+		// Said before the loop is half built; see equalValues.
+		l.errorAt(c, "%s needs a list of numbers, strings or bools, not %s", name, elem)
+		return l.junk()
+	}
 	want := l.rvalueAs(c.Args[1], elem)
 
 	found := l.temp(vInt)

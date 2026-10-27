@@ -98,9 +98,16 @@ func (l *lowerer) nodeKind(node Reg) Reg {
 // the wrong kind yields the zero value rather than an error, matching
 // what Unmarshal does with a mismatched field.
 func (l *lowerer) fromJSON(n Node, node Reg, t vty) (Reg, bool) {
+	if t.null && !t.res && isArray(t.notNull()) {
+		return l.jsonToNullArray(n, node, t)
+	}
 	if t.res || t.null {
 		l.errorAt(n, "json.decode cannot produce a %s on the assembly backend yet", t)
 		return NoReg, false
+	}
+
+	if isArray(t) {
+		return l.jsonToArray(n, node, t)
 	}
 
 	switch t.k {
@@ -184,6 +191,66 @@ func (l *lowerer) jsonToList(n Node, node Reg, t vty) (Reg, bool) {
 	return out, true
 }
 
+// jsonToArray fills an array from a JSON array, the way Unmarshal fills
+// a Go array: the first N elements are taken, each converted as a scalar
+// of that type is, extra ones are dropped, and a missing one or a node
+// that is not an array leaves zero. The result is in this function's
+// frame; whatever holds it next copies it.
+//
+// An integer is stored at the element's width, so a number too big for a
+// u8 wraps, as a store of an int into a u8 element does; an f32 is
+// rounded to single by the store.
+func (l *lowerer) jsonToArray(n Node, node Reg, t vty) (Reg, bool) {
+	f, count, size, _ := arrayShape(t)
+	out := l.arrayStorage(t, false)
+	l.arrayZero(out, t)
+
+	skip := l.newLabel()
+	l.emit(Instr{Op: OpJumpNot,
+		A:   l.compare(OpEq, l.nodeKind(node), l.constant(jsonArray)),
+		Dst: NoReg, Imm: skip})
+
+	items := l.nodeField(node, jnItems, vNodeList)
+	failed := false
+	l.eachElement(items, vNodeList, func(i, item Reg) {
+		past := l.newLabel()
+		l.jumpNot(l.compare(OpLt, i, l.constant(count)), past)
+		v, ok := l.fromJSON(n, item, f.t)
+		if !ok {
+			failed = true
+			return
+		}
+		l.viewWrite(n, l.ptrElemAddr(out, i, size), f, v)
+		l.mark(past)
+	})
+	if failed {
+		return NoReg, false
+	}
+
+	l.mark(skip)
+	return out, true
+}
+
+// jsonToNullArray is the same for a ?[N]T: a JSON array fills one, and
+// null, a missing member or anything else is nil.
+func (l *lowerer) jsonToNullArray(n Node, node Reg, t vty) (Reg, bool) {
+	out := l.temp(t)
+	l.emit(Instr{Op: OpStore, A: l.nilValue(t), Dst: NoReg, Imm: out})
+
+	done := l.newLabel()
+	l.emit(Instr{Op: OpJumpNot,
+		A:   l.compare(OpEq, l.nodeKind(node), l.constant(jsonArray)),
+		Dst: NoReg, Imm: done})
+	arr, ok := l.jsonToArray(n, node, t.notNull())
+	if !ok {
+		return NoReg, false
+	}
+	l.emit(Instr{Op: OpStore, A: l.nullBox(arr, t), Dst: NoReg, Imm: out})
+
+	l.mark(done)
+	return l.load(out, t), true
+}
+
 func (l *lowerer) jsonToMap(n Node, node Reg, t vty) (Reg, bool) {
 	if t.key != kStr {
 		l.errorAt(n, "a JSON object has string keys, so it cannot decode into %s", t)
@@ -227,16 +294,12 @@ func (l *lowerer) jsonToStruct(n Node, node Reg, t vty) (Reg, bool) {
 		// Every field is written, whether the document mentioned it or
 		// not: a struct that leaves one uninitialised is a struct with a
 		// wild pointer in it.
-		if isArray(f.t) {
-			l.errorAt(n, "field %q of %s is an array, which json.decode cannot fill yet", f.name, lay.name)
-			return NoReg, false
-		}
 		found := l.jsonMember(node, f.name)
 		v, good := l.fromJSON(n, found, f.t)
 		if !good {
 			return NoReg, false
 		}
-		l.emit(Instr{Op: OpStoreMem, A: obj, B: v, Imm: f.off, Comment: "." + f.name})
+		l.storeField(obj, f, v)
 	}
 	return obj, true
 }

@@ -22,6 +22,10 @@ import "strings"
 //	  a closure captures      the frame
 //	a returned value        a fresh block, copied into the caller's frame
 //	                        as soon as the call returns
+//	a list element          inline in the list's element block, one
+//	                        after another, as a struct's fields are
+//	a map value, or the     a block of its own that the container
+//	  inside of a ?T or T!    points to, made when the array is stored
 //
 // A local array therefore costs no allocation, and neither does one in
 // a struct. Storage is rounded up to whole words, so copying and zeroing
@@ -221,6 +225,21 @@ func (l *lowerer) writeArray(n Node, a Reg, t vty) {
 	l.jump(top)
 	l.mark(done)
 	l.writeLit("]")
+}
+
+// bindElemTrip binds a loop variable to the element at v, which is an
+// array when it lives in a list's or a map's storage. The variable gets
+// a copy, as Go's range does: the body may push onto the list, which
+// moves the block, and a write to the variable is not a write to the
+// container. A variable a closure captured is given a block of its own
+// by bindTrip.
+func (l *lowerer) bindElemTrip(slot int64, v Reg, t vty, name string) {
+	if isArray(t) && !l.boxed[slot] {
+		own := l.arrayStorage(t, false)
+		l.arrayCopy(own, v, t)
+		v = own
+	}
+	l.bindTrip(slot, v, name)
 }
 
 // forArray lowers `for x in a` and `for i, x in a`. The array is read

@@ -108,10 +108,15 @@ func (l *lowerer) inlineAddr(data, idx Reg, stride int64, elem vty) Reg {
 	return addr
 }
 
-// freshCopy is a heap copy of the struct at v, for a value that must
-// outlive the slot it was read from: what pop and removeAt hand back,
-// and what first and last return.
+// freshCopy is a heap copy of the struct (or array) at v, for a value
+// that must outlive the slot it was read from: what pop and removeAt
+// hand back, and what first and last return.
 func (l *lowerer) freshCopy(v Reg, t vty) Reg {
+	if isArray(t) {
+		// An array element lives in the list's block like a struct's
+		// fields do, and has to leave it the same way.
+		return l.arrayReturn(v, t)
+	}
 	stride := inlineStrideOf(t)
 	if stride == 0 {
 		return v

@@ -446,11 +446,44 @@ print(mem.str(name))
 ```
 
 The element is a C scalar: `i8` to `u64`, `f32`, `f64`, `bool`, `ptr`,
-or `int` and `float` for their 64-bit forms. An array cannot be an
-element of a list or a map, or be nullable, yet; it can be a variable,
-a parameter, a result, a struct field or a field of an enum variant.
-`json.encode` writes one as a JSON array; `json.decode` cannot fill one
-yet.
+or `int` and `float` for their 64-bit forms. An array can be a
+variable, a parameter, a result, a struct field or a field of an enum
+variant, and also an element of a list, a value of a map, or the
+inside of a nullable or a result.
+
+```scandiacus
+let rows: [][3]int = [[1, 2, 3], [4, 5, 6]]
+push(rows, [7, 8, 9])
+rows[0][2] += 10                   // changes the list in place
+for r in rows {
+    r[0] = 0                       // r is a copy: the list is unchanged
+}
+let m: {str: [2]f64} = {"a": [1.5, 2.5]}
+let found: ?[2]f64 = nil
+let box: [3]int! = json.decode("[1, 2, 3]")
+```
+
+Whatever holds an array holds its own copy, so changing the original
+afterwards does not reach it. A list keeps the elements' bytes inline,
+one after another, so `rows[i][j]` is one load and a list of a million
+`[4]f64` is 32 MB with no pointer per element. A map value, a nullable
+and a result hold the array in a block of their own, so each store
+allocates. `for r in rows` binds `r` to a copy of the element, as Go's
+`range` does, so the body can push onto `rows` without disturbing it.
+`rows[i]` itself is the element: it can be indexed and assigned into,
+and binding it, passing it or pushing it copies. A missing map key
+reads as an array of zeros. `contains`, `indexOf`, `sort` and `sum`
+need numbers, strings or bools, so they refuse a list of arrays;
+`==` on two lists, maps or nullables compares the arrays element by
+element. An array cannot be a map key.
+
+`json.encode` writes an array as a JSON array. `json.decode` fills one
+the way Go's `json.Unmarshal` fills a Go array: the first N elements
+are taken, extra ones are dropped, and a missing element, or a value
+that is not a JSON array, leaves zeros. A `?[N]T` takes `null`, or
+anything that is not an array, as `nil`. An integer too big for the
+element wraps to its width (300 in a `[3]u8` reads back as 44) and an
+`f32` element is rounded to single.
 
 ### Nullable types
 
@@ -4639,10 +4672,10 @@ Honest list of what v2.11.0 does not do yet.
 
 **The language**
 
-- **An array holds C scalars only, and cannot sit in a list or a
-  map.** `[N]T` takes `i8` to `u64`, `f32`, `f64`, `bool` and `ptr`; an
-  array of structs or of arrays, and `[][N]T`, are not supported yet.
-  A list of structs that each hold an array field works.
+- **An array holds C scalars only.** `[N]T` takes `i8` to `u64`,
+  `f32`, `f64`, `bool` and `ptr`; an array of structs or of arrays is
+  not supported yet. A list or a map of arrays, and a list of structs
+  that each hold an array field, work.
 - **`asm` takes a fixed set of instructions, and no AVX.** What is not
   in it is written with `.byte`. Values cross through memory, a load
   and a store each, which matters only in the tightest loop.

@@ -17,7 +17,9 @@ package frontend
 //
 // T is a C scalar: i8 to u64, f32, f64, bool or ptr, and int and float
 // as i64 and f64. An array of structs, of arrays or of anything holding
-// a pointer is not one yet, and neither is a list or map of arrays.
+// a pointer is not one yet. An array can itself be the element of a list
+// or a map, or sit inside a nullable or a result; the backend keeps its
+// bytes inline in a list and in a block of their own elsewhere.
 
 import (
 	"strconv"
@@ -82,39 +84,6 @@ func (c *Checker) arrayLit(x *ListLit, want *Type) *Type {
 	return want
 }
 
-// arrayInside names the kind of type holding an array within t, if
-// any. An element of a list or a map is reached through a pointer the
-// container owns, and an array has no pointer of its own to give it.
-func arrayInside(t *Type) string {
-	var walk func(t *Type, in string) string
-	walk = func(t *Type, in string) string {
-		if t == nil {
-			return ""
-		}
-		switch t.Kind {
-		case KArray:
-			return in
-		case KList:
-			return walk(t.Elem, "a list")
-		case KMap:
-			return walk(t.Elem, "a map")
-		case KNullable:
-			return walk(t.Elem, "a nullable")
-		case KResult:
-			return walk(t.Elem, "a result")
-		case KFunc:
-			for _, p := range t.Params {
-				if bad := walk(p, ""); bad != "" {
-					return bad
-				}
-			}
-			return walk(t.Elem, "")
-		}
-		return ""
-	}
-	return walk(t, "")
-}
-
 // arrayElemName is how an element type is written back: int and float
 // rather than i64 and f64, as a program would have spelled them.
 func arrayElemName(name string) string {
@@ -132,4 +101,24 @@ func arrayElemName(name string) string {
 func isArraySpelling(text string) bool {
 	i := strings.Index(text, "[")
 	return i >= 0 && i+1 < len(text) && text[i+1] >= '0' && text[i+1] <= '9'
+}
+
+// isArrayKeySpelling reports whether a type as written has an array
+// where a map's key goes, as in {[2]int: str}. ParseType gives up on
+// it, and the plainer message here says what is wrong rather than
+// blaming the array's own syntax.
+func isArrayKeySpelling(text string) bool {
+	for i := 0; i < len(text); i++ {
+		if text[i] != '{' {
+			continue
+		}
+		j := i + 1
+		for j < len(text) && text[j] == ' ' {
+			j++
+		}
+		if j+1 < len(text) && text[j] == '[' && text[j+1] >= '0' && text[j+1] <= '9' {
+			return true
+		}
+	}
+	return false
 }

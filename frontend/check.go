@@ -337,6 +337,11 @@ func (c *Checker) resolveAnnotation(text string, n Node) *Type {
 		return nil
 	}
 	t := ParseType(text)
+	if t == nil && isArrayKeySpelling(text) {
+		c.ErrorAt(n, "a map key must be str, int, a fixed-width integer below u64, a plain enum or a struct of those, "+
+			"not an array: %q", text)
+		return Unknown
+	}
 	if t == nil && isArraySpelling(text) {
 		c.ErrorAt(n, "%q is not an array type: the length is a whole number from 1 up, and the "+
 			"element i8 to u64, f32, f64, int, float, bool or ptr", text)
@@ -347,10 +352,6 @@ func (c *Checker) resolveAnnotation(text string, n Node) *Type {
 		return Unknown
 	}
 	t = c.enumTypes(t)
-	if inside := arrayInside(t); inside != "" {
-		c.ErrorAt(n, "an array cannot be inside %s yet - it can be a variable, a parameter, a result or a struct field", inside)
-		return Unknown
-	}
 	if bad := c.badMapKey(t); bad != nil {
 		c.ErrorAt(n, "a map key must be str, int, a fixed-width integer below u64, a plain enum or a struct of those, got %s", bad)
 		return Unknown
@@ -1075,6 +1076,11 @@ func (c *Checker) exprWant(e Expr, want *Type) *Type {
 		if want.Kind == KArray {
 			return c.arrayLit(x, want)
 		}
+		// [1, 2] where a ?[2]int or a [2]int! is wanted is the array,
+		// widened by the coerce that follows.
+		if (want.Kind == KNullable || want.Kind == KResult) && want.Elem != nil && want.Elem.Kind == KArray {
+			return c.arrayLit(x, want.Elem)
+		}
 		if want.Kind != KList {
 			break
 		}
@@ -1560,12 +1566,6 @@ func (c *Checker) listLit(x *ListLit) *Type {
 	if elem.Kind == KInt && IsUntypedInt(x.Elems[0]) && c.anyFloat(x.Elems) {
 		elem = Float
 	}
-	if elem.Kind == KArray {
-		c.ErrorAt(x, "an array cannot be inside a list yet - it can be a variable, a parameter, a result or a struct field")
-		x.T = Unknown
-		return Unknown
-	}
-
 	for i := range x.Elems {
 		got := c.exprWant(x.Elems[i], elem)
 		if c.coerce(&x.Elems[i], elem, got) {
@@ -1608,12 +1608,6 @@ func (c *Checker) mapLit(x *MapLit) *Type {
 		keyT = Unknown
 	}
 	valT := c.expr(x.Vals[0])
-	if valT.Kind == KArray {
-		c.ErrorAt(x, "an array cannot be inside a map yet - it can be a variable, a parameter, a result or a struct field")
-		x.T = Unknown
-		return Unknown
-	}
-
 	for i := range x.Keys {
 		if got := c.expr(x.Keys[i]); !keyT.Accepts(got) {
 			c.ErrorAt(x.Keys[i], "this map has %s keys, but key %d is %s", keyT, i+1, got)

@@ -1395,6 +1395,8 @@ func (l *lowerer) endFunction(ret vty) {
 		inner := ret.inner()
 		var zero Reg
 		switch {
+		case isArray(inner):
+			zero = l.zeroArray(inner)
 		case inner.k == kVoid || inner.null:
 			zero = l.constant(0)
 		case inner.k == kFloat:
@@ -1886,6 +1888,7 @@ func (l *lowerer) stmt(s Stmt) {
 
 func (l *lowerer) assign(st *AssignStmt) {
 	if idx, isIndex := st.Target.(*Index); isIndex {
+		l.separateNullable(idx)
 		// The collection and the index are each lowered once, so
 		// `counts[next()] += 1` does not advance next() twice - a
 		// compound assignment reads and writes the same place, and
@@ -3799,6 +3802,14 @@ func (l *lowerer) pushInto(c *Call, list Reg, arg Expr) bool {
 	if !l.regTy[v].eq(l.regTy[list].elemType()) {
 		l.errorAt(c, "cannot push %s into %s", l.regTy[v], l.regTy[list])
 		return false
+	}
+	if _, inList := arg.(*Index); inList && l.gcOff && isArray(l.regTy[v]) {
+		// An element of the list being pushed to is an address in the
+		// block that a growing push frees at once, with no collector to
+		// leave it standing until the copy is made.
+		own := l.arrayStorage(l.regTy[v], false)
+		l.arrayCopy(own, v, l.regTy[v])
+		v = own
 	}
 	l.listPush(list, v)
 	return true

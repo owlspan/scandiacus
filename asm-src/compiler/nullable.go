@@ -9,6 +9,8 @@ package main
 // and a nullable stays one word wherever it is held. That keeps the IR
 // three-address and needs nothing of the calling convention.
 //
+// An array is the one exception to the box: see nullBox.
+//
 // A str, a list, a map and a struct are already pointers, so a
 // null-pointer representation would cost nothing for them. It is not
 // worth it: `?int` has no spare value to mean nil, so those would need
@@ -28,7 +30,19 @@ func (l *lowerer) nilValue(t vty) Reg {
 }
 
 // nullBox wraps a value so it can be held as a ?T.
+//
+// An array has no word to put in a one-word box, and a box holding its
+// address would only add a hop, so the box is the array: a block of its
+// own with a copy of the bytes. It has to be a copy, since an array is a
+// value and the one passed in goes on being written to; it is the same
+// block that a map value or a result's value is.
 func (l *lowerer) nullBox(v Reg, t vty) Reg {
+	if isArray(t.notNull()) {
+		box := l.arrayStorage(t.notNull(), true)
+		l.arrayCopy(box, v, t.notNull())
+		l.regTy[box] = t
+		return box
+	}
 	box := l.allocObj(l.constant(wordSize), l.nullTag(t))
 	l.emit(Instr{Op: OpStoreMem, A: box, B: v, Imm: 0})
 	l.regTy[box] = t
@@ -51,6 +65,9 @@ func (l *lowerer) nullTag(t vty) int64 {
 // proved this cannot be nil. An unmarked use never reaches this, because
 // the checker rejects reading a ?T without proving it first.
 func (l *lowerer) nullValue(box Reg, t vty) Reg {
+	if isArray(t.notNull()) {
+		return l.retype(box, t.notNull()) // the box is the array
+	}
 	d := l.newReg()
 	l.regTy[d] = t.notNull()
 	l.emit(Instr{Op: OpLoadMem, Dst: d, A: box, B: NoReg, Imm: 0})
@@ -162,4 +179,42 @@ func (l *lowerer) findExpr(c *Call) Reg {
 
 	l.mark(done)
 	return l.load(out, want)
+}
+
+// separateNullable runs before `n[i] = v` where n is a ?[N]T the checker
+// narrowed. The write goes into the block n holds, and a ?T is passed
+// around as that one word, so every other holder of the same block would
+// see it change; an array is a value. n is first given a block of its
+// own, which costs one copy, and only on a write through a nullable.
+func (l *lowerer) separateNullable(idx *Index) {
+	id, ok := idx.X.(*Ident)
+	if !ok || !id.Narrowed {
+		return
+	}
+	t, ok := l.varType(id.Name)
+	if !ok || !t.null || t.res || !isArray(t.notNull()) {
+		return
+	}
+	at := ParseType(t.String())
+	if at == nil {
+		return
+	}
+	fresh := &AssignStmt{Span: id.Span, Target: &Ident{Span: id.Span, Name: id.Name}, Op: ASSIGN,
+		Value: &Widen{Span: id.Span, X: id, T: at}}
+	l.assign(fresh)
+}
+
+// varType is the type a name was declared with, whether it is a local,
+// a global or a variable the enclosing function captured.
+func (l *lowerer) varType(name string) (vty, bool) {
+	if slot, ok := l.lookup(name); ok {
+		return l.slotTy[slot], true
+	}
+	if t, ok := l.captureTy[name]; ok {
+		return t, true
+	}
+	if g, ok := l.globals[name]; ok {
+		return l.globalTy[g], true
+	}
+	return vVoid, false
 }

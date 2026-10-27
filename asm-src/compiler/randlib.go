@@ -122,6 +122,16 @@ func (l *lowerer) shuffled(src Reg) Reg {
 	elem := t.elemType()
 	a := l.listGet(out, cur, elem)
 	b := l.listGet(out, j, elem)
+	if isArray(elem) {
+		// a is the address of the slot b is about to be copied into.
+		held := l.arrayStorage(elem, false)
+		l.arrayCopy(held, a, elem)
+		a = held
+	} else if inlineStrideOf(elem) > 0 {
+		// The same for a struct stored inline: a is its element's
+		// address, not an object of its own.
+		a = l.freshCopy(a, elem)
+	}
 	l.listSet(out, cur, b)
 	l.listSet(out, j, a)
 

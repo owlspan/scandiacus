@@ -46,7 +46,8 @@ func keyTag(t vty) int64 {
 }
 
 func valTag(t vty) int64 {
-	if t.elemType().holdsPointer() {
+	// A value that is an array is the address of a block of its own.
+	if t.elemType().holdsPointer() || isArray(t.elemType()) {
 		return tagPtrs
 	}
 	return tagWords
@@ -144,7 +145,11 @@ func (l *lowerer) mapGetBody(n Node, m, key Reg, t vty) Reg {
 	// pointer. Once a map can hold a list, reading a missing key and
 	// then asking its length has to answer 0, not fault.
 	out := l.temp(t.elemType())
-	l.emit(Instr{Op: OpStore, A: l.zeroOf(n, t.elemType(), 0), Dst: NoReg, Imm: out})
+	zero := l.constant(0) // an array's is made below, only when missing
+	if !isArray(t.elemType()) {
+		zero = l.zeroOf(n, t.elemType(), 0)
+	}
+	l.emit(Instr{Op: OpStore, A: zero, Dst: NoReg, Imm: out})
 
 	done := l.newLabel()
 	hit := l.newReg()
@@ -166,6 +171,18 @@ func (l *lowerer) mapGetBody(n Node, m, key Reg, t vty) Reg {
 	l.emit(Instr{Op: OpStore, A: v, Dst: NoReg, Imm: out})
 
 	l.mark(done)
+	if isArray(t.elemType()) {
+		// A stored array is always a block, so 0 means the key was
+		// missing. The zero array is a block of its own, since this
+		// function's frame is gone by the time the caller reads it, and
+		// it is made only here so that a hit allocates nothing.
+		have := l.newLabel()
+		l.jumpNot(l.compare(OpEq, l.load(out, vInt), l.constant(0)), have)
+		blk := l.arrayStorage(t.elemType(), true)
+		l.arrayZero(blk, t.elemType())
+		l.emit(Instr{Op: OpStore, A: blk, Dst: NoReg, Imm: out})
+		l.mark(have)
+	}
 
 	d := l.newReg()
 	l.regTy[d] = t.elemType()
@@ -404,7 +421,7 @@ func (l *lowerer) forMap(st *ForStmt, m Reg, t vty) {
 	}
 	l.bindTrip(keySlot, key, st.Var)
 	if valSlot >= 0 {
-		l.bindTrip(valSlot, l.cellAt(cur, mapValsOff, i, t.elemType()), st.Var2)
+		l.bindElemTrip(valSlot, l.cellAt(cur, mapValsOff, i, t.elemType()), t.elemType(), st.Var2)
 	}
 
 	l.loops = append(l.loops, loopTarget{brk: done, cont: cont, defers: len(l.defers)})
