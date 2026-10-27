@@ -204,12 +204,12 @@ func (l *lowerer) liftFunc(fd *FnDecl, t vty, captured []capture) string {
 	l.appendNames = appendTargets(fd.Body.Stmts)
 	defer func() { l.boxNames, l.appendNames = savedBoxNames, savedAppend }()
 
+	ds := l.readParams(fd, params, inner)
 	for i, pa := range fd.Params {
-		// Read before boxed, for the reason in ir.go's function().
-		d := l.newReg()
-		l.regTy[d] = params[i]
-		l.emit(Instr{Op: OpParam, Dst: d, A: NoReg, B: NoReg, Imm: int64(i),
-			Comment: pa.Name})
+		d := ds[i]
+		if d == NoReg {
+			d = l.readParam(i, pa.Name, params[i])
+		}
 		slot := l.declareMaybeBoxed(pa.Name, params[i], inner[pa.Name])
 		if pa.Addressed {
 			l.keepInMemory(fd, pa.Name, slot)

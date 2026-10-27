@@ -1300,17 +1300,12 @@ func (l *lowerer) function(fd *FnDecl) {
 	// Parameters arrive in registers and are immediately written to
 	// slots, like every other value. The allocator will hoist the ones
 	// worth keeping in registers; doing it here would be guessing.
+	ds := l.readParams(fd, s.params, l.boxNames)
 	for i, pa := range fd.Params {
-		// The parameter is read into a slot before anything else,
-		// because boxing allocates and an allocation is a call - and a
-		// call clobbers the very registers the arguments arrived in.
-		// Getting this backwards does not fail: it reads whatever malloc
-		// left behind, so a captured parameter comes out as a plausible
-		// wrong number.
-		d := l.newReg()
-		l.regTy[d] = s.params[i]
-		l.emit(Instr{Op: OpParam, Dst: d, A: NoReg, B: NoReg, Imm: int64(i),
-			Comment: pa.Name})
+		d := ds[i]
+		if d == NoReg {
+			d = l.readParam(i, pa.Name, s.params[i])
+		}
 		slot := l.declareMaybeBoxed(pa.Name, s.params[i], l.boxNames[pa.Name])
 		if pa.Addressed {
 			l.keepInMemory(fd, pa.Name, slot)
@@ -1340,6 +1335,49 @@ func (l *lowerer) function(fd *FnDecl) {
 
 	l.endFunction(s.ret)
 	l.seal()
+}
+
+// readParam reads incoming parameter i into a register of its own.
+func (l *lowerer) readParam(i int, name string, t vty) Reg {
+	d := l.newReg()
+	l.regTy[d] = t
+	l.emit(Instr{Op: OpParam, Dst: d, A: NoReg, B: NoReg, Imm: int64(i),
+		Comment: name})
+	return d
+}
+
+// readParams reads every parameter up front when setting one up makes
+// a call before a later one is read: boxing allocates and copying a
+// large array calls memmove, and a call clobbers the very registers
+// the arguments arrived in. Getting this backwards does not fail: it
+// reads whatever malloc left behind, so a parameter after a captured
+// one comes out as a plausible wrong number. Otherwise each parameter
+// is read just before its store, which the backend fuses into one move
+// (see the OpParam cases in x64.go), and the result is all NoReg.
+func (l *lowerer) readParams(fd *FnDecl, params []vty, boxed map[string]bool) []Reg {
+	ds := make([]Reg, len(fd.Params))
+	for i := range ds {
+		ds[i] = NoReg
+	}
+	calls := false
+	for i, pa := range fd.Params[:max(len(fd.Params)-1, 0)] {
+		if boxed[pa.Name] {
+			calls = true
+		}
+		if isArray(params[i]) {
+			_, _, _, bytes := arrayShape(params[i])
+			if bytes/wordSize > arrayWordsInline || bytes > arrayFrameMax {
+				calls = true
+			}
+		}
+	}
+	if !calls {
+		return ds
+	}
+	for i, pa := range fd.Params {
+		ds[i] = l.readParam(i, pa.Name, params[i])
+	}
+	return ds
 }
 
 // ownedParam is the value a parameter's slot is given. A boxed struct
