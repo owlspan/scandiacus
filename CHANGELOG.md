@@ -3,6 +3,16 @@
 Each release on GitHub carries the installer and the section below for
 its version.
 
+## 2.12.0
+
+**Arrays in lists, maps and nullables.** `[N]T` can now be an element
+of a list (`[][4]f64`, stored inline), a map value, a nullable
+(`?[3]u8`) or the value of a result, and `json.decode` fills arrays in
+all of those and in struct fields. `for a in xs` binds a copy of each
+element. `sort`, `contains`, `indexOf` and `sum` refuse a list of
+arrays instead of comparing addresses. Fixed: `rand.shuffle` on a list
+of structs could duplicate elements.
+
 ## 2.11.0
 
 **Structs with string and list fields stored inline.** A list of a
