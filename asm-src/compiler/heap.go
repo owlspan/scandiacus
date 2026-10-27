@@ -67,7 +67,8 @@ const (
 	heapCountSlot = heapPagesSlot + 5          // how many pages it holds
 	cpuSlot       = heapPagesSlot + 6          // 0 not asked yet, 1 SSE2 only, 2 AVX2; see vecloop.go
 	ccbSlot       = heapPagesSlot + 7          // closures native code may call, then their adapters; see closurecb.go
-	heapReserved  = ccbSlot + 2*ccbSlots       // the first word after all of these
+	cpuFmaSlot    = ccbSlot + 2*ccbSlots       // 1 when FMA can run too, set along with cpuSlot
+	heapReserved  = cpuFmaSlot + 1             // the first word after all of these
 )
 
 // heapAllocSmall is the fast path of __alloc for a block of total bytes,

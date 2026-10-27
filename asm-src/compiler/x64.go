@@ -2281,15 +2281,19 @@ __vy_bounds:
 		// 1 if not. AVX2 is CPUID leaf 7 EBX bit 5, but the ymm
 		// registers are usable only if the OS saves them on a thread
 		// switch: CPUID leaf 1 ECX bits 27 (OSXSAVE) and 28 (AVX), then
-		// XGETBV says it saves both the xmm and the ymm state. rbx is
-		// saved because cpuid writes it and both ABIs preserve it.
+		// XGETBV says it saves both the xmm and the ymm state. FMA is
+		// leaf 1 ECX bit 12, good under the same OS check, and goes in
+		// a word of its own as 1 or 0. rbx is saved because cpuid
+		// writes it and both ABIs preserve it.
 		fmt.Fprintf(&e.b, `
 __vy_cpufeat:
     push rbx
     mov r8, 1
+    xor r9d, r9d
     mov eax, 1
     xor ecx, ecx
     cpuid
+    mov r10d, ecx
     mov eax, ecx
     and eax, 402653184
     cmp eax, 402653184
@@ -2299,6 +2303,9 @@ __vy_cpufeat:
     and eax, 6
     cmp eax, 6
     jne .Lcpufeat_done
+    and r10d, 4096
+    shr r10d, 12
+    mov r9d, r10d
     mov eax, 7
     xor ecx, ecx
     cpuid
@@ -2308,9 +2315,10 @@ __vy_cpufeat:
 .Lcpufeat_done:
     lea rcx, __globals[rip]
     mov qword ptr [rcx+%d], r8
+    mov qword ptr [rcx+%d], r9
     pop rbx
     ret
-`, cpuSlot*wordSize)
+`, cpuSlot*wordSize, cpuFmaSlot*wordSize)
 	}
 
 	if e.mod.Helpers["must"] || e.mod.Helpers["bounds"] {

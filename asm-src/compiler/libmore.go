@@ -1,8 +1,8 @@
 package main
 
-// url.build and os.run.
+// url.build, os.run and cpu.avx2.
 //
-// Two library functions that are one each away from a test program
+// A few library functions that were each one away from a test program
 // passing, and that have nothing else in common.
 
 // moreBuiltin lowers this file's functions.
@@ -472,6 +472,9 @@ func (l *lowerer) pathBuiltin(c *Call, name string) (Reg, bool) {
 		}
 		return l.replaceAll(l.expr(c.Args[0]), l.expr(c.Args[1]), l.expr(c.Args[2])), true
 
+	case "cpu.avx2", "cpu.fma":
+		return l.cpuFeature(name == "cpu.fma"), true
+
 	case "os.pid":
 		return l.ccall("GetCurrentProcessId", nil, nil, vInt, true, false), true
 
@@ -549,4 +552,22 @@ func (l *lowerer) dirChange(path Reg) Reg {
 		)
 	})
 	return l.callHelper(sym, []Reg{path}, []vty{vStr}, ret)
+}
+
+// cpuFeature is cpu.avx2 or cpu.fma: whether the machine can run the AVX2
+// or the FMA instructions of an asm block, which includes the OS saving
+// the ymm registers. __vy_cpufeat finds that out once and leaves it in
+// the runtime's cpu words (see x64.go). main runs it first when the
+// program uses it, but a DLL has no main to do that, so it is run here
+// when the word still says it has not been.
+func (l *lowerer) cpuFeature(fma bool) Reg {
+	l.mod.needs("cpufeat")
+	done := l.newLabel()
+	l.jumpNot(l.compare(OpEq, l.rtLoad(cpuSlot), l.constant(0)), done)
+	l.callHelper("cpufeat", nil, nil, vVoid)
+	l.mark(done)
+	if fma {
+		return l.compare(OpEq, l.rtLoad(cpuFmaSlot), l.constant(1))
+	}
+	return l.compare(OpEq, l.rtLoad(cpuSlot), l.constant(2))
 }

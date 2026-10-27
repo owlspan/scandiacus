@@ -425,9 +425,6 @@ func (b *block) encode(m string, ops []operand) error {
 	case "xgetbv":
 		b.put(0x0F, 0x01, 0xD0)
 		return nil
-	case "vzeroupper":
-		b.put(0xC5, 0xF8, 0x77)
-		return nil
 	case "cqo":
 		b.put(0x48, 0x99)
 		return nil
@@ -495,19 +492,6 @@ func (b *block) encode(m string, ops []operand) error {
 		return b.encodeMovupd(ops)
 	case "addpd", "subpd", "mulpd", "unpcklpd", "movapd":
 		return b.encodePacked(m, ops)
-	case "vmovupd":
-		return b.encodeVmovupd(ops)
-	case "vaddpd", "vsubpd", "vmulpd":
-		return b.encodeVPacked(m, ops)
-	case "vbroadcastsd":
-		return b.encodeVbroadcastsd(ops)
-	case "vfmadd231sd", "vfnmadd231sd":
-		if len(ops) != 3 || ops[0].kind != opXmm || ops[1].kind != opXmm {
-			return fmt.Errorf("%s wants two xmm registers and an xmm or memory", m)
-		}
-		code := map[string]byte{"vfmadd231sd": 0xB9, "vfnmadd231sd": 0xBD}[m]
-		b.vexW(2, true, false, ops[1].reg, ops[0].reg, ops[2], code)
-		return nil
 	case "comisd", "ucomisd":
 		return b.encodeComisd(m, ops)
 	case "cvtsi2sd", "cvtsi2ss":
@@ -1002,16 +986,16 @@ func (b *block) encodePacked(m string, ops []operand) error {
 	return nil
 }
 
-// vex writes the VEX prefix and the opcode for the forms the wide
-// packed loops and fused multiply-add use: always the 66 prefix (pp
-// 01), map 1 for 0F or 2 for 0F 38, wide for 256 bits, w for VEX.W1. v
-// is the extra source register, or 0 for none. The two-byte C5 form where it can say everything, as GNU as
-// does, so that the bytes match it; see encode_test.go.
-func (b *block) vex(mapSel byte, v, reg int, rm operand, opcode byte) {
-	b.vexW(mapSel, false, true, v, reg, rm, opcode)
-}
-
-func (b *block) vexW(mapSel byte, w, wide bool, v, reg int, rm operand, opcode byte) {
+// vexW writes a VEX prefix and the opcode, for the compiler's own wide
+// packed loops and fused multiply-add and for the AVX lines of an asm
+// block (encodevex.go). pp is the implied prefix
+// (0 none, 1 for 66, 2 for F3, 3 for F2), mapSel the opcode map (1 for
+// 0F, 2 for 0F 38, 3 for 0F 3A), w VEX.W, wide the 256-bit length bit
+// and v the second source register, or 0 for none. The two-byte C5 form
+// is used wherever it can say everything (map 0F, W clear, no X or B
+// extension), as GNU as does, so that the bytes match it; see
+// encode_test.go.
+func (b *block) vexW(pp, mapSel byte, w, wide bool, v, reg int, rm operand, opcode byte) {
 	x, bse := 0, 0
 	switch rm.kind {
 	case opReg, opXmm:
@@ -1022,7 +1006,7 @@ func (b *block) vexW(mapSel byte, w, wide bool, v, reg int, rm operand, opcode b
 			x = rm.index
 		}
 	}
-	last := byte(^v&15)<<3 | 0x01
+	last := byte(^v&15)<<3 | pp
 	if wide {
 		last |= 0x04
 	}
@@ -1050,42 +1034,6 @@ func (b *block) vexW(mapSel byte, w, wide bool, v, reg int, rm operand, opcode b
 	}
 	b.put(0xC4, b1, last, opcode)
 	b.modrm(reg, rm)
-}
-
-func (b *block) encodeVmovupd(ops []operand) error {
-	if len(ops) != 2 {
-		return fmt.Errorf("vmovupd wants two operands")
-	}
-	dst, src := ops[0], ops[1]
-	if dst.kind == opXmm && dst.size == 256 && src.kind == opMem {
-		b.vex(1, 0, dst.reg, src, 0x10)
-		return nil
-	}
-	if src.kind == opXmm && src.size == 256 && dst.kind == opMem {
-		b.vex(1, 0, src.reg, dst, 0x11)
-		return nil
-	}
-	return fmt.Errorf("vmovupd wants a ymm register and memory")
-}
-
-func (b *block) encodeVPacked(m string, ops []operand) error {
-	if len(ops) != 3 || ops[0].size != 256 || ops[1].size != 256 || ops[2].size != 256 {
-		return fmt.Errorf("%s wants three ymm registers", m)
-	}
-	code := map[string]byte{"vaddpd": 0x58, "vmulpd": 0x59, "vsubpd": 0x5C}[m]
-	b.vex(1, ops[1].reg, ops[0].reg, ops[2], code)
-	return nil
-}
-
-func (b *block) encodeVbroadcastsd(ops []operand) error {
-	if len(ops) != 2 || ops[0].kind != opXmm || ops[0].size != 256 {
-		return fmt.Errorf("vbroadcastsd wants a ymm destination")
-	}
-	if src := ops[1]; src.kind == opMem || src.kind == opXmm && src.size == 64 {
-		b.vex(2, 0, ops[0].reg, src, 0x19)
-		return nil
-	}
-	return fmt.Errorf("vbroadcastsd wants an xmm register or memory")
 }
 
 func (b *block) encodeSSE(code byte, ops []operand) error {

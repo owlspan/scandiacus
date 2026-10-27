@@ -279,6 +279,19 @@ func parseMem(inner string, size int) (operand, error) {
 			return operand{}, fmt.Errorf("bad scale in %q", rest)
 		}
 		scale = n
+	} else if k := strings.IndexAny(rest, "+-"); k > 0 {
+		// [rax+rcx+32]: an index of scale 1 and a displacement, which
+		// GNU as takes without the *1.
+		if _, ok := regNum(strings.TrimSpace(rest[:k]), reg64); ok {
+			d, err := strconv.ParseInt(strings.TrimSpace(rest[k+1:]), 0, 64)
+			if err != nil {
+				return operand{}, fmt.Errorf("bad displacement in %q", rest)
+			}
+			if rest[k] == '-' {
+				d = -d
+			}
+			idxName, after = strings.TrimSpace(rest[:k]), d
+		}
 	}
 	if idx, ok := regNum(idxName, reg64); ok {
 		if sign < 0 {
@@ -291,7 +304,7 @@ func parseMem(inner string, size int) (operand, error) {
 	}
 	v, err := strconv.ParseInt(rest, 0, 64)
 	if err != nil {
-		return operand{}, err
+		return operand{}, fmt.Errorf("bad displacement or index in %q", inner)
 	}
 	op.disp = sign * v
 	return op, nil

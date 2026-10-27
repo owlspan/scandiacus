@@ -94,8 +94,9 @@ func asmExample(mn, form string, size, k int) (string, bool) {
 		8:  {"al", "cl", "r9b", "bl", "r12b", "sil", "r15b", "dil"},
 	}
 	ptr := map[int]string{8: "byte ptr ", 16: "word ptr ", 32: "dword ptr ", 64: "qword ptr "}
-	mems := []string{"[rax]", "[rsp+8]", "[rbp-16]", "[r12+rcx*4+8]", "[r13]", "[rdx+1024]", "[r9+r10*8]"}
+	mems := []string{"[rax]", "[rsp+8]", "[rbp-16]", "[r12+rcx*4+8]", "[r13]", "[rdx+1024]", "[r9+r10*8]", "[rcx+rax+32]", "[rdx+r11-8]"}
 	xmms := []string{"xmm0", "xmm7", "xmm9", "xmm15", "xmm3", "xmm12"}
+	ymms := []string{"ymm0", "ymm7", "ymm9", "ymm15", "ymm3", "ymm12"}
 	hasReg := strings.Contains(","+form+",", ",r,")
 	letters := strings.Split(form, ",")
 	out := make([]string, len(letters))
@@ -136,6 +137,14 @@ func asmExample(mn, form string, size, k int) (string, bool) {
 		case "X":
 			if k%2 == 0 {
 				out[i] = xmms[j%len(xmms)]
+			} else {
+				out[i] = mems[j%len(mems)]
+			}
+		case "y":
+			out[i] = ymms[j%len(ymms)]
+		case "Y":
+			if k%2 == 0 {
+				out[i] = ymms[j%len(ymms)]
 			} else {
 				out[i] = mems[j%len(mems)]
 			}
@@ -180,5 +189,28 @@ func asmTestAssembler(t *testing.T) func(string) []byte {
 			t.Fatal(err)
 		}
 		return data
+	}
+}
+
+// TestAsmRefusals holds the lines asm should turn down to a message that
+// says what is wrong: widths that do not go together, a register only
+// EVEX can name, and an immediate that does not fit its byte.
+func TestAsmRefusals(t *testing.T) {
+	for line, want := range map[string]string{
+		"vaddps ymm0, xmm1, ymm2":       "cannot be mixed",
+		"vaddps zmm0, zmm1, zmm2":       "EVEX",
+		"vaddps xmm0, xmm1, k1":         "EVEX",
+		"vshufps xmm0, xmm1, xmm2, 256": "does not fit in a byte",
+		"vpslld ymm0, ymm1, 300":        "does not fit in a byte",
+		"vpermq ymm0, ymm1, -200":       "does not fit in a byte",
+		"vextractf128 xmm0, xmm1, 1":    "does not take these operands",
+		"vcvtpd2ps xmm0, [rax]":         "does not take these operands",
+		"vmovups ymm0, xmm1":            "cannot be mixed",
+		"vfmadd231ps ymm0, ymm1, xmm2":  "cannot be mixed",
+	} {
+		got := asmEncodes(asmNormalize(line), nil)
+		if !strings.Contains(got, want) {
+			t.Errorf("%s: want a message containing %q, got %q", line, want, got)
+		}
 	}
 }

@@ -103,6 +103,9 @@ func (b *block) encodeMore(m string, ops []operand) (bool, error) {
 		b.put(code...)
 		return true, nil
 	}
+	if done, err := b.encodeVex(m, ops); done {
+		return true, err
+	}
 	if op, ok := asmGPOps[m]; ok {
 		if len(ops) != 2 || ops[0].kind != opReg {
 			return true, fmt.Errorf("%s wants a register destination", m)

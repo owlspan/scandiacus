@@ -2147,6 +2147,7 @@ nothing for them to fail at.
 | `os.name()` `os.arch()` | `str` | the system the program was built for - `"windows"`, `"linux"` or `"macos"` - and the CPU architecture |
 | `os.cpus()` `os.pid()` | `int` | processor count, process id |
 | `os.hostname()` | `str` | this machine's name |
+| `cpu.avx2()` `cpu.fma()` | `bool` | whether the CPU, and the OS saving its ymm registers, can run the AVX2 or the FMA instructions of an `asm` block |
 
 The path functions never touch the disk - they are string manipulation.
 
@@ -3776,8 +3777,9 @@ The rules:
   and no directives except `.byte`.
 - Instructions come from a fixed set: the general integer
   instructions, `popcnt`, `lzcnt`, `tzcnt`, `bswap`, `crc32`, `rdtsc`,
-  `pause`, the fences, `lock xadd` and `cmpxchg`, and the SSE scalar
-  and packed float and integer instructions. The Windows build encodes
+  `pause`, the fences, `lock xadd` and `cmpxchg`, the SSE scalar
+  and packed float and integer instructions, and AVX, AVX2 and FMA (see
+  below). The Windows build encodes
   them itself, so the same set is checked on every system; a line
   outside it is an error naming it. Anything else can be written as its
   bytes:
@@ -3785,6 +3787,56 @@ The rules:
 ```scandiacus
 asm(rax = x, rax -> x) {
     ".byte 0x48, 0x0f, 0xc8"  // bswap rax
+}
+```
+
+#### AVX, AVX2 and FMA
+
+The `v` forms work on the ymm registers as well as the xmm ones: the
+three-operand float arithmetic, logic, shuffles, blends, compares and
+conversions, the broadcasts and lane inserts and extracts, `vptest`
+and the move-mask instructions, the AVX2 integer arithmetic,
+compares, shuffles, shifts and permutes, and the fused multiply-add
+family (`vfmadd`, `vfmsub`, `vfnmadd` and `vfnmsub`, in the 132, 213
+and 231 orders). EVEX is not covered: no `zmm` registers and no mask
+registers. A line must not mix widths, so `vaddps ymm0, xmm1, ymm2`
+is an error.
+
+Values still go in and out through general and xmm registers, so a
+ymm register is loaded from memory, with an array's address:
+
+```scandiacus
+fn dot8(a: [8]f32, b: [8]f32) -> f32 {
+    let r: f32 = 0.0
+    asm(rcx = a, rdx = b, xmm0 -> r) {
+        "vmovups ymm0, [rcx]"
+        "vmulps ymm0, ymm0, [rdx]"
+        "vhaddps ymm0, ymm0, ymm0"
+        "vhaddps ymm0, ymm0, ymm0"
+        "vextractf128 xmm1, ymm0, 1"
+        "vaddps xmm0, xmm0, xmm1"
+    }
+    return r
+}
+```
+
+An output in `xmm0` takes the low element, so the result above is the
+low lane after the last add. The compiler's own float code is SSE, and
+on many CPUs SSE that runs with a ymm register's upper half dirty is
+slow, so a block that names a ymm register ends with `vzeroupper`
+(writing one yourself is harmless). A block that names none gets
+nothing added.
+
+An AVX instruction on a CPU without AVX stops the program with an
+illegal instruction. When the machine is not known, check first with
+`cpu.avx2()` and `cpu.fma()` and keep a plain version for when they
+are false:
+
+```scandiacus
+if cpu.avx2() {
+    // asm with ymm registers
+} else {
+    // the same work in plain code
 }
 ```
 
@@ -4676,7 +4728,7 @@ Honest list of what v2.12.0 does not do yet.
   `f32`, `f64`, `bool` and `ptr`; an array of structs or of arrays is
   not supported yet. A list or a map of arrays, and a list of structs
   that each hold an array field, work.
-- **`asm` takes a fixed set of instructions, and no AVX.** What is not
+- **`asm` takes a fixed set of instructions.** What is not
   in it is written with `.byte`. Values cross through memory, a load
   and a store each, which matters only in the tightest loop.
 - **At most 64 closures can be callbacks at once.** A function

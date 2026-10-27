@@ -533,6 +533,8 @@ var sigs = map[string]front.Signature{
 	"os.path.base":     {Params: []*Type{Str}, Ret: Str},
 	"os.path.dir":      {Params: []*Type{Str}, Ret: Str},
 	"os.path.ext":      {Params: []*Type{Str}, Ret: Str},
+	"cpu.avx2":         {Ret: Bool},
+	"cpu.fma":          {Ret: Bool},
 	"os.pid":           {Ret: Int},
 	"os.cpus":          {Ret: Int},
 	"os.hostname":      {Ret: Str},

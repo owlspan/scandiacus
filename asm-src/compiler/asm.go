@@ -206,6 +206,30 @@ func (e *Emitter) asm(blk *asmBlock) {
 			e.line("mov %s, %s", word(i), r.reg)
 		}
 	}
+	if asmUsesYmm(blk) {
+		// The compiler's own float code is SSE, and on many CPUs an SSE
+		// instruction that runs while a ymm register's upper half is
+		// dirty pays a transition penalty. Not added to a block that
+		// names no ymm register, so those still run without AVX.
+		e.line("vzeroupper")
+	}
+}
+
+// asmUsesYmm reports a block with a line that names a ymm register.
+func asmUsesYmm(blk *asmBlock) bool {
+	for _, ln := range blk.lines {
+		if strings.HasPrefix(ln, ".byte ") {
+			continue
+		}
+		for _, w := range strings.FieldsFunc(ln, func(c rune) bool {
+			return !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9')
+		}) {
+			if strings.HasPrefix(w, "ymm") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // asmRename points the operands that name a label at its renamed form.
